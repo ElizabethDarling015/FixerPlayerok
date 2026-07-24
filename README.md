@@ -126,8 +126,7 @@ chmod +x cardinal.sh
 Одной командой (подставьте URL своего GitHub-репозитория):
 
 ```bash
-wget https://github.com/<user>/<repo>/archive/refs/heads/main.tar.gz -O pc.tar.gz \
-  && tar -xzf pc.tar.gz && cd <repo>-main && chmod +x cardinal.sh && ./cardinal.sh
+wget https://raw.githubusercontent.com/scwee/PlayerokCardinal/main/cardinal.sh && chmod +x cardinal.sh && ./cardinal.sh
 ```
 
 Либо, если уже клонировали репозиторий на сервер: `./cardinal.sh`.
