@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "playerokapi"
+version = "0.1.0"
+description = "Неофициальная Python-библиотека для работы с playerok.com по авторизации через cookie"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "playerokapi contributors" }]
+keywords = ["playerok", "api", "graphql", "unofficial-api"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "curl_cffi>=0.7.0,<0.10.0",
+    "websocket-client>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "graphql-core>=3.2",
+]
+cardinal = [
+    "aiogram>=3.7",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "loguru>=0.7",
+    "rich>=13.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["playerokapi", "playerokapi.*", "cardinal", "cardinal.*"]
+
+[tool.setuptools.package-data]
+# PEP 561: маркер py.typed — потребители библиотеки получают аннотации типов.
+playerokapi = ["py.typed"]
+cardinal = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
