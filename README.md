@@ -9,6 +9,10 @@
 ![status](https://img.shields.io/badge/status-beta-orange)
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
+![stars](https://img.shields.io/github/stars/scwee/PlayerokCardinal)
+![forks](https://img.shields.io/github/forks/scwee/PlayerokCardinal)
+![watchers](https://img.shields.io/github/watchers/scwee/PlayerokCardinal)
+![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
 
 ![PLAYEROK](https://img.shields.io/badge/PLAYEROK-BOT-brightgreen?style=for-the-badge)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -123,10 +127,11 @@ chmod +x cardinal.sh
 ./cardinal.sh --service    # systemd-автозапуск (Linux)
 ```
 
-Одной командой (подставьте URL своего GitHub-репозитория):
+Одной командой:
 
 ```bash
-wget https://raw.githubusercontent.com/scwee/PlayerokCardinal/main/cardinal.sh && chmod +x cardinal.sh && ./cardinal.sh
+wget https://github.com/scwee/PlayerokCardinal/archive/refs/heads/main.tar.gz -O pc.tar.gz \
+  && tar -xzf pc.tar.gz && cd PlayerokCardinal-main && chmod +x cardinal.sh && ./cardinal.sh
 ```
 
 Либо, если уже клонировали репозиторий на сервер: `./cardinal.sh`.
@@ -162,7 +167,7 @@ Token — JWT из трёх частей через точку. Скопируй
 
 ## Star it
 
-Если PlayerokCardinal вам полезен — поставьте звезду репозиторию на GitHub (нужно быть авторизованным).
+Если PlayerokCardinal вам полезен — [поставьте звезду](https://github.com/scwee/PlayerokCardinal) репозиторию на GitHub (нужно быть авторизованным).
 
 ## Лицензия
 
