@@ -25,6 +25,9 @@
 
 > Неофициальный проект. Не аффилирован с Playerok и не связан с администрацией площадки.
 > Статус: **beta**.
+>
+
+<img src="assets/banner.png" alt="PLAYEROK CARDINAL" width="720">
 
 ## Содержание
 
