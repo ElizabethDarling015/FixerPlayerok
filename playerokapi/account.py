@@ -41,6 +41,18 @@ _BOT_CHECK_SIGNATURES = ("ddos-guard", "Ray ID", "cf-error-details", "Attention 
 # Код ошибки Apollo Persisted Queries, который сервер возвращает, если не узнал sha256Hash запроса.
 _PERSISTED_QUERY_NOT_FOUND_CODE = "PERSISTED_QUERY_NOT_FOUND"
 
+# GraphQL-код «нет прав на поле/операцию» (Playerok часто отдаёт его ещё и как HTTP 403).
+_GRAPHQL_FORBIDDEN_CODE = "FORBIDDEN"
+
+
+def _empty_review_list() -> types.ReviewList:
+    """Пустая страница отзывов — для graceful-деградации при FORBIDDEN на testimonials."""
+    return types.ReviewList(
+        reviews=[],
+        page_info=types.PageInfo(None, None, False, False),
+        total_count=0,
+    )
+
 
 def _close_file_objects(file_objects) -> None:
     """Закрывает файловые объекты multipart-вложений (байтовые вложения пропускает)."""
@@ -93,6 +105,9 @@ class Account:
         self._session_lock = threading.Lock()
         self._runner = None  # ссылка на Runner проставляется самим Runner'ом при создании
         self._unread_counters: dict[str, int] = {}  # chat_id -> unreadMessagesCounter (см. _note_chat)
+        # Операция testimonials на Playerok часто закрыта для seller (только support/admin) —
+        # после первого FORBIDDEN больше не дёргаем API, чтобы не спамить 403 в лог.
+        self._testimonials_forbidden: bool = False
 
     # ------------------------------------------------------------------
     # Низкоуровневая отправка запросов
@@ -198,19 +213,34 @@ class Account:
                 self._sleep_before_retry(attempt)
                 continue
 
+            try:
+                response_json = response.json()
+            except Exception:
+                response_json = None
+
             if response.status_code != 200:
                 if response.status_code >= 500 and not is_last_attempt:
                     logger.warning("[%s] Сервер вернул %d (попытка %d/%d) — повтор", operation_name,
                                    response.status_code, attempt + 1, max_attempts)
                     self._sleep_before_retry(attempt)
                     continue
+                # GraphQL-ошибки могут прийти и с HTTP 4xx (Playerok так отдаёт FORBIDDEN),
+                # не только с 200 — иначе callers видят сырой RequestFailedError вместо кода GQL.
+                if isinstance(response_json, dict) and response_json.get("errors"):
+                    first_error = (response_json.get("errors") or [{}])[0]
+                    error_code = (first_error.get("extensions") or {}).get("code")
+                    if error_code == _PERSISTED_QUERY_NOT_FOUND_CODE:
+                        logger.error("[%s] Хэш persisted-запроса не распознан сервером", operation_name)
+                        raise PersistedQueryNotFoundError(response, operation_name)
+                    logger.error(
+                        "[%s] GraphQL-ошибка (HTTP %d): %s",
+                        operation_name,
+                        response.status_code,
+                        first_error.get("message"),
+                    )
+                    raise RequestPlayerokError(response)
                 logger.error("[%s] Сервер вернул %d", operation_name, response.status_code)
                 raise RequestFailedError(response)
-
-            try:
-                response_json = response.json()
-            except Exception:
-                response_json = None
 
             if isinstance(response_json, dict) and response_json.get("errors"):
                 first_error = (response_json.get("errors") or [{}])[0]
@@ -375,14 +405,29 @@ class Account:
         :param user_id: ID пользователя (продавца), чьи отзывы нужно получить.
         :param count: Сколько отзывов запросить (размер страницы).
         :param after_cursor: Курсор для пагинации.
-        :return: Страница списка отзывов.
+        :return: Страница списка отзывов. Если операция `testimonials` недоступна аккаунту
+            (GraphQL FORBIDDEN — типично для seller без support-доступа), возвращает пустой список
+            и больше не дергает API.
         """
+        if self._testimonials_forbidden:
+            return _empty_review_list()
         # hasSupportAccess — обязательная переменная схемы (Boolean!), без неё сервер отвечает 500.
+        # Сама переменная не выдаёт доступ: поле testimonials на сервере часто закрыто для seller.
         variables = {"pagination": {"first": count}, "filter": {"userId": user_id},
                      "hasSupportAccess": False}
         if after_cursor:
             variables["pagination"]["after"] = after_cursor
-        data = self._persisted_query("testimonials", variables)
+        try:
+            data = self._persisted_query("testimonials", variables)
+        except RequestPlayerokError as exc:
+            if exc.error_code == _GRAPHQL_FORBIDDEN_CODE:
+                self._testimonials_forbidden = True
+                logger.warning(
+                    "Операция testimonials недоступна этому аккаунту (FORBIDDEN) — "
+                    "список отзывов пропускаем (обычно нужно support-право; для seller-бота это не критично)"
+                )
+                return _empty_review_list()
+            raise
         return parser.review_list(data.get("testimonials"))
 
     # ------------------------------------------------------------------
