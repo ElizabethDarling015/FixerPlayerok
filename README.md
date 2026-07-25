@@ -1,6 +1,5 @@
 <div align="center">
 
-<img src="banner.png" alt="PLAYEROK CARDINAL" width="720">
 
 # PlayerokCardinal
 
