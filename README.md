@@ -1,33 +1,31 @@
 <div align="center">
 
+<img src="banner.png" alt="PLAYEROK CARDINAL" width="720">
+
 # PlayerokCardinal
 
 Бот для автоматизации продаж на [Playerok](https://playerok.com).
 
+
 ---
-<img src="assets/banner.png" alt="PLAYEROK CARDINAL" width="720">
 
 ![status](https://img.shields.io/badge/status-beta-orange)
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-
+![stars](https://img.shields.io/github/stars/scwee/PlayerokCardinal)
+![forks](https://img.shields.io/github/forks/scwee/PlayerokCardinal)
+![watchers](https://img.shields.io/github/watchers/scwee/PlayerokCardinal)
+![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
 
 ![PLAYEROK](https://img.shields.io/badge/PLAYEROK-BOT-brightgreen?style=for-the-badge)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![aiogram](https://img.shields.io/badge/aiogram-3.7%2B-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-BOT-26A5E0?style=for-the-badge&logo=telegram&logoColor=white)
-![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
-
-![stars](https://img.shields.io/github/stars/scwee/PlayerokCardinal)
-![forks](https://img.shields.io/github/forks/scwee/PlayerokCardinal)
-![watchers](https://img.shields.io/github/watchers/scwee/PlayerokCardinal)
 
 </div>
 
 > Неофициальный проект. Не аффилирован с Playerok и не связан с администрацией площадки.
 > Статус: **beta**.
->
-
 
 ## Содержание
 
@@ -150,6 +148,8 @@ wget https://github.com/scwee/PlayerokCardinal/archive/refs/heads/main.tar.gz -O
 2. Не ставьте плагины из неизвестных источников (см. предупреждение выше).
 
 ## Помощь
+
+**Создатель** — [@Scwee_xz](https://t.me/Scwee_xz)
 
 Telegram-чат поддержки появится позже. Пока смотрите [FAQ](#faq), логи в `storage/logs/cardinal.log` и раздел «Система» в `/menu`.
 
