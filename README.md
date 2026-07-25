@@ -5,6 +5,7 @@
 Бот для автоматизации продаж на [Playerok](https://playerok.com).
 
 ---
+<img src="assets/banner.png" alt="PLAYEROK CARDINAL" width="720">
 
 ![status](https://img.shields.io/badge/status-beta-orange)
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
@@ -27,7 +28,6 @@
 > Статус: **beta**.
 >
 
-<img src="assets/banner.png" alt="PLAYEROK CARDINAL" width="720">
 
 ## Содержание
 
