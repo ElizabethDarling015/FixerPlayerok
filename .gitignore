@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+.pytest_cache/
+autodelivery_ledger.sqlite3
+configs/
+storage/
+_jsbundle/
+_compare_report.json
+tmp_cookies.txt
+*.egg-info/
+.pytest_cache/

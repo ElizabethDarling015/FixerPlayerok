@@ -1,0 +1,28 @@
+# systemd-юнит PlayerokCardinal (аналог FunPayCardinal@.service).
+#
+# Установка: ./cardinal.sh --service (или вручную):
+#   sudo cp PlayerokCardinal@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now PlayerokCardinal@<пользователь>
+#
+# %i — имя пользователя, от которого запускается бот; проект ожидается в
+# /home/%i/PlayerokAPI (поправьте WorkingDirectory, если папка называется иначе).
+#
+# Логи: journalctl -u PlayerokCardinal@<пользователь> -f
+
+[Unit]
+Description=PlayerokCardinal (бот-комбайн для Playerok) — экземпляр пользователя %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/PlayerokAPI
+ExecStart=/home/%i/PlayerokAPI/.venv/bin/python -m cardinal
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
