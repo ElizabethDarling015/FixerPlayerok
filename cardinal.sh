@@ -17,39 +17,106 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # ----------------------------------------------------------------------
-# Цвета (стиль FunPayCardinal: яркие красный/циан + мигающие фиолетовые рамки)
+# Цвета и статус-префиксы (читаемо в xterm/ssh)
 # ----------------------------------------------------------------------
 if [ -t 1 ]; then
-    RED=$'\033[1;91m'; MAGENTA=$'\033[1;35m'; CYAN=$'\033[1;96m'; BOLD=$'\033[1m'
+    RED=$'\033[1;91m'; CYAN=$'\033[1;96m'; BOLD=$'\033[1m'
     GREEN=$'\033[1;92m'; YELLOW=$'\033[1;93m'; GREY=$'\033[0;90m'; NC=$'\033[0m'
-    PURPLE=$'\033[5;35m'
 else
-    RED=""; MAGENTA=""; CYAN=""; BOLD=""; GREEN=""; YELLOW=""; GREY=""; NC=""; PURPLE=""
+    RED=""; CYAN=""; BOLD=""; GREEN=""; YELLOW=""; GREY=""; NC=""
 fi
 
-FRAME="################################################################################"
+TAG="${CYAN}[PlayerokCardinal]${NC}"
 
-say()  { echo "${CYAN}[PlayerokCardinal]${NC} $*"; }
-ok()   { echo "${GREEN}  ✔${NC} $*"; }
-warn() { echo "${YELLOW}  !${NC} $*"; }
+# Тихий apt: без Hit/Get/Unpacking/needrestart-простыни; ошибки остаются видимыми.
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export NEEDRESTART_MODE="${NEEDRESTART_MODE:-a}"
+export NEEDRESTART_SUSPEND="${NEEDRESTART_SUSPEND:-1}"
+
+info() { echo "${TAG} ${CYAN}›${NC} $*"; }
+ok()   { echo "${TAG} ${GREEN}✓${NC} $*"; }
+warn() { echo "${TAG} ${YELLOW}!${NC} $*"; }
+err()  { echo "${TAG} ${RED}✖${NC} $*" >&2; }
 die()  {
     echo >&2
-    echo "${PURPLE}${FRAME}${NC}" >&2
-    echo "${RED}Произошла ошибка: $*${NC}" >&2
-    echo "${PURPLE}${FRAME}${NC}" >&2
+    err "$*"
     exit 2
 }
 step() {
     echo
-    echo "${PURPLE}${FRAME}${NC}"
-    echo "$*"
-    echo "${PURPLE}${FRAME}${NC}"
+    echo "${TAG} ${BOLD}${CYAN}$*${NC}"
+}
+
+# Спиннер на время фоновой команды (только в TTY). Возвращает код wait.
+_spin() {
+    local pid="$1" msg="$2" frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
+    if [ ! -t 1 ]; then
+        wait "$pid"
+        return $?
+    fi
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i + 1) % 10 ))
+        printf '\r%s %s %s' "${TAG}" "${CYAN}${frames:$i:1}${NC}" "$msg"
+        sleep 0.08
+    done
+    printf '\r\033[K'
+    wait "$pid"
+}
+
+# Тихий apt-get: весь вывод в лог (включая needrestart-хуки).
+# apt_quiet — при ошибке показывает хвост лога (для финальных шагов).
+# apt_try   — молча возвращает код (для ретраев / || true).
+_apt_run() {
+    local show_err="$1"; shift
+    local logfile rc=0 label
+    case "$*" in
+        update)     label="Обновляю списки пакетов…" ;;
+        install\ *) label="Устанавливаю: ${*#install }" ;;
+        *)          label="apt-get $*" ;;
+    esac
+    logfile=$(mktemp "${TMPDIR:-/tmp}/pc-apt.XXXXXX") || logfile="/tmp/pc-apt.$$"
+    (
+        ${SUDO:-} env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+            apt-get -y -qq "$@" >"$logfile" 2>&1
+    ) &
+    if ! _spin $! "$label"; then
+        rc=$?
+    fi
+    if [ "$rc" -eq 0 ]; then
+        rm -f "$logfile"
+        return 0
+    fi
+    if [ "$show_err" = "1" ]; then
+        err "apt-get $* не удался (код $rc):"
+        tail -n 40 "$logfile" >&2 || true
+    fi
+    rm -f "$logfile"
+    return "$rc"
+}
+apt_quiet() { _apt_run 1 "$@"; }
+apt_try()   { _apt_run 0 "$@"; }
+
+# Тихая установка через brew/dnf/pacman/apk/zypper со спиннером.
+_pkg_quiet() {
+    local label="$1"; shift
+    local logfile rc=0
+    logfile=$(mktemp "${TMPDIR:-/tmp}/pc-pkg.XXXXXX") || logfile="/tmp/pc-pkg.$$"
+    ( "$@" >"$logfile" 2>&1 ) &
+    if ! _spin $! "$label"; then
+        rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+        err "$* не удался (код $rc):"
+        tail -n 40 "$logfile" >&2 || true
+    fi
+    rm -f "$logfile"
+    return "$rc"
 }
 
 # Вопрос с необязательным значением по умолчанию → ответ в $REPLY (EOF → ASK_EOF=1).
 ASK_EOF=0
 ask() {
-    local prompt="${CYAN}  ❯${NC} ${BOLD}$1${NC}"
+    local prompt="${TAG} ${CYAN}❯${NC} ${BOLD}$1${NC}"
     if [ -n "${2:-}" ]; then prompt="$prompt ${GREY}[$2]${NC}"; fi
     read -r -p "$prompt: " REPLY || { REPLY=""; ASK_EOF=1; }
     REPLY="${REPLY:-${2:-}}"
@@ -59,7 +126,7 @@ ask() {
 ask_yn() {
     local default="${2:-n}" hint="[y/N]"
     if [ "$default" = "y" ]; then hint="[Y/n]"; fi
-    read -r -p "${CYAN}  ❯${NC} ${BOLD}$1${NC} ${GREY}$hint${NC} " REPLY || REPLY=""
+    read -r -p "${TAG} ${CYAN}❯${NC} ${BOLD}$1${NC} ${GREY}$hint${NC} " REPLY || REPLY=""
     REPLY="${REPLY:-$default}"
     case "$REPLY" in y|Y|yes|Yes|д|Д|да|Да) REPLY="true" ;; *) REPLY="false" ;; esac
 }
@@ -68,6 +135,8 @@ ask_yn() {
 esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 
 banner() {
+    # ANSI Shadow: PLAYEROK (cyan) + CARDINAL (red) — как на скрине терминала.
+    echo
     echo "${CYAN}"
     cat <<'EOF'
  ██████╗ ██╗      █████╗ ██╗   ██╗███████╗██████╗  ██████╗ ██╗  ██╗
@@ -87,8 +156,8 @@ EOF
       ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝
 EOF
     echo "${NC}"
-    echo "${RED} * Проект ${CYAN}PlayerokCardinal — бот-комбайн для продавцов Playerok${NC}"
-    echo "${RED} * Панель ${CYAN}Telegram-бот → /menu${NC}"
+    echo "  ${GREY}бот-комбайн для продавцов Playerok  ·  /menu в Telegram${NC}"
+    echo "  ${GREY}Создатель:${NC} ${CYAN}https://t.me/Scwee_xz${NC}"
     echo
 }
 
@@ -117,8 +186,8 @@ banner
 # Мастер настройки: пишет configs/main.toml (+ пустые autoresponse/autodelivery)
 # ----------------------------------------------------------------------
 setup_config() {
-    say "Ответьте на вопросы — конфиги будут созданы автоматически."
-    say "Потом всё можно поменять в ${BOLD}configs/${NC} или через Telegram-панель (/menu)."
+    info "Ответьте на вопросы — конфиги будут созданы автоматически."
+    info "Потом всё можно поменять в ${BOLD}configs/${NC} или через Telegram-панель (/menu)."
 
     # --- 1. Playerok ---
     echo
@@ -303,63 +372,81 @@ need_sudo() {
 
 # Подключает на Ubuntu репозиторий universe и PPA deadsnakes (там живут pythonX.Y и pythonX.Y-venv).
 apt_enable_extra_repos() {
-    say "Подключаю репозитории universe и deadsnakes…"
-    $SUDO apt-get install -y software-properties-common || true
-    $SUDO add-apt-repository -y universe || true
-    $SUDO add-apt-repository -y ppa:deadsnakes/ppa || true
-    $SUDO apt-get update -y || true
+    info "Подключаю репозитории universe и deadsnakes…"
+    apt_try install software-properties-common || true
+    $SUDO add-apt-repository -y universe >/dev/null 2>&1 || true
+    $SUDO add-apt-repository -y ppa:deadsnakes/ppa >/dev/null 2>&1 || true
+    apt_try update || true
+    ok "Репозитории готовы."
 }
 
 # Ставит Python 3.11+ через пакетный менеджер системы (apt/dnf/pacman/apk/zypper/brew).
 install_python() {
-    say "Python 3.11+ не найден — устанавливаю автоматически…"
+    info "Python 3.11+ не найден — устанавливаю автоматически…"
     need_sudo
 
     if [ "$(uname)" = "Darwin" ]; then
         command -v brew >/dev/null 2>&1 \
             || die "На macOS нужен Homebrew (https://brew.sh) или Python с https://python.org — потом запустите ./cardinal.sh снова."
-        brew install python@3.12 || die "brew install python@3.12 не удался."
+        _pkg_quiet "Устанавливаю python@3.12 (Homebrew)…" brew install python@3.12 \
+            || die "brew install python@3.12 не удался."
+        ok "Пакет python@3.12 установлен."
         return 0
     fi
 
     detect_os
     case " $OS_ID $OS_LIKE " in
         *debian*|*ubuntu*)
-            export DEBIAN_FRONTEND=noninteractive
-            $SUDO apt-get update -y
+            apt_try update || true
             # Штатные пакеты: Debian 12+ / Ubuntu 24.04+ дают Python 3.11+.
-            $SUDO apt-get install -y python3 python3-venv python3-pip || true
+            if apt_try install python3 python3-venv python3-pip; then
+                ok "Пакеты python3 / python3-venv / python3-pip установлены."
+            fi
             if ! find_python; then
                 case " $OS_ID $OS_LIKE " in
                     *ubuntu*)
                         # Старая Ubuntu (20.04/22.04): свежий Python из PPA deadsnakes.
                         apt_enable_extra_repos
-                        $SUDO apt-get install -y python3.12 python3.12-venv
+                        apt_quiet install python3.12 python3.12-venv \
+                            || die "Не удалось установить python3.12 из deadsnakes."
+                        ok "Пакет python3.12-venv установлен."
                         ;;
                     *)
                         die "В репозиториях этой версии Debian нет Python 3.11+ — обновитесь до Debian 12 (bookworm) или поставьте Python вручную."
                         ;;
                 esac
+            else
+                ok "Python установлен."
             fi
             ;;
         *rhel*|*centos*|*rocky*|*alma*)
             # Ветка ДО fedora: у RHEL-клонов ID_LIKE содержит "fedora", но штатный
             # python3 там старый — ставим версионированный пакет.
-            $SUDO dnf install -y python3.12 python3.12-pip \
-                || $SUDO dnf install -y python3.11 python3.11-pip
+            _pkg_quiet "Устанавливаю python3.12 (dnf)…" $SUDO dnf install -y -q python3.12 python3.12-pip \
+                || _pkg_quiet "Устанавливаю python3.11 (dnf)…" $SUDO dnf install -y -q python3.11 python3.11-pip \
+                || die "dnf install python3.12/3.11 не удался."
+            ok "Python установлен."
             ;;
         *fedora*)
-            $SUDO dnf install -y python3 python3-pip
+            _pkg_quiet "Устанавливаю python3 (dnf)…" $SUDO dnf install -y -q python3 python3-pip \
+                || die "dnf install python3 не удался."
+            ok "Python установлен."
             ;;
         *arch*)
-            $SUDO pacman -Sy --noconfirm python python-pip
+            _pkg_quiet "Устанавливаю python (pacman)…" $SUDO pacman -Sy --noconfirm --quiet python python-pip \
+                || die "pacman install python не удался."
+            ok "Python установлен."
             ;;
         *alpine*)
-            $SUDO apk add --no-cache python3 py3-pip
+            _pkg_quiet "Устанавливаю python3 (apk)…" $SUDO apk add --no-cache --quiet python3 py3-pip \
+                || die "apk add python3 не удался."
+            ok "Python установлен."
             ;;
         *suse*)
-            $SUDO zypper --non-interactive install python312 python312-pip \
-                || $SUDO zypper --non-interactive install python311 python311-pip
+            _pkg_quiet "Устанавливаю python312 (zypper)…" $SUDO zypper --non-interactive --quiet install python312 python312-pip \
+                || _pkg_quiet "Устанавливаю python311 (zypper)…" $SUDO zypper --non-interactive --quiet install python311 python311-pip \
+                || die "zypper install python312/311 не удался."
+            ok "Python установлен."
             ;;
         *)
             die "Не удалось определить пакетный менеджер (${OS_ID:-неизвестная ОС}). Установите Python 3.11+ вручную и запустите ./cardinal.sh снова."
@@ -380,7 +467,7 @@ ok "Python найден: ${BOLD}$($PYTHON --version)${NC}"
 if [ "$MODE" = "service" ]; then
     [ "$(uname)" = "Linux" ] || die "systemd-сервис доступен только на Linux."
     command -v systemctl >/dev/null 2>&1 || die "systemctl не найден — система без systemd."
-    say "Устанавливаю systemd-сервис (нужны права sudo)…"
+    info "Устанавливаю systemd-сервис (нужны права sudo)…"
     sudo cp "PlayerokCardinal@.service" /etc/systemd/system/PlayerokCardinal@.service
     sudo systemctl daemon-reload
     sudo systemctl enable "PlayerokCardinal@$(whoami).service"
@@ -441,17 +528,26 @@ ensure_venv() {
     # 1) Debian/Ubuntu: venv — отдельный пакет; списки пакетов на свежем сервере могут быть пустыми.
     if command -v apt-get >/dev/null 2>&1; then
         detect_os
-        export DEBIAN_FRONTEND=noninteractive
-        say "Доставляю пакет venv для $PYTHON…"
-        $SUDO apt-get update -y || true
-        $SUDO apt-get install -y "${PYTHON}-venv" || $SUDO apt-get install -y python3-venv || true
+        local venv_pkg="${PYTHON}-venv"
+        apt_try update || true
+        if apt_try install "$venv_pkg"; then
+            ok "Пакет ${venv_pkg} установлен."
+        elif apt_try install python3-venv; then
+            ok "Пакет python3-venv установлен."
+        else
+            warn "Пакет ${venv_pkg} не установился с первого раза — пробую дальше."
+        fi
         # 2) Не нашлось (частая причина: на минимальной Ubuntu выключен universe,
         #    а для python из deadsnakes нужен его же PPA) — подключаем репозитории и повторяем.
         if ! create_venv; then
             case " ${OS_ID:-} ${OS_LIKE:-} " in
                 *ubuntu*)
                     apt_enable_extra_repos
-                    $SUDO apt-get install -y "${PYTHON}-venv" || $SUDO apt-get install -y python3-venv || true
+                    if apt_quiet install "$venv_pkg"; then
+                        ok "Пакет ${venv_pkg} установлен."
+                    elif apt_quiet install python3-venv; then
+                        ok "Пакет python3-venv установлен."
+                    fi
                     ;;
             esac
         fi
@@ -459,12 +555,12 @@ ensure_venv() {
     fi
 
     # 3) Универсальный запасной путь: virtualenv не требует системного ensurepip.
-    say "python -m venv недоступен — пробую virtualenv…"
+    info "python -m venv недоступен — пробую virtualenv…"
     if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
         if command -v curl >/dev/null 2>&1; then
-            curl -fsSL https://bootstrap.pypa.io/get-pip.py | $SUDO "$PYTHON" - || true
+            curl -fsSL https://bootstrap.pypa.io/get-pip.py | $SUDO "$PYTHON" - >/dev/null 2>&1 || true
         elif command -v wget >/dev/null 2>&1; then
-            wget -qO- https://bootstrap.pypa.io/get-pip.py | $SUDO "$PYTHON" - || true
+            wget -qO- https://bootstrap.pypa.io/get-pip.py | $SUDO "$PYTHON" - >/dev/null 2>&1 || true
         fi
     fi
     $SUDO "$PYTHON" -m pip install -q virtualenv 2>/dev/null \
@@ -480,7 +576,7 @@ step "Устанавливаю зависимости… (3/4)"
 FIRST_INSTALL=0
 if [ ! -x ".venv/bin/python" ]; then
     FIRST_INSTALL=1
-    say "Создаю виртуальное окружение .venv…"
+    info "Создаю виртуальное окружение .venv…"
     ensure_venv || die "Не удалось создать .venv. Поставьте пакет venv вручную (${BOLD}apt install ${PYTHON}-venv${NC}) и запустите ./cardinal.sh снова."
     ok "Виртуальное окружение создано."
 fi
@@ -488,9 +584,9 @@ VENV_PY=".venv/bin/python"
 
 # Лечим битый venv без pip (остаётся после падения ensurepip в старых версиях скрипта).
 if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-    say "В .venv нет pip — чиню…"
+    info "В .venv нет pip — чиню…"
     if ! bootstrap_venv_pip; then
-        say "Не удалось добавить pip — пересоздаю .venv…"
+        warn "Не удалось добавить pip — пересоздаю .venv…"
         rm -rf .venv
         FIRST_INSTALL=1
         ensure_venv || die "Не удалось создать .venv. Поставьте пакет venv вручную (${BOLD}apt install ${PYTHON}-venv${NC}) и запустите ./cardinal.sh снова."
@@ -499,9 +595,11 @@ if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
 fi
 
 if [ "$FIRST_INSTALL" = "1" ] || [ "$MODE" = "update" ] || ! "$VENV_PY" -c "import aiogram, playerokapi, cardinal" >/dev/null 2>&1; then
-    say "Ставлю/обновляю зависимости (pip install -e \".[cardinal]\")…"
-    "$VENV_PY" -m pip install --upgrade pip -q
-    "$VENV_PY" -m pip install -e ".[cardinal]" -q || die "Не удалось установить зависимости."
+    info "Ставлю зависимости (pip install -e \".[cardinal]\")…"
+    _pkg_quiet "Обновляю pip…" "$VENV_PY" -m pip install --upgrade pip -q \
+        || die "Не удалось обновить pip."
+    _pkg_quiet "Устанавливаю зависимости…" "$VENV_PY" -m pip install -e ".[cardinal]" -q \
+        || die "Не удалось установить зависимости."
     ok "Зависимости установлены."
 else
     ok "Зависимости на месте ${GREY}(обновить: ./cardinal.sh --update)${NC}."
@@ -549,9 +647,7 @@ print(f"Авторизация OK: {account.username} | баланс: {balance}"
 PYEOF
     then
         echo
-        echo "${GREEN}${FRAME}"
-        echo "Проверка пройдена — можно запускать: ./cardinal.sh"
-        echo "${FRAME}${NC}"
+        ok "Проверка пройдена — можно запускать: ${BOLD}./cardinal.sh${NC}"
         exit 0
     else
         die "Авторизация не прошла (см. вывод выше). Обновите token: ./cardinal.sh --setup"
@@ -573,15 +669,14 @@ fi
 # Шаг 4/4 — Запуск
 # ----------------------------------------------------------------------
 echo
-echo "${GREEN}${FRAME}"
-echo "Установка завершена. Запускаю PlayerokCardinal! (4/4)"
-echo
-echo "Панель управления: напишите своему Telegram-боту /menu"
-echo "Остановка:         Ctrl+C"
-echo "Логи:              storage/logs/cardinal.log"
-echo "Перенастройка:     ./cardinal.sh --setup"
-echo "Проверка токена:   ./cardinal.sh --check"
-echo "Автозапуск (24/7): ./cardinal.sh --service"
-echo "${FRAME}${NC}"
+step "Запускаю PlayerokCardinal… (4/4)"
+ok "Установка завершена."
+echo "  ${GREY}Панель:${NC}     Telegram-бот → /menu"
+echo "  ${GREY}Стоп:${NC}        Ctrl+C"
+echo "  ${GREY}Логи:${NC}        storage/logs/cardinal.log"
+echo "  ${GREY}Setup:${NC}       ./cardinal.sh --setup"
+echo "  ${GREY}Check:${NC}       ./cardinal.sh --check"
+echo "  ${GREY}Автозапуск:${NC}  ./cardinal.sh --service"
+echo "  ${GREY}Создатель:${NC}   ${CYAN}https://t.me/Scwee_xz${NC}"
 echo
 exec "$VENV_PY" -m cardinal
