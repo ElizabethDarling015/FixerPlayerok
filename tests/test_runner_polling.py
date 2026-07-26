@@ -119,7 +119,10 @@ def test_poll_reviews_empty_first_snapshot():
     runner._poll_reviews()
     assert drain_events(runner) == []
 
-    review = SimpleNamespace(id="review-1")
+    # Отзыв с автором считается «полным» — событие отправляется сразу, без отложенного дочита
+    # (см. tests/test_runner_review_recheck.py).
+    review = SimpleNamespace(id="review-1", deal=None,
+                             creator=SimpleNamespace(id="buyer-1", username="ivan"))
     account.get_my_reviews = lambda count=50, after_cursor=None: make_page([review], field="reviews")
     runner._poll_reviews()
     emitted = drain_events(runner)

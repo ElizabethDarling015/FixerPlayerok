@@ -32,6 +32,7 @@ STRINGS = {
     "module_autoresponse": "Auto-response",
     "module_autorestore": "Auto-restore",
     "module_greeting": "Greeting",
+    "module_postsale": "Post-sale",
     "module_online": "Always online",
     "module_digest": "Daily digest",
     "module_autoupdate": "Update checks",
@@ -69,7 +70,9 @@ STRINGS = {
         "Stock file: <code>{stock_file}</code>\n"
         "In stock: <b>{stock}</b> pcs.\n"
         "Auto-restore: {restore}\n"
-        "Deactivate when empty: {deactivate}"
+        "Deactivate when empty: {deactivate}\n"
+        "Own delivery text: {own_text}\n"
+        "Unpublish when stock is empty: {auto_deact}"
     ),
     "ad_btn_view_stock": "👀 View stock",
     "ad_stock_view_title": "📦 <b>Stock \"{name}\"</b> — items: <b>{total}</b>",
@@ -105,6 +108,34 @@ STRINGS = {
     # Called without kwargs — str.format is not applied, so {item} stays literal here.
     "ad_text_needs_item": "⚠️ The text has no <code>{item}</code> — without it the buyer won't receive the goods. Send the text again.",
     "ad_delivery_text_saved": "✅ Delivery text saved.",
+    "ad_btn_lot_delivery_text": "✏️ Lot delivery text",
+    "ad_enter_lot_delivery_text": (
+        "Send the delivery text for lot \"{name}\" — it will be used instead of the common one.\n"
+        "Placeholder <code>{{item}}</code> (required) — the stock item being delivered.\n"
+        "Send \"-\" to switch the lot back to the common delivery text.\n\n"
+        "Current text:\n<code>{current}</code>"
+    ),
+    "ad_lot_delivery_text_saved": "✅ Own delivery text for lot \"{name}\" saved.",
+    "ad_lot_delivery_text_reset": "✅ Lot \"{name}\" uses the common delivery text again.",
+
+    "ad_btn_pick_lot": "🎮 Pick a lot from Playerok",
+    "ad_pick_loading": "Loading your Playerok lots…",
+    "ad_pick_title": "🎮 <b>Your Playerok lots</b>\n\nTap a lot to add it to auto-delivery (✅ — already added):",
+    "ad_pick_empty": "No active lots found on Playerok.",
+    "ad_pick_failed": "❌ Could not fetch lots from Playerok:\n<code>{error}</code>\n\nAdd the lot manually with \"➕ Add lot\".",
+    "ad_pick_already": "Lot \"{name}\" is already configured.",
+    "ad_pick_added": "✅ Lot \"{name}\" added.",
+
+    "ad_btn_test": "🧪 Test delivery",
+    "ad_test_result": (
+        "🧪 <b>Test delivery</b> — lot \"{name}\"\n\n"
+        "The buyer would receive:\n<code>{text}</code>\n\n"
+        "Stock left after such a delivery: <b>{stock}</b> pcs.\n"
+        "The item was put back in stock, nothing was sent to any buyer."
+    ),
+    "ad_test_empty": "🧪 Nothing to deliver: the stock of lot \"{name}\" is empty or the auto-delivery module is off.",
+    "ad_btn_toggle_auto_deact": "🛑 Unpublish empty lots: {state}",
+    "ad_btn_toggle_lot_deact": "🛑 Unpublish this lot: {state}",
 
     # --- Auto-response ---
     "ar_title": "💬 <b>Auto-response</b>\n\nCommands:",
@@ -192,6 +223,14 @@ STRINGS = {
     "notif_stock_empty": (
         "📭 <b>Stock is empty</b>\nItem: {item}\n"
         "Refill it to keep auto-delivery working."
+    ),
+    "notif_lot_deactivated": (
+        "🛑 <b>Lot unpublished</b>\nItem: {item}\n"
+        "The stock is empty — the lot was removed from Playerok so nobody buys it without goods."
+    ),
+    "notif_lot_deactivate_fail": (
+        "🛑❌ <b>Could not unpublish the lot</b>\nItem: {item}\nError: {error}\n"
+        "The stock is empty — check the lot manually."
     ),
     "notif_restore_ok": "♻️ <b>Item restored</b>\nItem: {item}\nNew ID: <code>{item_id}</code>",
     "notif_restore_fail": "♻️❌ <b>Failed to restore item</b>\nItem: {item}\nError: {error}",

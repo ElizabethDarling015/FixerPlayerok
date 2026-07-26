@@ -32,6 +32,7 @@ STRINGS = {
     "module_autoresponse": "Автоответчик",
     "module_autorestore": "Автовосстановление",
     "module_greeting": "Приветствие",
+    "module_postsale": "После продажи",
     "module_online": "Вечный онлайн",
     "module_digest": "Сводка дня",
     "module_autoupdate": "Проверка обновлений",
@@ -69,7 +70,9 @@ STRINGS = {
         "Склад: <code>{stock_file}</code>\n"
         "Остаток: <b>{stock}</b> шт.\n"
         "Автовосстановление: {restore}\n"
-        "Деактивация при пустом складе: {deactivate}"
+        "Деактивация при пустом складе: {deactivate}\n"
+        "Свой текст выдачи: {own_text}\n"
+        "Снимать с публикации при пустом складе: {auto_deact}"
     ),
     "ad_btn_view_stock": "👀 Показать склад",
     "ad_stock_view_title": "📦 <b>Склад «{name}»</b> — позиций: <b>{total}</b>",
@@ -105,6 +108,34 @@ STRINGS = {
     # Вызывается без kwargs — str.format не применяется, поэтому {item} здесь литерален.
     "ad_text_needs_item": "⚠️ В тексте нет <code>{item}</code> — без него покупатель не получит товар. Пришлите текст ещё раз.",
     "ad_delivery_text_saved": "✅ Текст выдачи сохранён.",
+    "ad_btn_lot_delivery_text": "✏️ Текст выдачи лота",
+    "ad_enter_lot_delivery_text": (
+        "Пришлите текст выдачи для лота «{name}» — он будет использоваться вместо общего.\n"
+        "Плейсхолдер <code>{{item}}</code> (обязателен) — выданная позиция со склада.\n"
+        "Отправьте «-», чтобы вернуть лоту общий текст выдачи.\n\n"
+        "Текущий текст:\n<code>{current}</code>"
+    ),
+    "ad_lot_delivery_text_saved": "✅ Свой текст выдачи для лота «{name}» сохранён.",
+    "ad_lot_delivery_text_reset": "✅ Лот «{name}» снова использует общий текст выдачи.",
+
+    "ad_btn_pick_lot": "🎮 Выбрать лот с Playerok",
+    "ad_pick_loading": "Загружаю лоты с Playerok…",
+    "ad_pick_title": "🎮 <b>Ваши лоты на Playerok</b>\n\nНажмите на лот, чтобы добавить его в авто-выдачу (✅ — уже добавлен):",
+    "ad_pick_empty": "На Playerok не найдено активных лотов.",
+    "ad_pick_failed": "❌ Не удалось получить лоты с Playerok:\n<code>{error}</code>\n\nДобавьте лот вручную кнопкой «➕ Добавить лот».",
+    "ad_pick_already": "Лот «{name}» уже настроен.",
+    "ad_pick_added": "✅ Лот «{name}» добавлен.",
+
+    "ad_btn_test": "🧪 Тест выдачи",
+    "ad_test_result": (
+        "🧪 <b>Тест выдачи</b> — лот «{name}»\n\n"
+        "Покупатель получил бы:\n<code>{text}</code>\n\n"
+        "Остаток склада после такой выдачи: <b>{stock}</b> шт.\n"
+        "Товар возвращён на склад, покупателю ничего не отправлено."
+    ),
+    "ad_test_empty": "🧪 Выдавать нечего: склад лота «{name}» пуст либо модуль авто-выдачи выключен.",
+    "ad_btn_toggle_auto_deact": "🛑 Снимать пустые лоты: {state}",
+    "ad_btn_toggle_lot_deact": "🛑 Автоснятие этого лота: {state}",
 
     # --- Автоответчик ---
     "ar_title": "💬 <b>Автоответчик</b>\n\nКоманды:",
@@ -192,6 +223,14 @@ STRINGS = {
     "notif_stock_empty": (
         "📭 <b>Склад пуст</b>\nЛот: {item}\n"
         "Пополните склад, чтобы авто-выдача продолжила работать."
+    ),
+    "notif_lot_deactivated": (
+        "🛑 <b>Лот снят с публикации</b>\nЛот: {item}\n"
+        "Склад опустел — лот убран с Playerok, чтобы его не купили без товара."
+    ),
+    "notif_lot_deactivate_fail": (
+        "🛑❌ <b>Не удалось снять лот с публикации</b>\nЛот: {item}\nОшибка: {error}\n"
+        "Склад пуст — проверьте лот вручную."
     ),
     "notif_restore_ok": "♻️ <b>Лот восстановлен</b>\nЛот: {item}\nНовый ID: <code>{item_id}</code>",
     "notif_restore_fail": "♻️❌ <b>Не удалось восстановить лот</b>\nЛот: {item}\nОшибка: {error}",

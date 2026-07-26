@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 import threading
 import time
 import uuid
@@ -35,8 +36,119 @@ logger = logging.getLogger("playerokapi.account")
 _API_URL = "https://playerok.com/graphql"
 
 # Сигнатуры в тексте ответа, по которым можно понять, что запрос перехвачен антибот-защитой,
-# а не обработан GraphQL-сервером.
-_BOT_CHECK_SIGNATURES = ("ddos-guard", "Ray ID", "cf-error-details", "Attention Required!")
+# а не обработан GraphQL-сервером. Матчинг регистронезависимый (см. `_looks_like_bot_check`),
+# поэтому сигнатуры здесь хранятся в нижнем регистре.
+# Первая группа — DDoS-Guard и «общие» страницы блокировки, вторая — challenge-страницы Cloudflare.
+_BOT_CHECK_SIGNATURES = (
+    "ddos-guard",
+    "ray id",
+    "cf-error-details",
+    "attention required!",
+    "just a moment...",
+    "window._cf_chl_opt",
+    "cf-browser-verification",
+    "cloudflare ray id",
+)
+
+# Цели impersonate curl_cffi от новых к старым: набор доступных целей зависит от версии
+# curl_cffi (пин `>=0.7,<0.12`), поэтому при создании сессии перебираем их по порядку и берём
+# первую, которую понимает установленная версия. Чем свежее отпечаток TLS/HTTP2 —
+# тем меньше шансов попасть под антибот-проверку.
+_IMPERSONATE_TARGETS = (
+    "chrome136",
+    "chrome133a",
+    "chrome131",
+    "chrome124",
+    "chrome120",
+    "chrome110",
+    "chrome",
+)
+
+# Полные версии Chrome для заголовка sec-ch-ua-full-version-list (мажор → полная версия).
+# Для незнакомого мажора берётся `<мажор>.0.0.0`.
+_CHROME_FULL_VERSIONS = {
+    "136": "136.0.7103.114",
+    "133": "133.0.6943.142",
+    "131": "131.0.6778.86",
+    "124": "124.0.6367.119",
+    "120": "120.0.6099.129",
+    "110": "110.0.5481.178",
+}
+
+# Мажор Chrome по умолчанию (если цель impersonate безномерная, например "chrome").
+_DEFAULT_CHROME_MAJOR = "136"
+
+# Сколько подряд идущих сетевых сбоев считаем поводом пересоздать curl_cffi-сессию
+# (новый TLS-отпечаток и новые соединения вместо залипших).
+_SESSION_REFRESH_AFTER_FAILURES = 3
+
+
+def _chrome_versions(impersonate_target: str) -> tuple[str, str]:
+    """
+    Возвращает `(мажорная_версия, полная_версия)` Chrome для цели impersonate
+    (`"chrome131"` → `("131", "131.0.6778.86")`).
+    """
+    match = re.search(r"(\d+)", impersonate_target or "")
+    major = match.group(1) if match else _DEFAULT_CHROME_MAJOR
+    return major, _CHROME_FULL_VERSIONS.get(major, f"{major}.0.0.0")
+
+
+def _platform_hints(user_agent: str) -> dict:
+    """
+    Достаёт из User-Agent платформенные client hints (`sec-ch-ua-platform` и компанию), чтобы
+    заголовки не противоречили UA: браузер на Windows не присылает `"macOS"`.
+
+    :return: Словарь с ключами `platform`, `platform_version`, `arch`, `bitness`, `mobile`.
+    """
+    ua = user_agent or ""
+    lowered = ua.lower()
+    mobile = "?1" if "mobile" in lowered else "?0"
+    arch = "arm" if ("arm" in lowered or "aarch64" in lowered) else "x86"
+    bitness = "64"
+
+    if "android" in lowered:
+        version = re.search(r"android (\d+(?:\.\d+)*)", lowered)
+        return {"platform": "Android", "platform_version": version.group(1) if version else "14.0.0",
+                "arch": "arm", "bitness": bitness, "mobile": "?1"}
+    if "mac os x" in lowered or "macintosh" in lowered:
+        version = re.search(r"mac os x (\d+(?:[._]\d+)*)", lowered)
+        return {"platform": "macOS",
+                "platform_version": version.group(1).replace("_", ".") if version else "10.15.7",
+                "arch": arch, "bitness": bitness, "mobile": mobile}
+    if "linux" in lowered or "x11" in lowered:
+        return {"platform": "Linux", "platform_version": "", "arch": arch, "bitness": bitness,
+                "mobile": mobile}
+    # Windows NT 10.0 в UA соответствует и Windows 10, и Windows 11 — Chrome в client hints
+    # присылает для Windows 11 версию 15.0.0 (самый массовый сегодня вариант).
+    return {"platform": "Windows", "platform_version": "15.0.0", "arch": arch, "bitness": bitness,
+            "mobile": mobile}
+
+
+def _build_client_hints(impersonate_target: str, user_agent: str) -> dict:
+    """
+    Собирает набор браузерных заголовков (`sec-ch-ua-*`, `sec-fetch-*`, `priority`) под выбранную
+    цель impersonate и User-Agent аккаунта. Версия Chrome в `sec-ch-ua` совпадает с отпечатком,
+    которым curl_cffi имитирует браузер, — расхождение само по себе является признаком бота.
+    """
+    major, full = _chrome_versions(impersonate_target)
+    platform = _platform_hints(user_agent)
+    brands = f'"Chromium";v="{major}", "Google Chrome";v="{major}", "Not.A/Brand";v="99"'
+    full_versions = (f'"Chromium";v="{full}", "Google Chrome";v="{full}", '
+                     f'"Not.A/Brand";v="99.0.0.0"')
+    return {
+        "sec-ch-ua": brands,
+        "sec-ch-ua-mobile": platform["mobile"],
+        "sec-ch-ua-platform": f'"{platform["platform"]}"',
+        "sec-ch-ua-arch": f'"{platform["arch"]}"',
+        "sec-ch-ua-bitness": f'"{platform["bitness"]}"',
+        "sec-ch-ua-platform-version": f'"{platform["platform_version"]}"',
+        "sec-ch-ua-full-version-list": full_versions,
+        # Запрос к своему же домену из JS — именно такие sec-fetch-* шлёт браузер на /graphql.
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "priority": "u=1, i",
+    }
 
 # Код ошибки Apollo Persisted Queries, который сервер возвращает, если не узнал sha256Hash запроса.
 _PERSISTED_QUERY_NOT_FOUND_CODE = "PERSISTED_QUERY_NOT_FOUND"
@@ -103,6 +215,12 @@ class Account:
         # Общая curl_cffi-сессия не потокобезопасна, а её конкурентно используют потоки Runner
         # (WS-обработчики, поллинг) и пользовательский код — сериализуем запросы через lock.
         self._session_lock = threading.Lock()
+        self._impersonate: str | None = None
+        """Цель impersonate, которую приняла установленная curl_cffi. Ставится при создании сессии."""
+        self._client_hints: tuple[str, dict] | None = None  # (цель impersonate, готовые заголовки)
+        # Счётчик подряд идущих сетевых сбоев: по достижении _SESSION_REFRESH_AFTER_FAILURES
+        # сессия пересоздаётся (см. _get_session), любой полученный ответ его обнуляет.
+        self._network_fail_streak: int = 0
         self._runner = None  # ссылка на Runner проставляется самим Runner'ом при создании
         self._unread_counters: dict[str, int] = {}  # chat_id -> unreadMessagesCounter (см. _note_chat)
         # Операция testimonials на Playerok часто закрыта для seller (только support/admin) —
@@ -138,10 +256,61 @@ class Account:
         """
         self.cookies = self._normalize_cookies(cookies)
 
+    def _create_session(self) -> curl_requests.Session:
+        """
+        Создаёт curl_cffi-сессию с максимально свежим доступным отпечатком браузера: перебирает
+        `_IMPERSONATE_TARGETS` от новых целей к старым и берёт первую, которую понимает
+        установленная версия curl_cffi (набор целей от версии к версии меняется).
+
+        Выбранная цель запоминается в `self._impersonate` — под неё же собираются заголовки
+        `sec-ch-ua-*`. Ни cookies, ни прокси, ни заголовки в сессии не хранятся (они передаются
+        в каждый запрос), поэтому пересоздание сессии их не теряет.
+        """
+        last_error: Exception | None = None
+        for target in _IMPERSONATE_TARGETS:
+            try:
+                session = curl_requests.Session(impersonate=target)
+            except Exception as exc:
+                # Неизвестная этой версии curl_cffi цель — пробуем следующую, постарее.
+                last_error = exc
+                logger.debug("Цель impersonate «%s» недоступна: %s", target, exc)
+                continue
+            if self._impersonate != target:
+                logger.debug("curl_cffi impersonate: %s", target)
+            self._impersonate = target
+            return session
+        # Ни одна цель не подошла — создаём сессию с отпечатком curl_cffi по умолчанию.
+        logger.warning("Ни одна цель impersonate не принята curl_cffi (%s) — сессия без имитации браузера",
+                       last_error)
+        self._impersonate = None
+        return curl_requests.Session()
+
+    def _refresh_session(self) -> None:
+        """
+        Пересоздаёт curl_cffi-сессию после серии сетевых сбоев: у новой сессии новый TLS-отпечаток
+        и свежие соединения. Старую сессию не закрываем явно — её может держать параллельный поток,
+        она закроется сама, когда на неё не останется ссылок.
+        """
+        logger.warning("Пересоздаю HTTP-сессию после %d сетевых сбоев подряд", self._network_fail_streak)
+        self._session = None
+        self._network_fail_streak = 0
+
     def _get_session(self) -> curl_requests.Session:
+        """Возвращает текущую сессию, пересоздавая её после серии сетевых сбоев."""
+        if self._session is not None and self._network_fail_streak >= _SESSION_REFRESH_AFTER_FAILURES:
+            self._refresh_session()
         if self._session is None:
-            self._session = curl_requests.Session(impersonate="chrome124")
+            self._session = self._create_session()
         return self._session
+
+    def _client_hint_headers(self) -> dict:
+        """Браузерные заголовки под текущую цель impersonate (кэшируются до её смены)."""
+        target = self._impersonate or _IMPERSONATE_TARGETS[0]
+        if self._client_hints is not None and self._client_hints[0] == target:
+            return self._client_hints[1]
+        headers = _build_client_hints(target, self.user_agent)
+        self._client_hints = (target, headers)
+        return headers
 
     def _cookie_header(self) -> str:
         return "; ".join(f"{k}={v}" for k, v in self.cookies.items())
@@ -173,6 +342,10 @@ class Account:
         if isinstance(payload, dict):
             operation_name = payload.get("operationName", operation_name)
 
+        # Сессию берём до сборки заголовков: при её создании выбирается цель impersonate,
+        # под которую подстраиваются sec-ch-ua-*.
+        self._get_session()
+
         default_headers = {
             "accept": "*/*",
             "accept-language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -181,7 +354,11 @@ class Account:
             "origin": "https://playerok.com",
             "referer": "https://playerok.com/",
             "user-agent": self.user_agent,
+            **self._client_hint_headers(),
             "x-gql-op": operation_name,
+            # Apollo Client шлёт имя операции и своим заголовком — без него запрос выглядит
+            # как обращение не из веб-клиента Playerok.
+            "x-apollo-operation-name": operation_name,
             # Обязательные заголовки Playerok: без x-gql-path сервер отвечает
             # HTTP 500 «Internal server error» на ЛЮБОЙ GraphQL-запрос.
             "x-gql-path": "/",
@@ -190,7 +367,6 @@ class Account:
         default_headers = {k: v for k, v in default_headers.items() if v is not None}
         merged_headers = {**default_headers, **(headers or {})}
 
-        session = self._get_session()
         last_error: Exception | None = None
 
         # Неидемпотентные запросы (мутации) не повторяем после неоднозначных ошибок (сеть, 5xx,
@@ -203,6 +379,9 @@ class Account:
             is_last_attempt = attempt == max_attempts - 1
             logger.debug("[%s] %s %s (попытка %d/%d)", operation_name, method.upper(), url, attempt + 1,
                          max_attempts)
+            # Сессия берётся на каждой попытке: после серии сетевых сбоев `_get_session`
+            # отдаст уже новую (пересозданную) сессию.
+            session = self._get_session()
             try:
                 kwargs = {"headers": merged_headers, "timeout": self.requests_timeout}
                 if self.proxy:
@@ -226,6 +405,7 @@ class Account:
                         response = session.post(url, **kwargs)
             except Exception as exc:
                 last_error = exc
+                self._network_fail_streak += 1
                 logger.warning("[%s] Сетевая ошибка (попытка %d/%d): %s", operation_name, attempt + 1,
                                max_attempts, exc)
                 if is_last_attempt or not idempotent:
@@ -233,13 +413,16 @@ class Account:
                 self._sleep_before_retry(attempt)
                 continue
 
+            # Ответ получен — транспорт жив, серию сетевых сбоев обнуляем.
+            self._network_fail_streak = 0
+
             response_text = ""
             try:
                 response_text = response.text
             except Exception:
                 pass
 
-            if any(sig in response_text for sig in _BOT_CHECK_SIGNATURES):
+            if self._looks_like_bot_check(response_text):
                 logger.warning("[%s] Обнаружена антибот-проверка (попытка %d/%d)", operation_name, attempt + 1,
                                max_attempts)
                 if is_last_attempt or not idempotent:
@@ -328,6 +511,18 @@ class Account:
 
     #: Верхняя граница паузы по заголовку Retry-After, сек (защита от абсурдных значений сервера).
     _MAX_RETRY_AFTER = 120.0
+
+    @staticmethod
+    def _looks_like_bot_check(response_text: str) -> bool:
+        """
+        Похож ли ответ на страницу антибот-защиты (DDoS-Guard или challenge Cloudflare),
+        а не на ответ GraphQL-сервера. Сравнение регистронезависимое: разметка одной и той же
+        страницы у разных фронтов отличается регистром.
+        """
+        if not response_text:
+            return False
+        lowered = response_text.lower()
+        return any(sig in lowered for sig in _BOT_CHECK_SIGNATURES)
 
     @staticmethod
     def _retry_after_seconds(response) -> float | None:

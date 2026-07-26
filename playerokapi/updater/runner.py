@@ -15,7 +15,8 @@
    конкретные события — `DealConfirmedEvent`, `DealRolledBackEvent`, `ItemSentEvent`, а также
    `DealHasProblemEvent`/`DealProblemResolvedEvent` — по изменению `ItemDeal.has_problem`). Тем же
    потоком, тем же интервалом, сравнивает список своих отзывов (`Account.get_my_reviews()`) со
-   снимком с предыдущего опроса, порождая `NewReviewEvent`.
+   снимком с предыдущего опроса, порождая `NewReviewEvent` (с отложенным «дочитом» неполных
+   отзывов — см. `Runner._poll_reviews`).
 3. Опционально — таймер автоподнятия лотов (если передан `autoraise_manager`), раз в
    `autoraise_manager.raise_interval` секунд (тоже с разбросом ±25%), порождающий
    `ItemRaisedEvent`/`InsufficientBalanceEvent`.
@@ -61,6 +62,12 @@ _MAX_POLL_PAGES = 20
 # UNAUTHENTICATED/FORBIDDEN) считать смертью сессии. Одиночный 403 может быть капризом
 # DDoS-Guard, а вот серия — почти наверняка протухший token.
 _SESSION_FAIL_THRESHOLD = 3
+
+# Отложенный «дочит» неполных отзывов (см. `Runner._poll_reviews`): сколько раз перепроверять
+# отзыв, у которого Playerok ещё не заполнил связанные данные, и сколько секунд ждать между
+# попытками. 10 попыток по 30 с — примерно 5 минут ожидания, дольше ждать бессмысленно.
+_REVIEW_RECHECK_ATTEMPTS = 10
+_REVIEW_RECHECK_DELAY = 30.0
 
 # Относительный разброс интервалов между циклами (поллинг, автоподнятие): ±25%.
 # Идеально ровные интервалы запросов — характерный признак автоматизации, случайный
@@ -146,6 +153,9 @@ class Runner:
         self._known_deals: dict[str, str | None] = {}
         self._known_deal_problems: dict[str, bool] = {}
         self._known_reviews: set[str] = set()
+        # Очередь отложенного «дочита» неполных отзывов: review_id -> {"review", "attempts", "next_at"}.
+        # Отзыв лежит здесь между обнаружением и отправкой `NewReviewEvent` (см. `_poll_reviews`).
+        self._pending_reviews: dict[str, dict] = {}
         # Отдельные флаги инициализации снимков: `not self._known_deals` не годится —
         # пустой первый снимок (нет сделок/отзывов) глотал бы первое настоящее событие.
         self._deals_initialized = False
@@ -562,24 +572,108 @@ class Runner:
 
         self._deals_initialized = True
 
+    @staticmethod
+    def _review_is_complete(review) -> bool:
+        """
+        Проверяет, «дочитан» ли отзыв — то есть можно ли по нему добраться до покупателя.
+
+        Playerok отдаёт свежий отзыв раньше, чем достраивает связи с ним: сразу после появления
+        отзыва у него может не быть ни сделки с чатом, ни профиля автора, и модулю, который хочет
+        поблагодарить покупателя, просто некуда писать. Отзыв считается полным, если известен хотя
+        бы один путь до чата:
+
+        * `review.deal.chat.id` — чат сделки (прямой путь);
+        * `review.creator` с `id`/`username` — автор отзыва, по которому чат ищется перебором
+          `Account.get_chats()` (`parser.review` не заполняет `deal`, поэтому обычно работает
+          именно этот путь).
+        """
+        chat = getattr(getattr(review, "deal", None), "chat", None)
+        if getattr(chat, "id", None):
+            return True
+        creator = getattr(review, "creator", None)
+        return bool(getattr(creator, "id", None) or getattr(creator, "username", None))
+
     def _poll_reviews(self) -> None:
-        """Сравнивает список своих отзывов со снимком с предыдущего опроса, порождая `NewReviewEvent`."""
+        """
+        Сравнивает список своих отзывов со снимком с предыдущего опроса, порождая `NewReviewEvent`.
+
+        Неполные отзывы (см. `_review_is_complete`) не превращаются в событие сразу, а кладутся в
+        очередь отложенного дочита `_pending_reviews` — тем же потоком, на следующих циклах опроса,
+        отзыв перепроверяется по свежему списку (`_recheck_pending_reviews`).
+        """
         is_first_poll = not self._reviews_initialized
         reviews = self._collect_all_pages(
             lambda cursor: self.account.get_my_reviews(count=50, after_cursor=cursor),
             lambda page: page.reviews,
         )
         if reviews is None:
+            # Запрос упал: снимок не трогаем и попытки дочита не тратим — перепроверять не по чему.
             return
 
         for review in reviews:
             if not review or not review.id or review.id in self._known_reviews:
                 continue
             self._known_reviews.add(review.id)
-            if not is_first_poll:
+            if is_first_poll:
+                # Первый снимок — только фиксируем id: старые отзывы не порождают событий
+                # и не попадают в очередь дочита.
+                continue
+            if self._review_is_complete(review):
                 self._event_queue.put(events.NewReviewEvent(self, review))
+            else:
+                self._schedule_review_recheck(review)
 
         self._reviews_initialized = True
+        self._recheck_pending_reviews(reviews)
+
+    def _schedule_review_recheck(self, review) -> None:
+        """Кладёт неполный отзыв в очередь дочита (событие будет отправлено позже)."""
+        logger.debug("Отзыв %s пришёл неполным (нет ни чата сделки, ни автора) — "
+                     "событие отложено до дочита", review.id)
+        self._pending_reviews[review.id] = {
+            "review": review,
+            "attempts": 0,
+            "next_at": time.monotonic() + _REVIEW_RECHECK_DELAY,
+        }
+
+    def _recheck_pending_reviews(self, reviews: list) -> None:
+        """
+        Перепроверяет отложенные отзывы по свежему списку `reviews` (тот же, что уже получен в
+        текущем цикле `_poll_reviews`, — лишний запрос не нужен).
+
+        Созревшие записи (`next_at` в прошлом) сверяются со свежей версией отзыва: как только он
+        стал полным — отправляется `NewReviewEvent` и запись удаляется. Исчерпав
+        `_REVIEW_RECHECK_ATTEMPTS` попыток, событие отправляется как есть (неполное событие лучше
+        потерянного) с предупреждением в лог. На каждый отзыв приходится ровно одно событие:
+        id уже лежит в `_known_reviews`, а запись удаляется в момент отправки.
+        """
+        if not self._pending_reviews:
+            return
+        fresh = {review.id: review for review in reviews
+                 if review and getattr(review, "id", None)}
+        now = time.monotonic()
+
+        for review_id, pending in list(self._pending_reviews.items()):
+            if pending["next_at"] > now:
+                continue
+            pending["attempts"] += 1
+            updated = fresh.get(review_id)
+            if updated is not None:
+                pending["review"] = updated  # держим самую свежую версию для «сдающегося» варианта
+            if updated is not None and self._review_is_complete(updated):
+                del self._pending_reviews[review_id]
+                logger.debug("Отзыв %s дочитан с %d-й попытки — событие отправлено",
+                             review_id, pending["attempts"])
+                self._event_queue.put(events.NewReviewEvent(self, updated))
+                continue
+            if pending["attempts"] >= _REVIEW_RECHECK_ATTEMPTS:
+                del self._pending_reviews[review_id]
+                logger.warning("Отзыв %s так и не дочитался за %d попыток — отправляю событие "
+                               "неполным (чат покупателя придётся искать самому обработчику)",
+                               review_id, pending["attempts"])
+                self._event_queue.put(events.NewReviewEvent(self, pending["review"]))
+                continue
+            pending["next_at"] = now + _REVIEW_RECHECK_DELAY
 
     # ------------------------------------------------------------------
     # Автоподнятие лотов (по таймеру `autoraise_manager.raise_interval`)

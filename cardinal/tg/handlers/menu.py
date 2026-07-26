@@ -18,8 +18,8 @@ from .common import cancel_markup, nav_row, on_off, safe_edit
 router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
-MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online",
-                "digest", "autoupdate")
+MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "postsale",
+                "online", "digest", "autoupdate")
 
 
 class EditGreeting(StatesGroup):

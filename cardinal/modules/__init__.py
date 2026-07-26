@@ -1,4 +1,4 @@
-"""Модули Cardinal: автоответчик, приветствие, автовосстановление, вечный онлайн, сводка, обновления."""
+"""Модули Cardinal: автоответчик, приветствие, послепродажка, автовосстановление, вечный онлайн, сводка, обновления."""
 from __future__ import annotations
 
 from .autoresponse import AutoResponseModule
@@ -8,9 +8,10 @@ from .base import BaseModule
 from .digest import DigestModule
 from .greeting import GreetingModule
 from .online import OnlineModule
+from .postsale import PostsaleModule
 
 __all__ = ["BaseModule", "AutoResponseModule", "AutoRestoreModule", "AutoUpdateModule",
-           "DigestModule", "GreetingModule", "OnlineModule", "build_modules"]
+           "DigestModule", "GreetingModule", "OnlineModule", "PostsaleModule", "build_modules"]
 
 
 def build_modules(cardinal) -> list[BaseModule]:
@@ -18,6 +19,7 @@ def build_modules(cardinal) -> list[BaseModule]:
     return [
         AutoResponseModule(cardinal),
         GreetingModule(cardinal),
+        PostsaleModule(cardinal),
         AutoRestoreModule(cardinal),
         OnlineModule(cardinal),
         DigestModule(cardinal),

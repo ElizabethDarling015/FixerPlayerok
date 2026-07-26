@@ -72,14 +72,30 @@ def test_get_user_reviews_skips_api_after_forbidden():
 
 
 def test_http_403_html_still_request_failed_error():
-    """Антибот/HTML 403 остаётся RequestFailedError (не GraphQL)."""
+    """HTML-403 без GraphQL-тела остаётся RequestFailedError (не GraphQL-ошибкой)."""
     account = Account(cookies="token=x", max_requests_retries=1, backoff_factor=0)
     response = FakeResponse(403, {"not": "graphql"})
-    response.text = "<html>DDoS-Guard</html>"
+    response.text = "<html><body><h1>403 Forbidden</h1></body></html>"
     response.json = MagicMock(side_effect=ValueError("not json"))
     session = MagicMock()
     session.get.return_value = response
     account._session = session
 
     with pytest.raises(RequestFailedError):
+        account.request("get", payload={"operationName": "viewer", "variables": "{}"})
+
+
+def test_http_403_antibot_html_is_bot_check():
+    """А вот 403 со страницей DDoS-Guard — это именно BotCheckDetectedException."""
+    from playerokapi.common.exceptions import BotCheckDetectedException
+
+    account = Account(cookies="token=x", max_requests_retries=1, backoff_factor=0)
+    response = FakeResponse(403, {"not": "graphql"})
+    response.text = "<html>DDoS-Guard</html>"  # регистр как на реальной странице
+    response.json = MagicMock(side_effect=ValueError("not json"))
+    session = MagicMock()
+    session.get.return_value = response
+    account._session = session
+
+    with pytest.raises(BotCheckDetectedException):
         account.request("get", payload={"operationName": "viewer", "variables": "{}"})

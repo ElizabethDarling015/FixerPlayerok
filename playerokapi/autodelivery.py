@@ -20,6 +20,9 @@
 включён по умолчанию) — он дедуплицирует `ItemPaidEvent` между источниками и перезапусками процесса
 и позволяет обнаружить сделки, у которых выдача прервалась посередине (состояние `reserved`).
 
+Текст сообщения покупателю берётся из общего шаблона `delivery_text_template`, а для лотов из
+`delivery_texts` — из их персонального шаблона (см. `format_delivery_text`).
+
 Файл склада перезаписывается атомарно (временный файл + `os.replace`), поэтому сбой процесса в
 момент записи не оставит склад в полузаписанном состоянии.
 
@@ -107,8 +110,10 @@ class AutoDeliveryManager:
 
     :param config: Словарь `{название лота: путь к файлу-складу}`, либо путь к JSON-файлу с такой
         конфигурацией (см. `load_config`).
-    :param delivery_text_template: Шаблон сообщения, отправляемого покупателю после выдачи.
+    :param delivery_text_template: Общий шаблон сообщения, отправляемого покупателю после выдачи.
         Подстрока `{item}` заменяется на выданную строку товара.
+    :param delivery_texts: Пер-лотовые шаблоны сообщения `{название лота: шаблон}` — у лота из этого
+        словаря текст выдачи свой, у остальных остаётся общий `delivery_text_template`.
     :param ledger_path: Путь к файлу SQLite-журнала выдач (см. `delivery_ledger.DeliveryLedger`).
         Передайте `None`, чтобы отключить журнал (дедупликация останется только в памяти процесса,
         без защиты от повторной выдачи после перезапуска).
@@ -116,10 +121,16 @@ class AutoDeliveryManager:
 
     def __init__(self, config: dict[str, str] | str | None = None,
                  delivery_text_template: str = "Спасибо за покупку! Вот ваш товар:\n{item}",
+                 delivery_texts: dict[str, str] | None = None,
                  ledger_path: str | None = "autodelivery_ledger.sqlite3"):
         self.stock_paths: dict[str, str] = {}
         self.delivery_text_template = delivery_text_template
+        self.delivery_texts: dict[str, str] = dict(delivery_texts or {})
+        """Пер-лотовые шаблоны текста выдачи `{название лота: шаблон}` (см. `format_delivery_text`)."""
         self._lock = threading.Lock()
+        # Последняя забранная складом позиция текущего потока — «мостик» reserve() → format_delivery_text()
+        # (см. докстринг `format_delivery_text`).
+        self._pending_lot = threading.local()
         self.ledger: DeliveryLedger | None = DeliveryLedger(ledger_path) if ledger_path else None
         """SQLite-журнал выдач (`None`, если отключён через `ledger_path=None`)."""
 
@@ -161,9 +172,66 @@ class AutoDeliveryManager:
             with open(path, "r", encoding="utf-8") as f:
                 return len(parse_stock_text(f.read()))
 
-    def format_delivery_text(self, item_value: str) -> str:
-        """Подставляет выданное значение товара в `delivery_text_template`."""
-        return self.delivery_text_template.format(item=item_value)
+    def set_delivery_text(self, item_name: str, template: str | None) -> None:
+        """
+        Задаёт (или снимает) пер-лотовый шаблон текста выдачи.
+
+        :param item_name: Название лота.
+        :param template: Шаблон с плейсхолдером `{item}`, либо `None` — вернуть лоту общий шаблон.
+        """
+        if template:
+            self.delivery_texts[item_name] = template
+        else:
+            self.delivery_texts.pop(item_name, None)
+
+    def _remember_reserved(self, item_name: str, item_value: str) -> None:
+        """Запоминает в текущем потоке, с какого лота забрана позиция (для `format_delivery_text`)."""
+        self._pending_lot.item_name = item_name
+        self._pending_lot.item_value = item_value
+
+    def _forget_reserved(self, item_value: str) -> str | None:
+        """
+        Достаёт и очищает запомненный `_remember_reserved` лот, если запомнено именно это значение.
+
+        :return: Название лота, либо `None` (в этом потоке ничего не резервировалось или
+            резервировалось другое значение).
+        """
+        item_name = getattr(self._pending_lot, "item_name", None)
+        remembered = getattr(self._pending_lot, "item_value", None)
+        if item_name is None or remembered != item_value:
+            return None
+        self._pending_lot.item_name = None
+        self._pending_lot.item_value = None
+        return item_name
+
+    def format_delivery_text(self, item_value: str, item_name: str | None = None) -> str:
+        """
+        Подставляет выданное значение товара в шаблон текста выдачи.
+
+        Шаблон выбирается так: пер-лотовый из `delivery_texts` (если для лота он задан), иначе
+        общий `delivery_text_template`.
+
+        Название лота можно передать явно (`item_name`) — так делает «тест выдачи» в TG-панели.
+        Штатный сценарий `Runner._handle_autodelivery` вызывает метод старой сигнатурой —
+        `format_delivery_text(item_value)`, без названия лота, поэтому лот определяется по позиции,
+        которую этот же поток только что забрал со склада в `reserve()` (`_remember_reserved`).
+        Связка «поток → последняя зарезервированная позиция» выбрана вместо общего словаря
+        «значение → лот» намеренно:
+
+        - `reserve()` и `format_delivery_text()` в конвейере выдачи вызываются строго подряд в
+          одном кадре одного потока, так что параллельные выдачи (поллинг и веб-сокет — разные
+          потоки) не могут перепутать лоты;
+        - общий словарь пришлось бы ключевать значением товара (это секрет — ключ/аккаунт
+          покупателя) и он бы разрастался, если после `reserve()` до форматирования не дошло;
+          здесь же на поток хранится ровно одна запись, и она затирается следующим `reserve()`.
+
+        Значение сверяется с запомненным: если пришло чужое, пер-лотовый шаблон не применяется
+        и используется общий — «промах» безопасен.
+        """
+        if item_name is None:
+            item_name = self._forget_reserved(item_value)
+        template = self.delivery_texts.get(item_name) if item_name else None
+        return (template or self.delivery_text_template).format(item=item_value)
 
     def reserve(self, item_name: str) -> str | None:
         """
@@ -194,6 +262,9 @@ class AutoDeliveryManager:
             item_value, remaining = items[0], items[1:]
             _atomic_write(path, serialize_stock(remaining))
 
+        # Запоминаем лот для `format_delivery_text` — она вызывается следом в этом же потоке
+        # и без названия лота (см. её докстринг).
+        self._remember_reserved(item_name, item_value)
         logger.info("Со склада лота %r забрана одна позиция (осталось: %d)", item_name, len(remaining))
         return item_value
 
@@ -207,6 +278,8 @@ class AutoDeliveryManager:
         :param item_name: Название лота, на склад которого нужно вернуть товар.
         :param item_value: Значение товара (строка или блок, ранее полученные от `reserve()`).
         """
+        # Позиция возвращена на склад — «мостик» reserve() → format_delivery_text() больше не нужен.
+        self._forget_reserved(item_value)
         path = self.stock_paths.get(item_name)
         if not path:
             # Само значение товара в лог не пишем — это секрет (ключ/аккаунт покупателя).

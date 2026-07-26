@@ -22,6 +22,7 @@ from loguru import logger
 from playerokapi.account import Account
 from playerokapi.autodelivery import AutoDeliveryManager
 from playerokapi.autoraise import AutoRaiseManager
+from playerokapi.common.enums import ItemDealDirections, ItemStatuses
 from playerokapi.common.exceptions import RequestSendingError
 from playerokapi.plugins import PluginManager
 from playerokapi.updater.events import ItemPaidEvent, ItemRaisedEvent, SessionExpiredEvent
@@ -164,10 +165,17 @@ class Cardinal:
         return self.blacklist_config.contains(username)
 
     def apply_autodelivery_config(self) -> None:
-        """Синхронизирует склады `AutoDeliveryManager` с текущим `autodelivery_config`."""
+        """
+        Синхронизирует склады и пер-лотовые тексты выдачи `AutoDeliveryManager`
+        с текущим `autodelivery_config`.
+        """
         if self.autodelivery_manager is not None:
             self.autodelivery_manager.stock_paths = {
                 name: lot.stock_file for name, lot in self.autodelivery_config.lots.items()
+            }
+            self.autodelivery_manager.delivery_texts = {
+                name: lot.delivery_text for name, lot in self.autodelivery_config.lots.items()
+                if lot.delivery_text
             }
 
     # ------------------------------------------------------------------
@@ -213,6 +221,8 @@ class Cardinal:
             self,
             config={name: lot.stock_file for name, lot in self.autodelivery_config.lots.items()},
             delivery_text_template=self.settings.autodelivery.delivery_text,
+            delivery_texts={name: lot.delivery_text
+                            for name, lot in self.autodelivery_config.lots.items() if lot.delivery_text},
             ledger_path=self.settings.autodelivery.ledger_file,
         )
         self.autoraise_manager = _ToggleableAutoRaise(
@@ -324,6 +334,11 @@ class Cardinal:
                 except Exception:
                     logger.exception("Ошибка модуля {} при обработке события {}",
                                      module.name, type(event).__name__)
+            try:
+                # После модулей: autorestore успевает пересоздать лот, и снимаем мы уже копию.
+                await self.maybe_deactivate_empty_lot(event)
+            except Exception:
+                logger.exception("Ошибка автодеактивации лота по событию {}", type(event).__name__)
             if self.notifier is not None:
                 try:
                     await self.notifier.on_event(event)
@@ -347,6 +362,96 @@ class Cardinal:
             if (deal is not None and manager is not None and manager.ledger is not None
                     and manager.ledger.get_state(deal.id) == "sent"):
                 self.stats.record(ACTION_DELIVERY)
+
+    # ------------------------------------------------------------------
+    # Автодеактивация лота при пустом складе
+    # ------------------------------------------------------------------
+
+    def find_published_item_ids(self, item_name: str, max_pages: int = 10) -> list[str]:
+        """
+        Ищет ID своих активных (`APPROVED`) лотов с точным названием `item_name`.
+
+        Синхронный метод (сеть) — из async-кода вызывать через `asyncio.to_thread`.
+
+        :param item_name: Точное название лота, как на Playerok.
+        :param max_pages: Ограничение на число страниц пагинации (страховка от бесконечного цикла).
+        :return: Список ID найденных лотов (пустой, если таких лотов нет).
+        """
+        found: list[str] = []
+        after_cursor: str | None = None
+        for _ in range(max_pages):
+            page = self.account.get_my_items(status=ItemStatuses.APPROVED, count=50,
+                                             after_cursor=after_cursor)
+            if not page or not page.items:
+                break
+            found.extend(item.id for item in page.items
+                         if item and item.id and item.name == item_name)
+            page_info = getattr(page, "page_info", None)
+            if not page_info or not page_info.has_next_page:
+                break
+            next_cursor = page_info.end_cursor
+            if not next_cursor or next_cursor == after_cursor:
+                # Пустой/неподвижный курсор — защита от зацикливания (как в remove_all_items).
+                break
+            after_cursor = next_cursor
+        return found
+
+    def deactivate_lot(self, item_name: str) -> int:
+        """
+        Снимает лот с публикации: удаляет (`remove_item`) все свои активные лоты с этим названием.
+
+        Отдельной мутации «снять с публикации» на Playerok нет — единственный способ убрать лот
+        из выдачи это `removeItem`. Лот можно вернуть, пополнив склад и создав лот заново
+        (в т.ч. модулем autorestore).
+
+        Синхронный метод (сеть) — из async-кода вызывать через `asyncio.to_thread`.
+
+        :param item_name: Точное название лота.
+        :return: Сколько лотов реально снято с публикации.
+        """
+        return sum(1 for item_id in self.find_published_item_ids(item_name)
+                   if self.account.remove_item(item_id))
+
+    async def maybe_deactivate_empty_lot(self, event) -> None:
+        """
+        Снимает лот с публикации, если после продажи его склад авто-выдачи опустел.
+
+        Работает только при включённой настройке `[autodelivery] deactivate_on_empty` и только
+        для лотов, у которых не выставлен персональный флаг `disable_deactivate`. Ошибки
+        деактивации не должны мешать обработке события — они логируются и уходят админу
+        в Telegram.
+        """
+        if not isinstance(event, ItemPaidEvent) or not self.settings.autodelivery.deactivate_on_empty:
+            return
+        deal = event.deal
+        item_name = deal.item.name if deal is not None and deal.item is not None else None
+        if not item_name:
+            return
+        if deal.direction is not None and deal.direction is not ItemDealDirections.OUT:
+            return  # чужая покупка (direction=IN) — не наш лот
+        lot = self.autodelivery_config.lots.get(item_name)
+        manager = self.autodelivery_manager
+        if lot is None or lot.disable_deactivate or manager is None:
+            return
+        if manager.get_stock_size(item_name) > 0:
+            return
+
+        try:
+            removed = await asyncio.to_thread(self.deactivate_lot, item_name)
+        except Exception as exc:  # noqa: BLE001 — деактивация не должна ронять обработку события
+            logger.exception("Не удалось снять с публикации лот {!r} с пустым складом", item_name)
+            if self.notifier is not None:
+                with contextlib.suppress(Exception):
+                    await self.notifier.notify_deactivate_failed(item_name, str(exc))
+            return
+
+        if not removed:
+            logger.info("Автодеактивация: активных лотов с названием {!r} не найдено", item_name)
+            return
+        logger.success("Склад лота {!r} опустел — лот снят с публикации (шт.: {})", item_name, removed)
+        if self.notifier is not None:
+            with contextlib.suppress(Exception):
+                await self.notifier.notify_lot_deactivated(item_name)
 
     def check_poll_health(self, now: float) -> str | None:
         """

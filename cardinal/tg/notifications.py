@@ -224,6 +224,17 @@ class Notifier:
         if self._toggles.stock_empty:
             await self._send_all(self.cardinal.l10n("notif_stock_empty", item=_esc(item_name)))
 
+    async def notify_lot_deactivated(self, item_name: str) -> None:
+        """Склад лота опустел — лот снят с публикации (`[autodelivery] deactivate_on_empty`)."""
+        if self._toggles.stock_empty:
+            await self._send_all(self.cardinal.l10n("notif_lot_deactivated", item=_esc(item_name)))
+
+    async def notify_deactivate_failed(self, item_name: str, error_text: str) -> None:
+        """Снять лот с публикации не удалось (сеть/права) — товар мог остаться в продаже без склада."""
+        if self._toggles.stock_empty:
+            await self._send_all(self.cardinal.l10n("notif_lot_deactivate_fail", item=_esc(item_name),
+                                                    error=_esc(error_text)))
+
     async def notify_update_available(self, current: str, latest: str) -> None:
         """Найдена новая версия на GitHub (модуль autoupdate, без автоустановки)."""
         if self._toggles.updates:

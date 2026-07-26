@@ -25,6 +25,8 @@ ACTION_RAISE = "raise"
 ACTION_AUTORESPONSE = "autoresponse"
 #: Приветствие нового покупателя.
 ACTION_GREETING = "greeting"
+#: Послепродажное сообщение (благодарность за сделку или реакция на отзыв).
+ACTION_POSTSALE = "postsale"
 
 
 class StatsStore:

@@ -75,6 +75,7 @@ class ModulesSettings(BaseModel):
     online: bool = True
     digest: bool = True
     autoupdate: bool = True
+    postsale: bool = True
 
 
 class AutoRaiseSettings(BaseModel):
@@ -87,14 +88,36 @@ class AutoRaiseSettings(BaseModel):
 class AutoDeliverySettings(BaseModel):
     """Секция `[autodelivery]` — общие параметры авто-выдачи (лоты — в autodelivery.toml)."""
 
+    #: Общий текст выдачи — используется для лотов, у которых нет своего (`AutoDeliveryLot.delivery_text`).
     delivery_text: str = "Спасибо за покупку! Вот ваш товар:\n{item}"
     ledger_file: str = os.path.join(STORAGE_DIR, "autodelivery_ledger.sqlite3")
+    #: Снимать лот с публикации (удалять на Playerok), когда после выдачи его склад опустел.
+    #: Отдельные лоты можно исключить флагом `AutoDeliveryLot.disable_deactivate`.
+    deactivate_on_empty: bool = False
 
 
 class GreetingSettings(BaseModel):
     """Секция `[greeting]` — приветствие новых покупателей."""
 
     text: str = "Привет, $username! Я на связи — пишите, если есть вопросы по лоту."
+
+
+class PostsaleSettings(BaseModel):
+    """
+    Секция `[postsale]` — послепродажные сообщения (модуль postsale).
+
+    Пустой текст выключает соответствующую реакцию. Переменные: в `confirmed_text` —
+    `$username`/`$item_name`, в `review_good_text`/`review_bad_text` — `$username`/`$rating`.
+    """
+
+    #: Благодарность после подтверждения сделки + просьба оставить отзыв.
+    confirmed_text: str = ("Спасибо за покупку «$item_name», $username! "
+                           "Будем рады, если оставите отзыв о сделке — это очень помогает магазину.")
+    #: Реакция на отзыв с оценкой 4-5.
+    review_good_text: str = "Спасибо за отзыв, $username! Рады, что всё понравилось — обращайтесь ещё!"
+    #: Реакция на отзыв с оценкой 1-3.
+    review_bad_text: str = ("$username, жаль, что что-то пошло не так. Расскажите, пожалуйста, "
+                            "что именно — обязательно разберёмся и решим проблему.")
 
 
 class OnlineSettings(BaseModel):
@@ -194,6 +217,7 @@ class MainSettings(BaseSettings):
     autoraise: AutoRaiseSettings = AutoRaiseSettings()
     autodelivery: AutoDeliverySettings = AutoDeliverySettings()
     greeting: GreetingSettings = GreetingSettings()
+    postsale: PostsaleSettings = PostsaleSettings()
     online: OnlineSettings = OnlineSettings()
     digest: DigestSettings = DigestSettings()
     humanize: HumanizeSettings = HumanizeSettings()
@@ -242,7 +266,14 @@ class AutoDeliveryLot(BaseModel):
 
     stock_file: str = Field(min_length=1)
     restore: bool = False
+    #: Не восстанавливать лот после продажи, если склад авто-выдачи пуст (модуль autorestore).
     deactivate_when_empty: bool = False
+    #: Свой текст выдачи для этого лота (с плейсхолдером `{item}`); `None` — общий
+    #: `[autodelivery] delivery_text`.
+    delivery_text: str | None = None
+    #: Не снимать этот лот с публикации при пустом складе, даже если включена
+    #: общая настройка `[autodelivery] deactivate_on_empty`.
+    disable_deactivate: bool = False
 
 
 class AutoDeliveryConfig(BaseModel):
