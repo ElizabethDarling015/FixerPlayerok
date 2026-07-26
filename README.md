@@ -13,6 +13,7 @@
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![downloads](https://img.shields.io/github/downloads/scwee/PlayerokCardinal/total)
+
 ![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
 
 ![PLAYEROK](https://img.shields.io/badge/PLAYEROK-BOT-brightgreen?style=for-the-badge)
