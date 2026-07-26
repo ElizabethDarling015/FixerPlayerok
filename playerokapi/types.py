@@ -128,7 +128,8 @@ class AccountProfile:
                  is_blocked: bool | None, is_blocked_for: str | None, is_verified: bool | None, rating: int | None,
                  reviews_count: int | None, created_at: str | None, support_chat_id: str | None,
                  system_chat_id: str | None, has_frozen_balance: bool | None, has_enabled_notifications: bool | None,
-                 unread_chats_counter: int | None):
+                 unread_chats_counter: int | None, is_funds_protection_active: bool | None = None,
+                 has_confirmed_phone_number: bool | None = None, can_publish_items: bool | None = None):
         self.id: str = id
         """ID аккаунта."""
         self.username: str | None = username
@@ -167,6 +168,12 @@ class AccountProfile:
         """Включены ли уведомления."""
         self.unread_chats_counter: int | None = unread_chats_counter
         """Количество непрочитанных чатов."""
+        self.is_funds_protection_active: bool | None = is_funds_protection_active
+        """Включена ли защита средств (холдирование выплат)."""
+        self.has_confirmed_phone_number: bool | None = has_confirmed_phone_number
+        """Подтверждён ли номер телефона."""
+        self.can_publish_items: bool | None = can_publish_items
+        """Может ли аккаунт публиковать лоты (`False` у неверифицированных аккаунтов)."""
         self.chosen_verified_card: "VerifiedCard | None" = None
         """Выбранная верифицированная карта для вывода (если есть)."""
 
@@ -529,6 +536,31 @@ class MessageTemplate:
         """Дата создания шаблона."""
         self.group: str | None = group
         """Группа, к которой относится шаблон (если применимо)."""
+
+
+class ChatAutoResponse:
+    """
+    Автоответ встроенного автоответчика Playerok (вопрос → ответ).
+
+    Получается через `Account.get_chat_auto_responses()`.
+    """
+
+    def __init__(self, id: str, question: str | None, answer: str | None, trigger: str | None,
+                 sequence: int | None, parent_question_id: str | None, created_at: str | None):
+        self.id: str = id
+        """ID автоответа."""
+        self.question: str | None = question
+        """Текст вопроса (кнопки), на который отвечает автоответ."""
+        self.answer: str | None = answer
+        """Текст ответа."""
+        self.trigger: str | None = trigger
+        """Триггер автоответа (если задан)."""
+        self.sequence: int | None = sequence
+        """Порядковый номер (для сортировки)."""
+        self.parent_question_id: str | None = parent_question_id
+        """ID родительского вопроса (для вложенных веток), если есть."""
+        self.created_at: str | None = created_at
+        """Дата создания автоответа."""
 
 
 class Moderator:
@@ -1069,6 +1101,19 @@ class MessageTemplateList:
         """Информация о странице."""
         self.total_count: int | None = total_count
         """Общее количество шаблонных сообщений."""
+
+
+class ChatAutoResponseList:
+    """Страница списка автоответов встроенного автоответчика Playerok."""
+
+    def __init__(self, chat_auto_responses: list[ChatAutoResponse], page_info: PageInfo | None,
+                 total_count: int | None):
+        self.chat_auto_responses: list[ChatAutoResponse] = chat_auto_responses
+        """Автоответы текущей страницы."""
+        self.page_info: PageInfo | None = page_info
+        """Информация о странице."""
+        self.total_count: int | None = total_count
+        """Общее количество автоответов."""
 
 
 class TransactionProvider:

@@ -115,6 +115,19 @@ async def test_notify_error_respects_toggle():
     assert len(bot.sent) == 1
 
 
+async def test_notify_restore_respects_toggle():
+    """Уведомления автовосстановления управляются тумблером restore (раньше слались всегда)."""
+    notifier, cardinal, bot = make_notifier(admin_ids={1})
+    await notifier.notify_restore_ok("Лот", "id-1")
+    assert len(bot.sent) == 1
+
+    cardinal.settings.notifications.restore = False
+    await notifier.notify_restore_ok("Лот", "id-2")
+    await notifier.notify_restore_failed("Лот", "ошибка")
+    await notifier.notify_restore_premium_fallback("Лот", "id-3", "не хватило баланса")
+    assert len(bot.sent) == 1
+
+
 async def test_send_failure_to_one_admin_does_not_break_others():
     notifier, cardinal, bot = make_notifier(admin_ids={1, 2})
 

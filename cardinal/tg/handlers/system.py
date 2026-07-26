@@ -9,7 +9,7 @@ import os
 import zipfile
 
 from aiogram import F, Router
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
@@ -89,8 +89,21 @@ async def cb_logs(query: CallbackQuery, cardinal) -> None:
         escaped = html.escape(tail)[-MAX_TEXT_LENGTH:]
         body = f"<pre>{escaped}</pre>"
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=l10n("sys_btn_logfile"), callback_data="sys:logfile"))
     builder.row(*nav_row(l10n, "sys"))
     await safe_edit(query.message, l10n("sys_logs_title") + "\n" + body, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "sys:logfile")
+async def cb_logfile(query: CallbackQuery, cardinal) -> None:
+    """Отправляет полный файл лога документом (tail в 30 строк часто мало для разбора)."""
+    l10n = cardinal.l10n
+    if not os.path.isfile(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
+        await query.answer(l10n("sys_logs_empty"), show_alert=True)
+        return
+    await query.message.answer_document(FSInputFile(LOG_FILE),
+                                        caption=l10n("sys_logfile_caption"))
     await query.answer()
 
 

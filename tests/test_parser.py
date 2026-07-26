@@ -21,6 +21,33 @@ def test_account_profile_reads_root_fields():
     assert profile.reviews_count == 5
 
 
+def test_account_profile_reads_verification_fields():
+    """Поля верификации из живого `viewer` (canPublishItems и т.п.) доходят до профиля."""
+    data = {
+        "id": "user-1",
+        "canPublishItems": False,
+        "hasConfirmedPhoneNumber": False,
+        "isFundsProtectionActive": True,
+    }
+    profile = parser.account_profile(data)
+    assert profile.can_publish_items is False
+    assert profile.has_confirmed_phone_number is False
+    assert profile.is_funds_protection_active is True
+
+
+def test_chat_auto_response_list_parsed():
+    data = {
+        "edges": [{"node": {"id": "a1", "question": "Как купить?", "answer": "Нажмите «Купить».",
+                            "sequence": 1}}],
+        "pageInfo": None,
+        "totalCount": 1,
+    }
+    result = parser.chat_auto_response_list(data)
+    assert result.total_count == 1
+    assert result.chat_auto_responses[0].question == "Как купить?"
+    assert result.chat_auto_responses[0].answer == "Нажмите «Купить»."
+
+
 def test_account_profile_falls_back_to_nested_profile():
     data = {"id": "user-1", "profile": {"createdAt": "2023-05-05", "supportChatId": "s"}}
     profile = parser.account_profile(data)

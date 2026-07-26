@@ -67,6 +67,62 @@ def test_non_idempotent_post_is_not_retried():
     assert session.post_calls == 1
 
 
+class RateLimitedSession:
+    """Фейковая сессия: первые `fail_times` запросов — HTTP 429, затем успешный ответ."""
+
+    def __init__(self, fail_times: int, retry_after: str | None = None):
+        self.fail_times = fail_times
+        self.retry_after = retry_after
+        self.post_calls = 0
+
+    def post(self, url, **kwargs):
+        self.post_calls += 1
+        if self.post_calls <= self.fail_times:
+            response = FakeResponse({})
+            response.status_code = 429
+            response.headers = {"retry-after": self.retry_after} if self.retry_after else {}
+            return response
+        ok = FakeResponse({"data": {"ok": True}})
+        ok.headers = {}
+        return ok
+
+
+def test_429_is_retried_even_for_mutations():
+    """429 — запрос отклонён до обработки, поэтому его повтор безопасен даже для мутаций."""
+    account = make_account()
+    session = RateLimitedSession(fail_times=1, retry_after="0")
+    account._session = session
+
+    response = account.request("post", payload={"operationName": "createChatMessage"},
+                               idempotent=False)
+
+    assert response.status_code == 200
+    assert session.post_calls == 2
+
+
+def test_429_gives_up_after_max_attempts():
+    from playerokapi.common.exceptions import RequestFailedError
+
+    account = make_account()
+    session = RateLimitedSession(fail_times=99)
+    account._session = session
+
+    with pytest.raises(RequestFailedError):
+        account.request("post", payload={"operationName": "user"})
+
+    assert session.post_calls == 3
+
+
+def test_retry_after_seconds_parsing():
+    response = FakeResponse({})
+    response.headers = {"retry-after": "7"}
+    assert Account._retry_after_seconds(response) == 7.0
+    response.headers = {}
+    assert Account._retry_after_seconds(response) is None
+    response.headers = {"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}  # HTTP-дату не парсим
+    assert Account._retry_after_seconds(response) is None
+
+
 def test_query_sends_idempotent_false():
     account = make_account()
     account.request = MagicMock(return_value=FakeResponse({"data": {"markChatAsRead": None}}))

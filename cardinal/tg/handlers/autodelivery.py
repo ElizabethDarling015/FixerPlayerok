@@ -19,7 +19,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from playerokapi.autodelivery import parse_stock_text
 
-from ...settings import AutoDeliveryLot, save_autodelivery_config
+from ...settings import AutoDeliveryLot, save_autodelivery_config, save_main_settings
 from .common import PAGE_SIZE, cancel_markup, nav_row, on_off, pager_row, paginate, safe_edit
 
 router = Router(name="autodelivery")
@@ -32,6 +32,10 @@ class AddLot(StatesGroup):
 
 class AddStock(StatesGroup):
     items = State()
+
+
+class EditDeliveryText(StatesGroup):
+    text = State()
 
 
 def _lot_names(cardinal) -> list[str]:
@@ -77,6 +81,7 @@ def build_lots_list(cardinal, page: int = 0) -> tuple[str, object]:
     if pager := pager_row("ad:p", page, total_pages):
         builder.row(*pager)
     builder.row(InlineKeyboardButton(text=l10n("ad_btn_add_lot"), callback_data="ad:addlot"))
+    builder.row(InlineKeyboardButton(text=l10n("ad_btn_delivery_text"), callback_data="ad:text"))
     builder.row(*nav_row(l10n))
     return text, builder.as_markup()
 
@@ -211,6 +216,23 @@ async def cb_toggle_deactivate(query: CallbackQuery, cardinal) -> None:
 
 
 @router.callback_query(F.data.startswith("ad:del:"))
+async def cb_delete_lot_confirm(query: CallbackQuery, cardinal) -> None:
+    """Первый шаг удаления: экран подтверждения (удаление лота необратимо для конфига)."""
+    l10n = cardinal.l10n
+    index = int(query.data.rsplit(":", 1)[1])
+    found = _lot_by_index(cardinal, index)
+    if found is None:
+        await query.answer(l10n("ad_lot_missing"), show_alert=True)
+        return
+    name, _ = found
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=l10n("ad_btn_delete_yes"), callback_data=f"ad:delyes:{index}"))
+    builder.row(*nav_row(l10n, f"ad:lot:{index}"))
+    await safe_edit(query.message, l10n("ad_delete_confirm", name=html.escape(name)), builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("ad:delyes:"))
 async def cb_delete_lot(query: CallbackQuery, cardinal) -> None:
     found = _lot_by_index(cardinal, int(query.data.rsplit(":", 1)[1]))
     if found is None:
@@ -261,6 +283,38 @@ async def msg_lot_stock_file(message: Message, state: FSMContext, cardinal) -> N
 
     await message.answer(cardinal.l10n("ad_lot_added", name=html.escape(lot_name),
                                        stock_file=html.escape(stock_file)))
+    text, markup = build_lots_list(cardinal)
+    await message.answer(text, reply_markup=markup)
+
+
+# ----------------------------------------------------------------------
+# Текст выдачи (FSM)
+# ----------------------------------------------------------------------
+
+@router.callback_query(F.data == "ad:text")
+async def cb_edit_delivery_text(query: CallbackQuery, state: FSMContext, cardinal) -> None:
+    l10n = cardinal.l10n
+    await state.set_state(EditDeliveryText.text)
+    await safe_edit(query.message,
+                    l10n("ad_enter_delivery_text",
+                         current=html.escape(cardinal.settings.autodelivery.delivery_text)),
+                    cancel_markup(l10n))
+    await query.answer()
+
+
+@router.message(EditDeliveryText.text, F.text)
+async def msg_delivery_text(message: Message, state: FSMContext, cardinal) -> None:
+    l10n = cardinal.l10n
+    if "{item}" not in message.text:
+        # Без плейсхолдера покупатель не получит сам товар — не даём сохранить.
+        await message.answer(l10n("ad_text_needs_item"), reply_markup=cancel_markup(l10n))
+        return
+    await state.clear()
+    cardinal.settings.autodelivery.delivery_text = message.text
+    save_main_settings(cardinal.settings)
+    if cardinal.autodelivery_manager is not None:
+        cardinal.autodelivery_manager.delivery_text_template = message.text
+    await message.answer(l10n("ad_delivery_text_saved"))
     text, markup = build_lots_list(cardinal)
     await message.answer(text, reply_markup=markup)
 

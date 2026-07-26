@@ -8,7 +8,10 @@
 #   ./cardinal.sh --setup    заново пройти настройку (перезапишет configs/main.toml)
 #   ./cardinal.sh --check    проверить токен и авторизацию на Playerok (бота не запускает)
 #   ./cardinal.sh --update   принудительно обновить зависимости и запустить
+#   ./cardinal.sh --upgrade  скачать свежую версию Cardinal с GitHub и запустить
 #   ./cardinal.sh --service  установить systemd-сервис автозапуска (Linux)
+#   ./cardinal.sh --status   статус: systemd-сервис + последние строки лога
+#   ./cardinal.sh --logs     живой просмотр лога (tail -f)
 #   ./cardinal.sh --help     справка
 #
 # Идемпотентный: повторный запуск ничего не ломает и не трогает конфиги.
@@ -173,10 +176,53 @@ case "${1:-}" in
     --setup)    FORCE_SETUP=1 ;;
     --check)    MODE="check" ;;
     --update)   MODE="update" ;;
+    --upgrade)  MODE="upgrade" ;;
     --service)  MODE="service" ;;
+    --status)   MODE="status" ;;
+    --logs)     MODE="logs" ;;
     "")         ;;
     *)          die "Неизвестный аргумент: $1 (см. ./cardinal.sh --help)" ;;
 esac
+
+LOG_FILE="storage/logs/cardinal.log"
+
+# --logs / --status не требуют Python и venv — обрабатываем сразу.
+if [ "$MODE" = "logs" ]; then
+    [ -f "$LOG_FILE" ] || die "Файл лога не найден: $LOG_FILE (бот ещё не запускался?)"
+    info "Лог ${BOLD}$LOG_FILE${NC} (Ctrl+C — выход):"
+    exec tail -n 50 -f "$LOG_FILE"
+fi
+
+if [ "$MODE" = "status" ]; then
+    step "Статус PlayerokCardinal"
+    if [ "$(uname)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+        unit="PlayerokCardinal@$(whoami).service"
+        if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q .; then
+            state=$(systemctl is-active "$unit" 2>/dev/null || true)
+            enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+            if [ "$state" = "active" ]; then
+                ok "Сервис ${BOLD}$unit${NC}: ${GREEN}$state${NC} (автозапуск: $enabled)"
+            else
+                warn "Сервис ${BOLD}$unit${NC}: $state (автозапуск: $enabled)"
+            fi
+        else
+            info "systemd-сервис не установлен ${GREY}(./cardinal.sh --service)${NC}"
+        fi
+    fi
+    if pgrep -f "[.]venv/bin/python -m cardinal" >/dev/null 2>&1; then
+        ok "Процесс бота запущен (PID: $(pgrep -f '[.]venv/bin/python -m cardinal' | tr '\n' ' '))"
+    else
+        warn "Процесс бота не найден."
+    fi
+    if [ -f "$LOG_FILE" ]; then
+        echo
+        info "Последние строки лога:"
+        tail -n 15 "$LOG_FILE"
+    else
+        warn "Файл лога отсутствует: $LOG_FILE"
+    fi
+    exit 0
+fi
 
 # Как в FunPayCardinal: чистый экран → логотип → ссылки.
 [ -t 1 ] && clear
@@ -468,14 +514,18 @@ if [ "$MODE" = "service" ]; then
     [ "$(uname)" = "Linux" ] || die "systemd-сервис доступен только на Linux."
     command -v systemctl >/dev/null 2>&1 || die "systemctl не найден — система без systemd."
     info "Устанавливаю systemd-сервис (нужны права sudo)…"
-    sudo cp "PlayerokCardinal@.service" /etc/systemd/system/PlayerokCardinal@.service
+    # Подставляем фактический путь проекта: юнит по умолчанию ждёт /home/%i/PlayerokAPI.
+    PROJECT_DIR="$(pwd)"
+    UNIT_TMP=$(mktemp "${TMPDIR:-/tmp}/pc-unit.XXXXXX") || die "mktemp не удался."
+    sed "s|/home/%i/PlayerokAPI|$PROJECT_DIR|g" "PlayerokCardinal@.service" > "$UNIT_TMP"
+    sudo cp "$UNIT_TMP" /etc/systemd/system/PlayerokCardinal@.service
+    rm -f "$UNIT_TMP"
     sudo systemctl daemon-reload
     sudo systemctl enable "PlayerokCardinal@$(whoami).service"
-    ok "Сервис установлен. Управление:"
+    ok "Сервис установлен (проект: ${BOLD}$PROJECT_DIR${NC}). Управление:"
     echo "    ${BOLD}sudo systemctl start PlayerokCardinal@$(whoami)${NC}    # запустить"
     echo "    ${BOLD}sudo systemctl status PlayerokCardinal@$(whoami)${NC}   # статус"
     echo "    ${BOLD}journalctl -u PlayerokCardinal@$(whoami) -f${NC}        # логи"
-    warn "Сервис ожидает проект в /home/$(whoami)/PlayerokAPI — поправьте юнит, если папка другая."
     exit 0
 fi
 
@@ -605,6 +655,31 @@ else
     ok "Зависимости на месте ${GREY}(обновить: ./cardinal.sh --update)${NC}."
 fi
 
+# ----------------------------------------------------------------------
+# Режим --upgrade: скачать свежую версию с GitHub, затем перезапустить установку
+# ----------------------------------------------------------------------
+if [ "$MODE" = "upgrade" ]; then
+    step "Обновляю PlayerokCardinal с GitHub…"
+    if "$VENV_PY" - <<'PYEOF'
+import sys
+
+from cardinal.self_update import update_from_github
+
+result = update_from_github(update_deps=False)
+print(result.message)
+if result.detail:
+    print(result.detail)
+sys.exit(0 if result.ok else 1)
+PYEOF
+    then
+        ok "Код обновлён. Перезапускаю установку с новой версией скрипта…"
+        # exec новой копией скрипта: --update дообновит зависимости и запустит бота.
+        exec "$0" --update
+    else
+        die "Обновление не удалось (см. вывод выше)."
+    fi
+fi
+
 # Проверяем конфиг тем же валидатором, что использует бот (русские ошибки pydantic).
 if "$VENV_PY" - <<'PYEOF'
 import sys
@@ -673,9 +748,11 @@ step "Запускаю PlayerokCardinal… (4/4)"
 ok "Установка завершена."
 echo "  ${GREY}Панель:${NC}     Telegram-бот → /menu"
 echo "  ${GREY}Стоп:${NC}        Ctrl+C"
-echo "  ${GREY}Логи:${NC}        storage/logs/cardinal.log"
+echo "  ${GREY}Логи:${NC}        ./cardinal.sh --logs  (файл: storage/logs/cardinal.log)"
+echo "  ${GREY}Статус:${NC}      ./cardinal.sh --status"
 echo "  ${GREY}Setup:${NC}       ./cardinal.sh --setup"
 echo "  ${GREY}Check:${NC}       ./cardinal.sh --check"
+echo "  ${GREY}Обновление:${NC}  ./cardinal.sh --upgrade"
 echo "  ${GREY}Автозапуск:${NC}  ./cardinal.sh --service"
 echo "  ${GREY}Создатель:${NC}   ${CYAN}https://t.me/Scwee_xz${NC}"
 echo

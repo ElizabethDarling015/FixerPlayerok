@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -71,6 +72,21 @@ class UpdateResult:
     message: str
     detail: str = ""
     changed: bool = False
+
+
+@dataclass(frozen=True)
+class UpdateCheck:
+    """Результат проверки наличия обновления (без применения)."""
+
+    ok: bool
+    available: bool
+    current: str = ""
+    latest: str = ""
+    error: str = ""
+
+
+#: Файл с базовым SHA для установок из архива (нет .git — не с чем сравнивать иначе).
+ARCHIVE_BASELINE_FILE = os.path.join("storage", "update_baseline.txt")
 
 
 def project_root() -> Path:
@@ -148,6 +164,77 @@ def _update_via_git(root: Path, repo: str, branch: str) -> UpdateResult:
         (reset.stdout or "").strip(),
         changed=True,
     )
+
+
+def _remote_head_sha(repo: str, branch: str) -> str | None:
+    """SHA последнего коммита ветки через GitHub API (`None`, если API недоступен)."""
+    url = f"https://api.github.com/repos/{repo}/commits/{branch}"
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "PlayerokCardinal-Updater/1.0",
+        "Accept": "application/vnd.github+json",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+    sha = payload.get("sha") if isinstance(payload, dict) else None
+    return sha if isinstance(sha, str) and sha else None
+
+
+def _read_archive_baseline(root: Path) -> str:
+    baseline = root / ARCHIVE_BASELINE_FILE
+    try:
+        return baseline.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _write_archive_baseline(root: Path, sha: str) -> None:
+    baseline = root / ARCHIVE_BASELINE_FILE
+    try:
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        baseline.write_text(sha, encoding="utf-8")
+    except OSError:
+        pass  # не критично: в худшем случае следующая проверка снова предложит обновиться
+
+
+def check_for_update(
+    root: Path | str | None = None,
+    *,
+    repo: str = DEFAULT_REPO,
+    branch: str = DEFAULT_BRANCH,
+) -> UpdateCheck:
+    """
+    Проверяет, есть ли на GitHub более новая версия, НЕ применяя её.
+
+    Git-установка: `git fetch` + сравнение SHA. Установка из архива: сравнение SHA ветки
+    (GitHub API) с сохранённым базовым (`storage/update_baseline.txt`); при первом запуске
+    базовый SHA просто записывается — «обновление доступно» не сообщается.
+    """
+    dest = Path(root) if root is not None else project_root()
+    if not dest.is_dir():
+        return UpdateCheck(False, False, error=f"Каталог не найден: {dest}")
+
+    if _is_git_checkout(dest):
+        fetch = _run(["git", "fetch", "--depth", "1", "origin", branch], dest)
+        if fetch.returncode != 0:
+            return UpdateCheck(False, False, error=(fetch.stderr or fetch.stdout or "git fetch failed").strip())
+        head = _run(["git", "rev-parse", "HEAD"], dest)
+        remote = _run(["git", "rev-parse", f"origin/{branch}"], dest)
+        if head.returncode != 0 or remote.returncode != 0:
+            return UpdateCheck(False, False, error=(head.stderr or remote.stderr or "git rev-parse failed").strip())
+        current, latest = head.stdout.strip(), remote.stdout.strip()
+        return UpdateCheck(True, current != latest, current=current[:12], latest=latest[:12])
+
+    latest_sha = _remote_head_sha(repo, branch)
+    if latest_sha is None:
+        return UpdateCheck(False, False, error="GitHub API недоступен (нет сети или лимит запросов).")
+    known = _read_archive_baseline(dest)
+    if not known:
+        _write_archive_baseline(dest, latest_sha)
+        return UpdateCheck(True, False, current="?", latest=latest_sha[:12])
+    return UpdateCheck(True, known != latest_sha, current=known[:12], latest=latest_sha[:12])
 
 
 def _archive_url(repo: str, branch: str) -> str:
@@ -291,6 +378,12 @@ def update_from_github(
         result = _update_via_git(dest, repo, branch)
     else:
         result = _update_via_archive(dest, repo, branch)
+        if result.ok and result.changed:
+            # Запоминаем установленный SHA — иначе check_for_update будет предлагать
+            # это же обновление снова.
+            sha = _remote_head_sha(repo, branch)
+            if sha:
+                _write_archive_baseline(dest, sha)
 
     if not result.ok:
         return result

@@ -118,3 +118,45 @@ def test_update_from_github_routes_to_archive(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(self_update, "_update_dependencies", lambda root: "pip ok")
     result = self_update.update_from_github(tmp_path, update_deps=True)
     assert called.get("ok") and result.ok and "pip ok" in result.detail
+
+
+def test_check_for_update_git_detects_new_version(monkeypatch, tmp_path: Path):
+    def fake_run(cmd, cwd, timeout=120):
+        if cmd[:2] == ["git", "fetch"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return SimpleNamespace(returncode=0, stdout="aaa111aaa111\n", stderr="")
+        if cmd == ["git", "rev-parse", "origin/main"]:
+            return SimpleNamespace(returncode=0, stdout="bbb222bbb222\n", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(self_update, "_run", fake_run)
+    monkeypatch.setattr(self_update, "_is_git_checkout", lambda root: True)
+
+    check = self_update.check_for_update(tmp_path)
+    assert check.ok and check.available
+    assert check.current == "aaa111aaa111" and check.latest == "bbb222bbb222"
+
+
+def test_check_for_update_archive_uses_baseline(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(self_update, "_is_git_checkout", lambda root: False)
+    monkeypatch.setattr(self_update, "_remote_head_sha", lambda repo, branch: "c" * 40)
+
+    # Первый запуск: базовый SHA только записывается, обновление не предлагается.
+    first = self_update.check_for_update(tmp_path)
+    assert first.ok and not first.available
+    assert (tmp_path / "storage" / "update_baseline.txt").read_text() == "c" * 40
+
+    second = self_update.check_for_update(tmp_path)
+    assert second.ok and not second.available
+
+    monkeypatch.setattr(self_update, "_remote_head_sha", lambda repo, branch: "d" * 40)
+    third = self_update.check_for_update(tmp_path)
+    assert third.ok and third.available
+
+
+def test_check_for_update_archive_no_network(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(self_update, "_is_git_checkout", lambda root: False)
+    monkeypatch.setattr(self_update, "_remote_head_sha", lambda repo, branch: None)
+    check = self_update.check_for_update(tmp_path)
+    assert not check.ok and not check.available and check.error

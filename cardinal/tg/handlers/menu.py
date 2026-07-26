@@ -1,9 +1,11 @@
 """Главное меню панели: статус аккаунта, разделы и подменю «Глобальные переключатели»."""
 from __future__ import annotations
 
+import contextlib
 import html
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -16,7 +18,8 @@ from .common import cancel_markup, nav_row, on_off, safe_edit
 router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
-MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online", "digest")
+MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online",
+                "digest", "autoupdate")
 
 
 class EditGreeting(StatesGroup):
@@ -146,18 +149,27 @@ async def cb_noop(query: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "close")
 async def cb_close(query: CallbackQuery) -> None:
-    await query.message.delete()
+    # Сообщения старше 48 часов Telegram удалять запрещает — тогда просто убираем клавиатуру.
+    try:
+        await query.message.delete()
+    except TelegramBadRequest:
+        with contextlib.suppress(TelegramBadRequest):
+            await query.message.edit_reply_markup(reply_markup=None)
     await query.answer()
 
 
 @router.callback_query(F.data == "fsm:cancel")
 async def cb_fsm_cancel(query: CallbackQuery, state: FSMContext, cardinal) -> None:
     await state.clear()
-    await safe_edit(query.message, cardinal.l10n("cancelled"))
-    await query.answer()
+    await query.answer(cardinal.l10n("cancelled"))
+    # После отмены возвращаем главное меню, чтобы не бросать пользователя на «пустом» экране.
+    text, markup = build_main_menu(cardinal)
+    await safe_edit(query.message, text, markup)
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext, cardinal) -> None:
     await state.clear()
     await message.answer(cardinal.l10n("cancelled"))
+    text, markup = build_main_menu(cardinal)
+    await message.answer(text, reply_markup=markup)

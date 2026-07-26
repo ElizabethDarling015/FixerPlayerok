@@ -1,17 +1,21 @@
 """Общие помощники хендлеров TG-панели."""
 from __future__ import annotations
 
-from contextlib import suppress
-
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from loguru import logger
 
 
 async def safe_edit(message: Message, text: str, reply_markup=None) -> None:
     """`edit_text`, не падающий на «message is not modified» (повторное нажатие кнопки)."""
-    with suppress(TelegramBadRequest):
+    try:
         await message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        # Повторное нажатие кнопки — норма; остальные ошибки редактирования (слишком длинный
+        # текст, битый HTML и т.п.) не должны теряться молча.
+        if "message is not modified" not in str(exc):
+            logger.warning("Не удалось отредактировать сообщение панели: {}", exc)
 
 
 def back_button(l10n, callback_data: str = "menu") -> InlineKeyboardButton:

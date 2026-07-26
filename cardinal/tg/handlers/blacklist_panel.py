@@ -51,6 +51,24 @@ async def cb_menu_page(query: CallbackQuery, cardinal) -> None:
 
 
 @router.callback_query(F.data.startswith("bl:del:"))
+async def cb_delete_confirm(query: CallbackQuery, cardinal) -> None:
+    """Первый шаг удаления: подтверждение (раньше ник удалялся с первого тапа)."""
+    l10n = cardinal.l10n
+    index = int(query.data.rsplit(":", 1)[1])
+    usernames = sorted(cardinal.blacklist_config.usernames, key=str.casefold)
+    if not (0 <= index < len(usernames)):
+        await query.answer(l10n("bl_missing"), show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=l10n("bl_btn_delete_yes"), callback_data=f"bl:delyes:{index}"))
+    builder.row(*nav_row(l10n, "bl"))
+    await safe_edit(query.message,
+                    l10n("bl_delete_confirm", username=html.escape(usernames[index])),
+                    builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("bl:delyes:"))
 async def cb_delete(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
     index = int(query.data.rsplit(":", 1)[1])

@@ -142,6 +142,9 @@ def account_profile(data: dict | None) -> types.AccountProfile | None:
         has_frozen_balance=data.get("hasFrozenBalance"),
         has_enabled_notifications=data.get("hasEnabledNotifications"),
         unread_chats_counter=data.get("unreadChatsCounter"),
+        is_funds_protection_active=data.get("isFundsProtectionActive"),
+        has_confirmed_phone_number=data.get("hasConfirmedPhoneNumber"),
+        can_publish_items=data.get("canPublishItems"),
     )
     profile.chosen_verified_card = verified_card(data.get("chosenVerifiedCard"))
     return profile
@@ -191,6 +194,21 @@ def message_template(data: dict | None) -> types.MessageTemplate | None:
         sequence=data.get("sequence"),
         created_at=data.get("createdAt"),
         group=data.get("group"),
+    )
+
+
+def chat_auto_response(data: dict | None) -> types.ChatAutoResponse | None:
+    """Собирает `ChatAutoResponse`."""
+    if not data or not data.get("id"):
+        return None
+    return types.ChatAutoResponse(
+        id=data["id"],
+        question=data.get("question"),
+        answer=data.get("answer"),
+        trigger=data.get("trigger"),
+        sequence=data.get("sequence"),
+        parent_question_id=data.get("parentQuestionId"),
+        created_at=data.get("createdAt"),
     )
 
 
@@ -740,6 +758,17 @@ def message_template_list(data: dict | None) -> types.MessageTemplateList | None
         return None
     return types.MessageTemplateList(
         message_templates=_nodes(data.get("edges"), message_template),
+        page_info=page_info(data.get("pageInfo")),
+        total_count=data.get("totalCount"),
+    )
+
+
+def chat_auto_response_list(data: dict | None) -> types.ChatAutoResponseList | None:
+    """Собирает `ChatAutoResponseList`."""
+    if not data:
+        return None
+    return types.ChatAutoResponseList(
+        chat_auto_responses=_nodes(data.get("edges"), chat_auto_response),
         page_info=page_info(data.get("pageInfo")),
         total_count=data.get("totalCount"),
     )
