@@ -8,7 +8,8 @@
    кадры `next`/`error`/`complete`, серверные `ping` получают ответ `pong`) — мгновенно дают
    `NewMessageEvent`, `ChatInitializedEvent` (при первом обнаружении чата) и `ItemPaidEvent`
    (по системному маркеру `{{ITEM_PAID}}` в тексте сообщения — аналогично `alleexxeeyy/PlayerokAPI`).
-2. Периодический опрос раз в `requests_delay` секунд (фоновый поток) — обновляет профиль/баланс
+2. Периодический опрос раз в `requests_delay` секунд (со случайным разбросом ±25%, чтобы
+   автоматизацию нельзя было заметить по идеально ровным интервалам; фоновый поток) — обновляет профиль/баланс
    (`Account.get()`) и сравнивает список сделок (`Account.get_deals()`, с полной пагинацией) со
    снимком с предыдущего опроса, порождая `NewDealEvent`/`DealStatusChangedEvent` (плюс более
    конкретные события — `DealConfirmedEvent`, `DealRolledBackEvent`, `ItemSentEvent`, а также
@@ -16,7 +17,8 @@
    потоком, тем же интервалом, сравнивает список своих отзывов (`Account.get_my_reviews()`) со
    снимком с предыдущего опроса, порождая `NewReviewEvent`.
 3. Опционально — таймер автоподнятия лотов (если передан `autoraise_manager`), раз в
-   `autoraise_manager.raise_interval` секунд, порождающий `ItemRaisedEvent`/`InsufficientBalanceEvent`.
+   `autoraise_manager.raise_interval` секунд (тоже с разбросом ±25%), порождающий
+   `ItemRaisedEvent`/`InsufficientBalanceEvent`.
 
 `ItemPaidEvent` дедуплицируется по `deal_id` между источниками (WS-маркер и поллинг) и — при наличии
 SQLite-журнала выдач (`AutoDeliveryManager.ledger`) — между перезапусками процесса, так что одна
@@ -30,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import random
 import threading
 import time
 import uuid
@@ -38,6 +41,7 @@ import websocket
 
 from .. import parser
 from ..common.enums import EventTypes, Hooks, ItemDealDirections
+from ..common.exceptions import RequestFailedError, RequestPlayerokError, UnauthorizedError
 from ..graphql_queries import QUERIES
 from . import events
 
@@ -52,6 +56,22 @@ _LOG_TEXT_LIMIT = 200
 
 # Максимум страниц за один цикл поллинга — защита от бесконечной пагинации при сбоящем курсоре.
 _MAX_POLL_PAGES = 20
+
+# Сколько подряд «подозрительных на смерть сессии» ошибок поллинга (401/403,
+# UNAUTHENTICATED/FORBIDDEN) считать смертью сессии. Одиночный 403 может быть капризом
+# DDoS-Guard, а вот серия — почти наверняка протухший token.
+_SESSION_FAIL_THRESHOLD = 3
+
+# Относительный разброс интервалов между циклами (поллинг, автоподнятие): ±25%.
+# Идеально ровные интервалы запросов — характерный признак автоматизации, случайный
+# джиттер делает трафик похожим на действия живого человека.
+_JITTER = 0.25
+
+
+def _jittered(delay: float) -> float:
+    """Возвращает `delay` со случайным разбросом ±`_JITTER` (маскировка автоматизации)."""
+    return delay * random.uniform(1 - _JITTER, 1 + _JITTER)
+
 
 # Подписки WS по умолчанию: базовые чаты + seller-полезные item/chatCreated.
 _DEFAULT_WS_SUBSCRIPTIONS = (
@@ -134,6 +154,16 @@ class Runner:
         self._paid_deal_ids: set[str] = set()
         self._ws = None
         self._ignore_exceptions = True
+
+        #: `time.monotonic()` последнего полностью успешного `_poll_once` (None — ещё не было).
+        #: Используется внешним heartbeat'ом, чтобы заметить молча заглохший опрос.
+        self.last_success_at: float | None = None
+        # Вахдог сессии: счётчик подряд идущих «подозрительных» ошибок поллинга (401/403,
+        # UNAUTHENTICATED/FORBIDDEN), флаг «SessionExpiredEvent уже отправлен» и флаг
+        # «в текущем цикле _poll_once была хоть одна ошибка» (для сброса детектора).
+        self._session_fail_streak = 0
+        self._session_expired_reported = False
+        self._poll_cycle_failed = False
 
     # ------------------------------------------------------------------
     # Публичный интерфейс
@@ -228,6 +258,65 @@ class Runner:
             return True
         logger.warning("Ошибка в фоновом потоке (%s): %s", source, exc, exc_info=True)
         return False
+
+    # ------------------------------------------------------------------
+    # Вахдог сессии (детекция протухших cookies по ошибкам поллинга)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _classify_session_error(exc: Exception) -> str | None:
+        """
+        Классифицирует ошибку поллинга с точки зрения смерти сессии.
+
+        :return: `"fatal"` — сессия мертва сразу (`UnauthorizedError`); `"suspicious"` —
+            похоже на смерть, но нужен зачёт серии (HTTP 401/403, GraphQL UNAUTHENTICATED/
+            FORBIDDEN); `None` — обычная ошибка (сеть, 5xx и т.п.), вахдога не касается.
+        """
+        if isinstance(exc, UnauthorizedError):
+            return "fatal"
+        if isinstance(exc, RequestFailedError) and exc.status_code in (401, 403):
+            return "suspicious"
+        if isinstance(exc, RequestPlayerokError) and exc.error_code in ("UNAUTHENTICATED", "FORBIDDEN"):
+            return "suspicious"
+        return None
+
+    @staticmethod
+    def _session_error_cause(exc: Exception) -> str:
+        """Краткое описание причины смерти сессии для `SessionExpiredEvent.cause` (без «простыни» советов)."""
+        if isinstance(exc, UnauthorizedError) and exc.cause:
+            return exc.cause
+        if isinstance(exc, RequestFailedError):
+            return f"HTTP {exc.status_code}"
+        if isinstance(exc, RequestPlayerokError):
+            return f"{exc.error_code}: {exc.error_message}"
+        return f"{type(exc).__name__}: {exc}"
+
+    def _note_poll_error(self, exc: Exception) -> None:
+        """Учитывает ошибку запроса поллинга в вахдоге сессии (и помечает цикл неуспешным)."""
+        self._poll_cycle_failed = True
+        kind = self._classify_session_error(exc)
+        if kind is None:
+            return
+        if kind == "fatal":
+            self._emit_session_expired(self._session_error_cause(exc))
+            return
+        self._session_fail_streak += 1
+        if self._session_fail_streak >= _SESSION_FAIL_THRESHOLD:
+            self._emit_session_expired(self._session_error_cause(exc))
+
+    def _note_poll_success(self) -> None:
+        """Сбрасывает вахдог после успешного опроса: повторная смерть породит новое событие."""
+        self.last_success_at = time.monotonic()
+        self._session_fail_streak = 0
+        self._session_expired_reported = False
+
+    def _emit_session_expired(self, cause: str) -> None:
+        """Кладёт в очередь ровно один `SessionExpiredEvent` на «смерть» сессии."""
+        if self._session_expired_reported:
+            return
+        self._session_expired_reported = True
+        logger.error("Сессия Playerok мертва (%s) — требуется обновить cookies", cause)
+        self._event_queue.put(events.SessionExpiredEvent(self, cause))
 
     # ------------------------------------------------------------------
     # Дедупликация ItemPaidEvent и авто-выдача
@@ -365,24 +454,29 @@ class Runner:
     # ------------------------------------------------------------------
 
     def _poll_loop(self, delay: float) -> None:
+        """Цикл поллинга: интервал `delay` с случайным разбросом ±25% — маскировка автоматизации."""
         while not self._stop_event.is_set():
             try:
                 self._poll_once()
             except Exception as exc:
                 if self._report_thread_error(exc, "поллинг"):
                     return
-            self._stop_event.wait(delay)
+            self._stop_event.wait(_jittered(delay))
 
     def _poll_once(self) -> None:
+        self._poll_cycle_failed = False
         try:
             self.account.get()
         except Exception as exc:
+            self._note_poll_error(exc)
             # Ошибка обновления профиля не должна блокировать опрос сделок/отзывов.
             if not self._ignore_exceptions:
                 raise
             logger.warning("Не удалось обновить профиль аккаунта при поллинге: %s", exc)
         self._poll_deals()
         self._poll_reviews()
+        if not self._poll_cycle_failed:
+            self._note_poll_success()
 
     def _collect_all_pages(self, fetch_page, extract_items) -> list | None:
         """
@@ -398,7 +492,8 @@ class Runner:
         for _ in range(_MAX_POLL_PAGES):
             try:
                 page = fetch_page(cursor)
-            except Exception:
+            except Exception as exc:
+                self._note_poll_error(exc)
                 if not self._ignore_exceptions:
                     raise
                 logger.warning("Ошибка запроса при поллинге", exc_info=True)
@@ -491,10 +586,12 @@ class Runner:
     # ------------------------------------------------------------------
 
     def _autoraise_loop(self) -> None:
+        """Цикл автоподнятия: интервал `manager.raise_interval` с случайным разбросом ±25% —
+        идеально ровный таймер выдавал бы автоматизацию."""
         manager = self.autoraise_manager
         # Не поднимаем лоты сразу при старте — ждём первый полный интервал, чтобы не мешать
         # только что вручную поднятым лотам и не спамить запросами сразу после запуска.
-        if self._stop_event.wait(manager.raise_interval):
+        if self._stop_event.wait(_jittered(manager.raise_interval)):
             return
         while not self._stop_event.is_set():
             try:
@@ -502,7 +599,7 @@ class Runner:
             except Exception as exc:
                 if self._report_thread_error(exc, "автоподнятие"):
                     return
-            self._stop_event.wait(manager.raise_interval)
+            self._stop_event.wait(_jittered(manager.raise_interval))
 
     def _run_autoraise_cycle(self) -> None:
         results = self.autoraise_manager.raise_all(self.account)

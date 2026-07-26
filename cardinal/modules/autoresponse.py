@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 from string import Template
 
@@ -16,7 +17,9 @@ from loguru import logger
 
 from playerokapi.common.enums import EventTypes
 
+from ..stats_store import ACTION_AUTORESPONSE
 from .base import BaseModule
+from .humanize import sleep_before_reply
 
 #: Встроенные команды-списки (не настраиваются, всегда доступны при включённом модуле).
 BUILTIN_LIST_COMMANDS = ("!команды", "!commands")
@@ -73,4 +76,10 @@ class AutoResponseModule(BaseModule):
         username = message.user.username or "?"
         reply = self.build_reply(command, username=username, chat_id=event.chat.id)
         logger.info("Автоответчик: команда {!r} от {} в чате {}", command, username, event.chat.id)
+        # «Человеческая» пауза перед ответом — мгновенный ответ выдаёт автоматизацию.
+        await sleep_before_reply(getattr(self.cardinal.settings, "humanize", None), reply)
         await asyncio.to_thread(account.send_message, event.chat.id, reply)
+        stats = getattr(self.cardinal, "stats", None)
+        if stats is not None:
+            with contextlib.suppress(Exception):
+                stats.record(ACTION_AUTORESPONSE)

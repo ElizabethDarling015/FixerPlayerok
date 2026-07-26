@@ -8,8 +8,8 @@ STRINGS = {
     "btn_back": "◀️ Back",
     "btn_home": "🏠 Main menu",
     "btn_close": "✖️ Close",
-    "cancelled": "Action cancelled.",
-    "btn_cancel": "Cancel",
+    "cancelled": "✖️ Action cancelled.",
+    "btn_cancel": "✖️ Cancel",
 
     # --- Main menu ---
     "menu_title": (
@@ -34,6 +34,7 @@ STRINGS = {
     "module_greeting": "Greeting",
     "module_online": "Always online",
     "module_digest": "Daily digest",
+    "module_autoupdate": "Update checks",
     "module_toggled_on": "Module \"{module}\" enabled.",
     "module_toggled_off": "Module \"{module}\" disabled.",
 
@@ -49,10 +50,14 @@ STRINGS = {
 
     # --- Statistics ---
     "st_title": "📈 <b>Sales statistics</b> (last 7 days):",
-    "st_line": "• {day}: <b>{count}</b> pcs. for <b>{revenue}</b>",
+    "st_line": "<code>{day} {bar}</code> <b>{count}</b> pcs. / <b>{revenue}</b>",
     "st_empty": "No sales in the last 7 days.",
     "st_total_week": "Total for 7 days: <b>{count}</b> pcs. for <b>{revenue}</b>",
     "st_total_month": "Total for 30 days: <b>{count}</b> pcs. for <b>{revenue}</b>",
+    "st_bot_title": "🤖 <b>Bot activity</b> (today / 7 days / total):",
+    "st_bot_delivered": "Items delivered: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
+    "st_bot_raised": "Lots raised: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
+    "st_bot_responses": "Auto-replies: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
 
     # --- Auto-delivery ---
     "ad_title": "📦 <b>Auto-delivery</b>\n\nLots and stock:",
@@ -74,6 +79,12 @@ STRINGS = {
     "ad_btn_toggle_restore": "♻️ Restore: {state}",
     "ad_btn_toggle_deactivate": "🛑 Deactivate: {state}",
     "ad_btn_delete_lot": "🗑 Delete lot",
+    "ad_delete_confirm": (
+        "🗑 <b>Delete lot?</b>\n\n"
+        "Lot \"{name}\" will be removed from auto-delivery.\n"
+        "The stock file is kept on disk."
+    ),
+    "ad_btn_delete_yes": "🗑 Yes, delete",
     "ad_enter_lot_name": "Send the <b>exact lot name</b> (as on Playerok):",
     "ad_enter_stock_file": "Send the stock file path (e.g. <code>storage/stock/my_lot.txt</code>) or \"-\" to create one automatically:",
     "ad_lot_added": "✅ Lot \"{name}\" added. Stock file: <code>{stock_file}</code>",
@@ -85,6 +96,15 @@ STRINGS = {
     ),
     "ad_stock_added": "✅ Items added: <b>{count}</b>. Now in stock: <b>{stock}</b>.",
     "ad_lot_missing": "Lot not found (config may have changed). Re-open the section.",
+    "ad_btn_delivery_text": "✏️ Delivery text",
+    "ad_enter_delivery_text": (
+        "Send the new delivery message text.\n"
+        "Placeholder <code>{{item}}</code> (required) — the stock item being delivered.\n\n"
+        "Current text:\n<code>{current}</code>"
+    ),
+    # Called without kwargs — str.format is not applied, so {item} stays literal here.
+    "ad_text_needs_item": "⚠️ The text has no <code>{item}</code> — without it the buyer won't receive the goods. Send the text again.",
+    "ad_delivery_text_saved": "✅ Delivery text saved.",
 
     # --- Auto-response ---
     "ar_title": "💬 <b>Auto-response</b>\n\nCommands:",
@@ -110,6 +130,8 @@ STRINGS = {
     "bl_added": "🚫 <code>{username}</code> added to the blacklist.",
     "bl_already": "<code>{username}</code> is already blacklisted.",
     "bl_removed": "✅ {username} removed from the blacklist.",
+    "bl_delete_confirm": "🚫 <b>Remove from the blacklist?</b>\n\nUsername: <code>{username}</code>",
+    "bl_btn_delete_yes": "✅ Yes, remove",
     "bl_missing": "Username not found (the list may have changed). Re-open the section.",
 
     # --- Daily digest ---
@@ -140,6 +162,10 @@ STRINGS = {
     "nt_errors": "Errors",
     "nt_stock_empty": "Empty stock",
     "nt_blacklist": "Blacklist deals",
+    "nt_restore": "Item restore",
+    "nt_updates": "Cardinal updates",
+    "nt_btn_all_on": "🟢 Enable all",
+    "nt_btn_all_off": "🔴 Disable all",
 
     # --- Notification texts ---
     "notif_started": (
@@ -154,20 +180,55 @@ STRINGS = {
     "notif_new_message": "✉️ <b>{username}</b> (chat <code>{chat_id}</code>):\n{text}\n\n<i>Reply to this message to answer in the Playerok chat.</i>",
     "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
-    "notif_deal_problem_resolved": "✅ Problem in deal <code>{deal_id}</code> resolved.",
+    "notif_deal_problem_resolved": "✅ <b>Problem resolved</b>\nDeal: <code>{deal_id}</code>",
     "notif_deal_confirmed": "🤝 <b>Deal confirmed</b>\nItem: {item}",
     "notif_deal_rolled_back": "↩️ <b>Deal rolled back</b>\nItem: {item}",
-    "notif_item_raised": "📈 Item \"{item}\" raised (spent {spent}).",
-    "notif_insufficient_balance": "💸 Not enough balance to raise \"{item}\": need {price}, available {available}.",
-    "notif_error": "🚨 <b>Cardinal error</b>:\n<code>{error}</code>",
-    "notif_stock_empty": "📭 Stock for \"{item}\" is empty! Refill it to keep auto-delivery working.",
-    "notif_restore_ok": "♻️ Item \"{item}\" restored after sale (new ID: <code>{item_id}</code>).",
-    "notif_restore_fail": "♻️❌ Failed to restore item \"{item}\": {error}",
+    "notif_item_raised": "📈 <b>Item raised</b>\nItem: {item}\nSpent: {spent}",
+    "notif_insufficient_balance": (
+        "💸 <b>Not enough balance to raise</b>\n"
+        "Item: {item}\nNeed: {price}\nAvailable: {available}"
+    ),
+    "notif_error": "🚨 <b>Cardinal error</b>\n<code>{error}</code>",
+    "notif_stock_empty": (
+        "📭 <b>Stock is empty</b>\nItem: {item}\n"
+        "Refill it to keep auto-delivery working."
+    ),
+    "notif_restore_ok": "♻️ <b>Item restored</b>\nItem: {item}\nNew ID: <code>{item_id}</code>",
+    "notif_restore_fail": "♻️❌ <b>Failed to restore item</b>\nItem: {item}\nError: {error}",
     "notif_restore_premium_fallback": (
-        "♻️⚠️ Item \"{item}\" restored for free (new ID: <code>{item_id}</code>). "
+        "♻️⚠️ <b>Item restored for free</b>\n"
+        "Item: {item}\nNew ID: <code>{item_id}</code>\n"
         "Premium status was not paid: {reason}."
     ),
     "notif_blacklist_deal": "🚫 <b>Deal with a blacklisted buyer!</b>\nBuyer: {buyer}\nItem: {item}\nPlease check the deal manually.",
+    "notif_update_available": (
+        "🆕 <b>Cardinal update available</b>\n"
+        "Installed: <code>{current}</code>\nOn GitHub: <code>{latest}</code>\n\n"
+        "Install: /menu → ⚙️ System → ⬇️ Update from GitHub"
+    ),
+    "notif_update_installed": "🆕 <b>Update installed</b>\n{message}\n\n🔁 Restarting…",
+    "notif_session_expired": (
+        "🔑 <b>Playerok session expired</b>\n"
+        "Reason: <code>{cause}</code>\n\n"
+        "The bot is no longer authorized on Playerok. Copy a fresh token from your browser and "
+        "send the new token (or the full cookies string) <b>as a reply to this message</b>, "
+        "or via the <code>/token &lt;value&gt;</code> command."
+    ),
+    "notif_poll_stalled": (
+        "⏳ <b>Playerok polling is down</b>\n"
+        "No successful polls for more than {minutes} min — new deals and messages "
+        "are not being tracked. Check the network/proxy and account cookies."
+    ),
+    "notif_poll_recovered": "✅ Playerok polling is working again.",
+    "session_token_usage": (
+        "Usage: <code>/token &lt;value&gt;</code> — a new token (eyJ...) "
+        "or the full cookies string of the Playerok account."
+    ),
+    "session_updated": "✅ Session updated, authorized as <b>{username}</b>.",
+    "session_update_failed": (
+        "❌ Failed to update the session: {error}\n"
+        "The old cookies were restored, the config was not changed."
+    ),
     "reply_sent": "✅ Sent to the Playerok chat.",
     "reply_failed": "❌ Failed to send: {error}",
     "reply_unknown": "Not sure where to send this: reply to a message notification.",
@@ -196,8 +257,10 @@ STRINGS = {
     "sys_btn_restart_yes": "Yes, restart",
     "sys_restart_done": "🔁 Restarting… The panel will be back in a few seconds (/menu).",
     "sys_btn_shutdown": "🛑 Shut down Cardinal",
-    "sys_logs_title": "Last log lines:",
+    "sys_logs_title": "📄 <b>Logs</b> — last lines:",
     "sys_logs_empty": "Log file is empty or not created yet.",
+    "sys_btn_logfile": "⬇️ Download log file",
+    "sys_logfile_caption": "📄 Full Cardinal log file.",
     "sys_reloaded": "🔄 Configs reloaded: {details}",
     "sys_shutdown_confirm": "Really shut down Cardinal? You can only start it again from the server.",
     "sys_btn_shutdown_yes": "Yes, shut down",

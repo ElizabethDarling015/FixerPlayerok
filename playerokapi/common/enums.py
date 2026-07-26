@@ -50,6 +50,8 @@ class EventTypes(Enum):
     """Создан новый лот (WS-подписка `itemCreated`)."""
     CHAT_CREATED = 16
     """Создан новый чат (WS-подписка `chatCreated`)."""
+    SESSION_EXPIRED = 17
+    """Сессия аккаунта мертва (протухшие/невалидные cookies) — поллинг больше не авторизован."""
 
 
 class Hooks(Enum):

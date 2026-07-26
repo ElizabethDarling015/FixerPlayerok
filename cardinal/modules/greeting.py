@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sqlite3
 import threading
@@ -19,7 +20,9 @@ from loguru import logger
 
 from playerokapi.common.enums import EventTypes
 
+from ..stats_store import ACTION_GREETING
 from .base import BaseModule
+from .humanize import sleep_before_reply
 
 DB_FILE = os.path.join("storage", "greeting.sqlite3")
 
@@ -123,8 +126,14 @@ class GreetingModule(BaseModule):
 
         username = message.user.username or "?"
         logger.info("Приветствуем нового собеседника {} (чат {})", username, event.chat.id)
-        await asyncio.to_thread(account.send_message, event.chat.id,
-                                self.format_greeting(username, event.chat.id))
+        greeting_text = self.format_greeting(username, event.chat.id)
+        # «Человеческая» пауза перед приветствием — мгновенный ответ выдаёт автоматизацию.
+        await sleep_before_reply(getattr(self.cardinal.settings, "humanize", None), greeting_text)
+        await asyncio.to_thread(account.send_message, event.chat.id, greeting_text)
+        stats = getattr(self.cardinal, "stats", None)
+        if stats is not None:
+            with contextlib.suppress(Exception):
+                stats.record(ACTION_GREETING)
 
     async def on_stop(self) -> None:
         with self._lock:

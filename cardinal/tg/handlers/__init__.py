@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from . import autodelivery, autoresponse, blacklist_panel, menu, notifications, plugins_panel, replies, stats, system
+from . import autodelivery, autoresponse, blacklist_panel, menu, notifications, plugins_panel, replies, session, stats, system
 
 
 def setup_routers(dispatcher: Dispatcher) -> None:
@@ -16,4 +16,7 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     dispatcher.include_router(stats.router)
     dispatcher.include_router(system.router)
     dispatcher.include_router(plugins_panel.router)
+    # session — до replies: его reply-хендлер отфильтрован по уведомлениям о сессии,
+    # все прочие reply достаются catch-all роутеру replies.
+    dispatcher.include_router(session.router)
     dispatcher.include_router(replies.router)

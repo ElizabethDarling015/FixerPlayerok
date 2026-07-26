@@ -82,7 +82,7 @@ class Account:
 
     def __init__(self, cookies: str | dict, user_agent: str | None = None, requests_timeout: int = 15,
                  proxy: str | None = None, max_requests_retries: int = 3, backoff_factor: float = 0.5):
-        self.cookies: dict = parse_cookies_string(cookies) if isinstance(cookies, str) else dict(cookies)
+        self.cookies: dict = self._normalize_cookies(cookies)
         self.user_agent: str = user_agent or (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -113,6 +113,31 @@ class Account:
     # Низкоуровневая отправка запросов
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_cookies(cookies: str | dict) -> dict:
+        """
+        Приводит cookies к словарю `{имя: значение}` (общий парсинг для `__init__` и
+        `update_cookies`). Строка может быть как полной строкой cookies (`"token=...; __ddg5_=..."`),
+        так и голым значением токена (обычно JWT `eyJ...`) — тогда она оборачивается в `token=<...>`.
+        """
+        if not isinstance(cookies, str):
+            return dict(cookies)
+        raw = cookies.strip()
+        if raw and "=" not in raw and ";" not in raw:
+            raw = f"token={raw}"
+        return parse_cookies_string(raw)
+
+    def update_cookies(self, cookies: str | dict) -> None:
+        """
+        Заменяет cookies существующего аккаунта (например, после протухания token) — тем же
+        парсингом, что и в `__init__`. Уже отправленные запросы не трогает; следующие запросы
+        (включая переподключение WS `Runner`) уйдут с новыми cookies. Для проверки новой сессии
+        вызовите `get()`.
+
+        :param cookies: Строка cookies, голое значение token или словарь `{имя: значение}`.
+        """
+        self.cookies = self._normalize_cookies(cookies)
+
     def _get_session(self) -> curl_requests.Session:
         if self._session is None:
             self._session = curl_requests.Session(impersonate="chrome124")
@@ -135,7 +160,8 @@ class Account:
         :param files: Словарь файлов для multipart-запроса (ключ — имя поля формы).
         :param idempotent: Можно ли безопасно повторять запрос при неоднозначных ошибках (сеть/5xx/
             антибот). Для мутаций (отправка сообщений, оплата и т.п.) передавайте `False` — иначе
-            повтор после фактически доставленного запроса может привести к дублям.
+            повтор после фактически доставленного запроса может привести к дублям. HTTP 429
+            (rate limit) повторяется в любом случае: такой запрос сервер отклонил до обработки.
         :raises BotCheckDetectedException: Сработала антибот-защита сайта (после исчерпания повторных попыток).
         :raises RequestFailedError: Код ответа сервера не равен 200 (для 4xx — сразу, без повторных попыток).
         :raises PersistedQueryNotFoundError: Сервер не узнал хэш persisted-запроса (устарел, см. README).
@@ -167,9 +193,11 @@ class Account:
         session = self._get_session()
         last_error: Exception | None = None
 
-        # Неидемпотентные запросы (мутации) не повторяем автоматически: после сетевой ошибки
-        # или 5xx нельзя знать, был ли запрос уже обработан сервером, а повтор породит дубли.
-        max_attempts = self.max_requests_retries if idempotent else 1
+        # Неидемпотентные запросы (мутации) не повторяем после неоднозначных ошибок (сеть, 5xx,
+        # антибот): нельзя знать, был ли запрос уже обработан сервером, а повтор породит дубли.
+        # Исключение — HTTP 429 (rate limit): такой запрос сервер отклонил до обработки,
+        # поэтому его повтор безопасен даже для мутаций.
+        max_attempts = max(self.max_requests_retries, 1)
 
         for attempt in range(max_attempts):
             is_last_attempt = attempt == max_attempts - 1
@@ -185,8 +213,14 @@ class Account:
                         response = session.get(url, **kwargs)
                     else:
                         if files:
-                            kwargs["data"] = payload
-                            kwargs["files"] = files
+                            multipart = self._build_multipart(files, form_fields=payload)
+                            if multipart is not None:
+                                # Поля формы уже внутри multipart (порядок по спецификации
+                                # graphql-multipart-request-spec: operations → map → файлы).
+                                kwargs["multipart"] = multipart
+                            else:
+                                kwargs["data"] = payload
+                                kwargs["files"] = files
                         else:
                             kwargs["json"] = payload
                         response = session.post(url, **kwargs)
@@ -194,7 +228,7 @@ class Account:
                 last_error = exc
                 logger.warning("[%s] Сетевая ошибка (попытка %d/%d): %s", operation_name, attempt + 1,
                                max_attempts, exc)
-                if is_last_attempt:
+                if is_last_attempt or not idempotent:
                     raise RequestSendingError(url, str(last_error)) from exc
                 self._sleep_before_retry(attempt)
                 continue
@@ -208,7 +242,7 @@ class Account:
             if any(sig in response_text for sig in _BOT_CHECK_SIGNATURES):
                 logger.warning("[%s] Обнаружена антибот-проверка (попытка %d/%d)", operation_name, attempt + 1,
                                max_attempts)
-                if is_last_attempt:
+                if is_last_attempt or not idempotent:
                     raise BotCheckDetectedException()
                 self._sleep_before_retry(attempt)
                 continue
@@ -218,8 +252,18 @@ class Account:
             except Exception:
                 response_json = None
 
+            if response.status_code == 429 and not is_last_attempt:
+                # Rate limit: сервер отклонил запрос до обработки — повторяем (в т.ч. мутации),
+                # уважая Retry-After, если он прислан.
+                retry_after = self._retry_after_seconds(response)
+                logger.warning("[%s] Сервер вернул 429 (попытка %d/%d) — повтор через %s",
+                               operation_name, attempt + 1, max_attempts,
+                               f"{retry_after:g} с" if retry_after else "backoff")
+                self._sleep_before_retry(attempt, retry_after=retry_after)
+                continue
+
             if response.status_code != 200:
-                if response.status_code >= 500 and not is_last_attempt:
+                if response.status_code >= 500 and idempotent and not is_last_attempt:
                     logger.warning("[%s] Сервер вернул %d (попытка %d/%d) — повтор", operation_name,
                                    response.status_code, attempt + 1, max_attempts)
                     self._sleep_before_retry(attempt)
@@ -256,8 +300,49 @@ class Account:
 
         raise RequestSendingError(url, str(last_error))
 
-    def _sleep_before_retry(self, attempt: int) -> None:
-        delay = self.backoff_factor * (2 ** attempt)
+    @staticmethod
+    def _build_multipart(files: dict, form_fields: dict | None = None):
+        """
+        Собирает `CurlMime` для загрузки файлов: curl_cffi >= 0.10 убрал параметр `files=`
+        в пользу `multipart=`. На старых версиях (без `CurlMime`) возвращает `None` —
+        тогда `request()` использует прежний `files=`.
+
+        Поля формы (`operations`, `map`) добавляются в multipart ПЕРЕД файлами: сервер Playerok
+        требует порядок по graphql-multipart-request-spec («files should follow 'map'»).
+
+        :param files: Словарь `{имя_поля: (имя_файла, файловый_объект, content_type)}`.
+        :param form_fields: Обычные текстовые поля формы, идущие до файлов.
+        """
+        try:
+            from curl_cffi import CurlMime
+        except ImportError:
+            return None
+        mime = CurlMime()
+        for name, value in (form_fields or {}).items():
+            mime.addpart(name=name, data=str(value).encode("utf-8"))
+        for name, (filename, fobj, content_type) in files.items():
+            # resolve_image_file отдаёт либо файловый объект (путь на диске), либо сырые байты.
+            data = fobj if isinstance(fobj, (bytes, bytearray)) else fobj.read()
+            mime.addpart(name=name, filename=filename, content_type=content_type, data=bytes(data))
+        return mime
+
+    #: Верхняя граница паузы по заголовку Retry-After, сек (защита от абсурдных значений сервера).
+    _MAX_RETRY_AFTER = 120.0
+
+    @staticmethod
+    def _retry_after_seconds(response) -> float | None:
+        """Читает заголовок Retry-After (секунды) из ответа; `None`, если его нет или он не число."""
+        try:
+            raw = response.headers.get("retry-after")
+            return float(raw) if raw else None
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _sleep_before_retry(self, attempt: int, retry_after: float | None = None) -> None:
+        if retry_after is not None and retry_after > 0:
+            delay = min(retry_after, self._MAX_RETRY_AFTER)
+        else:
+            delay = self.backoff_factor * (2 ** attempt)
         # Джиттер размазывает повторные попытки во времени, чтобы несколько потоков
         # не ретраили синхронно (и не выглядели как бот-волна).
         delay += random.uniform(0, self.backoff_factor)
@@ -366,6 +451,36 @@ class Account:
         if balance and self.profile:
             self.profile.balance = balance
         return balance
+
+    def has_enabled_notifications(self) -> bool | None:
+        """
+        Проверяет, включены ли у аккаунта уведомления сайта (запрос `viewerHasEnabledNotifications`).
+
+        Обновляет `profile.has_enabled_notifications`, если профиль уже загружен.
+
+        :return: `True`/`False` либо `None`, если сервер не вернул данных.
+        """
+        data = self._persisted_query("viewerHasEnabledNotifications", {})
+        value = (data.get("viewer") or {}).get("hasEnabledNotifications")
+        if self.profile is not None and value is not None:
+            self.profile.has_enabled_notifications = value
+        return value
+
+    def get_chat_auto_responses(self, count: int = 20, after_cursor: str | None = None,
+                                filter: dict | None = None) -> types.ChatAutoResponseList | None:
+        """
+        Получает автоответы встроенного автоответчика Playerok (вопрос → ответ).
+
+        :param count: Сколько автоответов запросить (размер страницы).
+        :param after_cursor: Курсор для пагинации.
+        :param filter: Фильтр `ChatAutoResponseFilter` (по умолчанию пустой — все автоответы).
+        :return: Страница списка автоответов.
+        """
+        variables: dict = {"pagination": {"first": count}, "filter": filter or {}}
+        if after_cursor:
+            variables["pagination"]["after"] = after_cursor
+        data = self._persisted_query("chatAutoResponses", variables)
+        return parser.chat_auto_response_list(data.get("chatAutoResponses"))
 
     def get_user(self, id: str | None = None, username: str | None = None) -> types.UserProfile | None:
         """
@@ -808,8 +923,9 @@ class Account:
         """
         Создаёт черновик лота (для публикации используйте `publish_item`).
 
-        :param game_id: ID игры/приложения.
-        :param category_id: ID категории игры.
+        :param game_id: ID игры/приложения. Оставлен для обратной совместимости: текущая схема
+            `CreateItemInput` больше не принимает `gameId` (игра определяется категорией).
+        :param category_id: ID категории игры (поле `gameCategoryId` в API).
         :param name: Название лота.
         :param price: Цена лота (в рублях).
         :param description: Описание лота.
@@ -820,7 +936,9 @@ class Account:
         :param comment: Комментарий продавца к лоту.
         :return: Созданный лот (черновик).
         """
-        input_data: dict = {"gameId": game_id, "categoryId": category_id, "name": name, "price": price,
+        # Живая схема CreateItemInput (июль 2026): обязательны gameCategoryId/name/price;
+        # старые поля gameId и categoryId сервером больше не определены.
+        input_data: dict = {"gameCategoryId": category_id, "name": name, "price": price,
                              "description": description}
         if obtaining_type_id:
             input_data["obtainingTypeId"] = obtaining_type_id

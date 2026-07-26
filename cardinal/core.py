@@ -24,9 +24,11 @@ from playerokapi.autodelivery import AutoDeliveryManager
 from playerokapi.autoraise import AutoRaiseManager
 from playerokapi.common.exceptions import RequestSendingError
 from playerokapi.plugins import PluginManager
+from playerokapi.updater.events import ItemPaidEvent, ItemRaisedEvent, SessionExpiredEvent
 from playerokapi.updater.runner import Runner
 
 from .localization import L10n
+from .stats_store import ACTION_DELIVERY, ACTION_RAISE, StatsStore
 from .settings import (
     AUTODELIVERY_CONFIG,
     AUTORESPONSE_CONFIG,
@@ -91,6 +93,9 @@ class Cardinal:
         self.autodelivery_config = load_autodelivery_config(AUTODELIVERY_CONFIG)
         self.blacklist_config = load_blacklist_config(BLACKLIST_CONFIG)
 
+        #: Счётчики «что бот сделал сам» (выдачи, поднятия, автоответы) — раздел «Статистика».
+        self.stats = StatsStore()
+
         self.modules: list[BaseModule] = []
         self.bot: Bot | None = None
         self.dispatcher: Dispatcher | None = None
@@ -104,6 +109,11 @@ class Cardinal:
 
         #: Выставляется `request_restart()`: после остановки main.py перезапустит процесс.
         self.restart_requested = False
+
+        # Состояние вахтёра опроса (heartbeat): предупреждение уже отправлено и не сброшено.
+        self._poll_stall_warned = False
+        # `time.monotonic()` старта вахтёра — точка отсчёта, пока не было ни одного успешного опроса.
+        self._poll_watch_started_at: float | None = None
 
     # ------------------------------------------------------------------
     # Вспомогательное
@@ -242,6 +252,7 @@ class Cardinal:
                                                name="cardinal-runner")
         self._runner_thread.start()
         self.spawn(self._consume_events())
+        self.spawn(self._poll_watchdog())
 
         logger.success("PlayerokCardinal запущен. Модули: {}", ", ".join(
             name for name in type(self.settings.modules).model_fields
@@ -270,6 +281,7 @@ class Cardinal:
         if self.bot is not None:
             with contextlib.suppress(Exception):
                 await self.bot.session.close()
+        self.stats.close()
         logger.info("PlayerokCardinal остановлен.")
 
     # ------------------------------------------------------------------
@@ -295,6 +307,17 @@ class Cardinal:
                     with contextlib.suppress(Exception):
                         await self.notifier.notify_error(f"{type(event).__name__}: {event}")
                 continue
+            if isinstance(event, SessionExpiredEvent):
+                # Смерть сессии — критичное служебное событие: отдельное уведомление
+                # с инструкцией по замене токена (модулям оно не нужно).
+                if self.notifier is not None:
+                    with contextlib.suppress(Exception):
+                        await self.notifier.notify_session_expired(event.cause)
+                continue
+            try:
+                self._record_bot_action(event)
+            except Exception:
+                logger.exception("Не удалось записать статистику по событию {}", type(event).__name__)
             for module in self.modules:
                 try:
                     await module.on_event(event)
@@ -306,6 +329,68 @@ class Cardinal:
                     await self.notifier.on_event(event)
                 except Exception:
                     logger.exception("Ошибка при отправке уведомления о событии {}", type(event).__name__)
+
+    def _record_bot_action(self, event) -> None:
+        """
+        Учитывает автоматическое действие бота в `StatsStore`.
+
+        Поднятие лота — по `ItemRaisedEvent`; выдача товара — по `ItemPaidEvent`, у которого
+        журнал выдач подтверждает отправку («sent») — тот же приём, что в `Notifier` (авто-выдача
+        выполняется Runner'ом до того, как событие дошло сюда). Автоответы и приветствия
+        записывают сами модули (константы `ACTION_AUTORESPONSE`/`ACTION_GREETING`).
+        """
+        if isinstance(event, ItemRaisedEvent):
+            self.stats.record(ACTION_RAISE)
+        elif isinstance(event, ItemPaidEvent):
+            deal = event.deal
+            manager = self.autodelivery_manager
+            if (deal is not None and manager is not None and manager.ledger is not None
+                    and manager.ledger.get_state(deal.id) == "sent"):
+                self.stats.record(ACTION_DELIVERY)
+
+    def check_poll_health(self, now: float) -> str | None:
+        """
+        Чистая проверка вахтёра опроса (без сна и уведомлений — удобно тестировать).
+
+        Сравнивает `now` (time.monotonic) с `runner.last_success_at` (либо со стартом вахтёра,
+        пока успешных опросов ещё не было) и порогом `[playerok] poll_warn_minutes`.
+
+        :return: `"stalled"` — пора предупредить (взводится флаг, повторно не вернётся до
+            восстановления); `"recovered"` — опрос ожил после предупреждения (флаг сброшен);
+            `None` — делать ничего не нужно (в т.ч. при `poll_warn_minutes = 0`).
+        """
+        warn_minutes = self.settings.playerok.poll_warn_minutes
+        if warn_minutes <= 0 or self.runner is None:
+            return None
+        last = self.runner.last_success_at
+        if last is None:
+            last = self._poll_watch_started_at if self._poll_watch_started_at is not None else now
+        stalled = (now - last) >= warn_minutes * 60
+        if stalled and not self._poll_stall_warned:
+            self._poll_stall_warned = True
+            return "stalled"
+        if not stalled and self._poll_stall_warned:
+            self._poll_stall_warned = False
+            return "recovered"
+        return None
+
+    async def _poll_watchdog(self) -> None:
+        """Вахтёр опроса Playerok: раз в 60 с проверяет `runner.last_success_at` (heartbeat)."""
+        self._poll_watch_started_at = time.monotonic()
+        while True:
+            await asyncio.sleep(60)
+            action = self.check_poll_health(time.monotonic())
+            if action is None or self.notifier is None:
+                continue
+            try:
+                if action == "stalled":
+                    await self.notifier.notify_poll_stalled(self.settings.playerok.poll_warn_minutes)
+                else:
+                    await self.notifier.notify_poll_recovered()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Не удалось отправить уведомление вахтёра опроса")
 
     async def _tg_polling(self) -> None:
         """Long-polling aiogram (отменяется при остановке Cardinal)."""

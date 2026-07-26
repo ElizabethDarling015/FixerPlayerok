@@ -8,8 +8,8 @@ STRINGS = {
     "btn_back": "◀️ Назад",
     "btn_home": "🏠 Главное меню",
     "btn_close": "✖️ Закрыть",
-    "cancelled": "Действие отменено.",
-    "btn_cancel": "Отмена",
+    "cancelled": "✖️ Действие отменено.",
+    "btn_cancel": "✖️ Отмена",
 
     # --- Главное меню ---
     "menu_title": (
@@ -34,6 +34,7 @@ STRINGS = {
     "module_greeting": "Приветствие",
     "module_online": "Вечный онлайн",
     "module_digest": "Сводка дня",
+    "module_autoupdate": "Проверка обновлений",
     "module_toggled_on": "Модуль «{module}» включён.",
     "module_toggled_off": "Модуль «{module}» выключен.",
 
@@ -49,10 +50,14 @@ STRINGS = {
 
     # --- Статистика ---
     "st_title": "📈 <b>Статистика продаж</b> (последние 7 дней):",
-    "st_line": "• {day}: <b>{count}</b> шт. на <b>{revenue}</b>",
+    "st_line": "<code>{day} {bar}</code> <b>{count}</b> шт. / <b>{revenue}</b>",
     "st_empty": "За последние 7 дней продаж не было.",
     "st_total_week": "Итого за 7 дней: <b>{count}</b> шт. на <b>{revenue}</b>",
     "st_total_month": "Итого за 30 дней: <b>{count}</b> шт. на <b>{revenue}</b>",
+    "st_bot_title": "🤖 <b>Работа бота</b> (сегодня / 7 дней / всего):",
+    "st_bot_delivered": "Выдано товаров: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
+    "st_bot_raised": "Поднятий лотов: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
+    "st_bot_responses": "Автоответов: <b>{today}</b> / <b>{week}</b> / <b>{total}</b>",
 
     # --- Авто-выдача ---
     "ad_title": "📦 <b>Авто-выдача</b>\n\nЛоты и остатки на складах:",
@@ -74,6 +79,12 @@ STRINGS = {
     "ad_btn_toggle_restore": "♻️ Восстановление: {state}",
     "ad_btn_toggle_deactivate": "🛑 Деактивация: {state}",
     "ad_btn_delete_lot": "🗑 Удалить лот",
+    "ad_delete_confirm": (
+        "🗑 <b>Удалить лот?</b>\n\n"
+        "Лот «{name}» будет убран из авто-выдачи.\n"
+        "Файл склада останется на диске."
+    ),
+    "ad_btn_delete_yes": "🗑 Да, удалить",
     "ad_enter_lot_name": "Отправьте <b>точное название лота</b> (как на Playerok):",
     "ad_enter_stock_file": "Отправьте путь к файлу-складу (например <code>storage/stock/my_lot.txt</code>) или «-», чтобы создать его автоматически:",
     "ad_lot_added": "✅ Лот «{name}» добавлен. Склад: <code>{stock_file}</code>",
@@ -85,6 +96,15 @@ STRINGS = {
     ),
     "ad_stock_added": "✅ Добавлено позиций: <b>{count}</b>. Теперь на складе: <b>{stock}</b>.",
     "ad_lot_missing": "Лот не найден (возможно, конфиг изменился). Откройте раздел заново.",
+    "ad_btn_delivery_text": "✏️ Текст выдачи",
+    "ad_enter_delivery_text": (
+        "Пришлите новый текст сообщения с выдачей товара.\n"
+        "Плейсхолдер <code>{{item}}</code> (обязателен) — выданная позиция со склада.\n\n"
+        "Текущий текст:\n<code>{current}</code>"
+    ),
+    # Вызывается без kwargs — str.format не применяется, поэтому {item} здесь литерален.
+    "ad_text_needs_item": "⚠️ В тексте нет <code>{item}</code> — без него покупатель не получит товар. Пришлите текст ещё раз.",
+    "ad_delivery_text_saved": "✅ Текст выдачи сохранён.",
 
     # --- Автоответчик ---
     "ar_title": "💬 <b>Автоответчик</b>\n\nКоманды:",
@@ -110,6 +130,8 @@ STRINGS = {
     "bl_added": "🚫 <code>{username}</code> добавлен в чёрный список.",
     "bl_already": "<code>{username}</code> уже в чёрном списке.",
     "bl_removed": "✅ {username} убран из чёрного списка.",
+    "bl_delete_confirm": "🚫 <b>Убрать из чёрного списка?</b>\n\nНик: <code>{username}</code>",
+    "bl_btn_delete_yes": "✅ Да, убрать",
     "bl_missing": "Ник не найден (возможно, список изменился). Откройте раздел заново.",
 
     # --- Сводка дня ---
@@ -140,6 +162,10 @@ STRINGS = {
     "nt_errors": "Ошибки",
     "nt_stock_empty": "Пустой склад",
     "nt_blacklist": "Сделки с ЧС",
+    "nt_restore": "Восстановление лотов",
+    "nt_updates": "Обновления Cardinal",
+    "nt_btn_all_on": "🟢 Включить все",
+    "nt_btn_all_off": "🔴 Выключить все",
 
     # --- Тексты уведомлений ---
     "notif_started": (
@@ -154,20 +180,55 @@ STRINGS = {
     "notif_new_message": "✉️ <b>{username}</b> (чат <code>{chat_id}</code>):\n{text}\n\n<i>Ответьте на это сообщение, чтобы написать в чат Playerok.</i>",
     "notif_new_review": "⭐ <b>Новый отзыв</b> ({rating}/5) от {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Проблема в сделке</b>\nЛот: {item}\nСделка: <code>{deal_id}</code>",
-    "notif_deal_problem_resolved": "✅ Проблема в сделке <code>{deal_id}</code> решена.",
+    "notif_deal_problem_resolved": "✅ <b>Проблема решена</b>\nСделка: <code>{deal_id}</code>",
     "notif_deal_confirmed": "🤝 <b>Сделка подтверждена</b>\nЛот: {item}",
     "notif_deal_rolled_back": "↩️ <b>Сделка возвращена</b>\nЛот: {item}",
-    "notif_item_raised": "📈 Лот «{item}» поднят (потрачено {spent}).",
-    "notif_insufficient_balance": "💸 Не хватило баланса, чтобы поднять «{item}»: нужно {price}, доступно {available}.",
-    "notif_error": "🚨 <b>Ошибка Cardinal</b>:\n<code>{error}</code>",
-    "notif_stock_empty": "📭 Склад лота «{item}» пуст! Пополните склад, чтобы авто-выдача продолжила работать.",
-    "notif_restore_ok": "♻️ Лот «{item}» восстановлен после продажи (новый ID: <code>{item_id}</code>).",
-    "notif_restore_fail": "♻️❌ Не удалось восстановить лот «{item}»: {error}",
+    "notif_item_raised": "📈 <b>Лот поднят</b>\nЛот: {item}\nПотрачено: {spent}",
+    "notif_insufficient_balance": (
+        "💸 <b>Не хватило баланса для поднятия</b>\n"
+        "Лот: {item}\nНужно: {price}\nДоступно: {available}"
+    ),
+    "notif_error": "🚨 <b>Ошибка Cardinal</b>\n<code>{error}</code>",
+    "notif_stock_empty": (
+        "📭 <b>Склад пуст</b>\nЛот: {item}\n"
+        "Пополните склад, чтобы авто-выдача продолжила работать."
+    ),
+    "notif_restore_ok": "♻️ <b>Лот восстановлен</b>\nЛот: {item}\nНовый ID: <code>{item_id}</code>",
+    "notif_restore_fail": "♻️❌ <b>Не удалось восстановить лот</b>\nЛот: {item}\nОшибка: {error}",
     "notif_restore_premium_fallback": (
-        "♻️⚠️ Лот «{item}» восстановлен бесплатно (новый ID: <code>{item_id}</code>). "
+        "♻️⚠️ <b>Лот восстановлен бесплатно</b>\n"
+        "Лот: {item}\nНовый ID: <code>{item_id}</code>\n"
         "Премиум-статус не оплатился: {reason}."
     ),
     "notif_blacklist_deal": "🚫 <b>Сделка с покупателем из чёрного списка!</b>\nПокупатель: {buyer}\nЛот: {item}\nПроверьте сделку вручную.",
+    "notif_update_available": (
+        "🆕 <b>Доступно обновление Cardinal</b>\n"
+        "Установлено: <code>{current}</code>\nНа GitHub: <code>{latest}</code>\n\n"
+        "Установить: /menu → ⚙️ Система → ⬇️ Обновить с GitHub"
+    ),
+    "notif_update_installed": "🆕 <b>Обновление установлено</b>\n{message}\n\n🔁 Перезапускаюсь…",
+    "notif_session_expired": (
+        "🔑 <b>Сессия Playerok истекла</b>\n"
+        "Причина: <code>{cause}</code>\n\n"
+        "Бот больше не авторизован на Playerok. Скопируйте свежий token из браузера и "
+        "отправьте новый token (или полную строку cookies) <b>ответом на это сообщение</b>, "
+        "либо командой <code>/token &lt;значение&gt;</code>."
+    ),
+    "notif_poll_stalled": (
+        "⏳ <b>Опрос Playerok не работает</b>\n"
+        "Успешных опросов не было дольше {minutes} мин. — новые сделки и сообщения "
+        "не отслеживаются. Проверьте сеть/прокси и cookies аккаунта."
+    ),
+    "notif_poll_recovered": "✅ Опрос Playerok снова работает.",
+    "session_token_usage": (
+        "Использование: <code>/token &lt;значение&gt;</code> — новый token (eyJ...) "
+        "или полная строка cookies аккаунта Playerok."
+    ),
+    "session_updated": "✅ Сессия обновлена, авторизованы как <b>{username}</b>.",
+    "session_update_failed": (
+        "❌ Не удалось обновить сессию: {error}\n"
+        "Старые cookies возвращены на место, конфиг не изменён."
+    ),
     "reply_sent": "✅ Отправлено в чат Playerok.",
     "reply_failed": "❌ Не удалось отправить: {error}",
     "reply_unknown": "Не понимаю, куда отправить: ответьте на уведомление о сообщении.",
@@ -196,8 +257,10 @@ STRINGS = {
     "sys_btn_restart_yes": "Да, перезапустить",
     "sys_restart_done": "🔁 Перезапускаюсь… Панель вернётся через несколько секунд (/menu).",
     "sys_btn_shutdown": "🛑 Выключить Cardinal",
-    "sys_logs_title": "Последние строки лога:",
+    "sys_logs_title": "📄 <b>Логи</b> — последние строки:",
     "sys_logs_empty": "Файл лога пуст или ещё не создан.",
+    "sys_btn_logfile": "⬇️ Скачать файл лога",
+    "sys_logfile_caption": "📄 Полный файл лога Cardinal.",
     "sys_reloaded": "🔄 Конфиги перезагружены: {details}",
     "sys_shutdown_confirm": "Точно выключить Cardinal? Запустить обратно можно только с сервера.",
     "sys_btn_shutdown_yes": "Да, выключить",

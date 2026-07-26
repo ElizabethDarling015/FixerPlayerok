@@ -29,6 +29,9 @@ class Notifier:
         self.admins = admins
         #: (tg_chat_id, tg_message_id) -> id чата Playerok — для ответов reply'ем из TG.
         self.reply_map: dict[tuple[int, int], str] = {}
+        #: (tg_chat_id, tg_message_id) уведомлений о протухшей сессии — reply на них
+        #: воспринимается как новый token/cookies (см. `handlers/session.py`).
+        self.session_expired_messages: set[tuple[int, int]] = set()
 
     @property
     def _toggles(self):
@@ -190,23 +193,64 @@ class Notifier:
         if self._toggles.errors:
             await self._send_all(self.cardinal.l10n("notif_error", error=_esc(error_text)))
 
+    async def notify_session_expired(self, cause: str) -> None:
+        """
+        Сессия Playerok мертва: шлём всем админам инструкцию по замене токена.
+
+        Без переключателя — без живой сессии бот бесполезен, молчать тут нельзя. Отправленные
+        сообщения запоминаются в `session_expired_messages`, чтобы reply на них распознавался
+        как новый token (см. `handlers/session.py`).
+        """
+        text = self.cardinal.l10n("notif_session_expired", cause=_esc(cause))
+        for admin_id in self.admins.all_ids:
+            try:
+                sent = await self.bot.send_message(admin_id, text)
+            except Exception:
+                logger.exception("Не удалось отправить уведомление о протухшей сессии админу {}", admin_id)
+                continue
+            self.session_expired_messages.add((sent.chat.id, sent.message_id))
+
+    async def notify_poll_stalled(self, minutes: int) -> None:
+        """Опрос Playerok молча заглох (heartbeat): успешных опросов не было дольше `minutes` минут."""
+        if self._toggles.errors:
+            await self._send_all(self.cardinal.l10n("notif_poll_stalled", minutes=_esc(minutes)))
+
+    async def notify_poll_recovered(self) -> None:
+        """Опрос Playerok снова работает (после предупреждения `notify_poll_stalled`)."""
+        if self._toggles.errors:
+            await self._send_all(self.cardinal.l10n("notif_poll_recovered"))
+
     async def notify_stock_empty(self, item_name: str) -> None:
         if self._toggles.stock_empty:
             await self._send_all(self.cardinal.l10n("notif_stock_empty", item=_esc(item_name)))
 
+    async def notify_update_available(self, current: str, latest: str) -> None:
+        """Найдена новая версия на GitHub (модуль autoupdate, без автоустановки)."""
+        if self._toggles.updates:
+            await self._send_all(self.cardinal.l10n(
+                "notif_update_available", current=_esc(current or "?"), latest=_esc(latest or "?")))
+
+    async def notify_update_installed(self, message: str) -> None:
+        """Обновление установлено автоматически — Cardinal сейчас перезапустится."""
+        if self._toggles.updates:
+            await self._send_all(self.cardinal.l10n("notif_update_installed", message=_esc(message)))
+
     async def notify_restore_ok(self, item_name: str, new_item_id: str) -> None:
-        await self._send_all(self.cardinal.l10n("notif_restore_ok", item=_esc(item_name),
-                                                item_id=_esc(new_item_id)))
+        if self._toggles.restore:
+            await self._send_all(self.cardinal.l10n("notif_restore_ok", item=_esc(item_name),
+                                                    item_id=_esc(new_item_id)))
 
     async def notify_restore_failed(self, item_name: str, error_text: str) -> None:
-        await self._send_all(self.cardinal.l10n("notif_restore_fail", item=_esc(item_name),
-                                                error=_esc(error_text)))
+        if self._toggles.restore:
+            await self._send_all(self.cardinal.l10n("notif_restore_fail", item=_esc(item_name),
+                                                    error=_esc(error_text)))
 
     async def notify_restore_premium_fallback(self, item_name: str, new_item_id: str,
                                               reason: str) -> None:
-        await self._send_all(self.cardinal.l10n(
-            "notif_restore_premium_fallback",
-            item=_esc(item_name),
-            item_id=_esc(new_item_id),
-            reason=_esc(reason or "неизвестная причина"),
-        ))
+        if self._toggles.restore:
+            await self._send_all(self.cardinal.l10n(
+                "notif_restore_premium_fallback",
+                item=_esc(item_name),
+                item_id=_esc(new_item_id),
+                reason=_esc(reason or "неизвестная причина"),
+            ))

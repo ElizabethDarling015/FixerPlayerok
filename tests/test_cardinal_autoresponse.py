@@ -7,6 +7,9 @@ from cardinal_helpers import make_cardinal, make_chat, make_chat_message
 
 def make_module(commands: dict[str, str]) -> tuple[AutoResponseModule, object]:
     cardinal = make_cardinal()
+    # «Человеческая» задержка перед ответом выключена — тесты не должны реально спать.
+    cardinal.settings.humanize.reply_delay_min = 0.0
+    cardinal.settings.humanize.reply_delay_max = 0.0
     cardinal.autoresponse_config.commands = commands
     return AutoResponseModule(cardinal), cardinal
 

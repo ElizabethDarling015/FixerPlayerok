@@ -16,7 +16,7 @@ import os
 import tomllib
 from typing import TypeVar
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, TomlConfigSettingsSource
 
 from .toml_utils import write_toml
@@ -45,6 +45,9 @@ class PlayerokSettings(BaseModel):
     #: Таймаут HTTP-запросов к Playerok, сек. Медленным прокси может не хватать
     #: стандартных 15 — тогда в логе curl: (28) Connection timed out.
     requests_timeout: float = Field(default=30.0, gt=0)
+    #: Heartbeat: через сколько минут без единого успешного опроса предупредить в TG
+    #: (0 — предупреждение выключено).
+    poll_warn_minutes: int = Field(default=10, ge=0)
 
     @field_validator("cookies")
     @classmethod
@@ -71,6 +74,7 @@ class ModulesSettings(BaseModel):
     greeting: bool = False
     online: bool = True
     digest: bool = True
+    autoupdate: bool = True
 
 
 class AutoRaiseSettings(BaseModel):
@@ -129,6 +133,35 @@ class DigestSettings(BaseModel):
         return value
 
 
+class HumanizeSettings(BaseModel):
+    """
+    Секция `[humanize]` — «человеческое» поведение бота.
+
+    Задержка перед автоответами (автоответчик, приветствие) — случайная, в пределах
+    `[reply_delay_min, reply_delay_max]` секунд, растёт с длиной отправляемого текста:
+    мгновенные ответы в любое время суток выдают автоматизацию. `0`/`0` — задержка выключена.
+    На авто-выдачу товара не влияет — оплаченный товар выдаётся мгновенно.
+    """
+
+    reply_delay_min: float = Field(default=2.0, ge=0)
+    reply_delay_max: float = Field(default=8.0, ge=0)
+
+    @model_validator(mode="after")
+    def _max_not_less_than_min(self) -> "HumanizeSettings":
+        if self.reply_delay_max < self.reply_delay_min:
+            raise ValueError("reply_delay_max не может быть меньше reply_delay_min")
+        return self
+
+
+class UpdatesSettings(BaseModel):
+    """Секция `[updates]` — автопроверка обновлений с GitHub (модуль autoupdate)."""
+
+    #: Интервал проверки, сек (по умолчанию — раз в 6 часов).
+    check_interval: float = Field(default=6 * 60 * 60, gt=0)
+    #: Устанавливать обновления автоматически (с перезапуском) — иначе только уведомление.
+    auto_install: bool = False
+
+
 class NotificationsSettings(BaseModel):
     """Секция `[notifications]` — какие уведомления слать в Telegram."""
 
@@ -145,6 +178,8 @@ class NotificationsSettings(BaseModel):
     errors: bool = True
     stock_empty: bool = True
     blacklist: bool = True
+    restore: bool = True
+    updates: bool = True
 
 
 class MainSettings(BaseSettings):
@@ -161,6 +196,8 @@ class MainSettings(BaseSettings):
     greeting: GreetingSettings = GreetingSettings()
     online: OnlineSettings = OnlineSettings()
     digest: DigestSettings = DigestSettings()
+    humanize: HumanizeSettings = HumanizeSettings()
+    updates: UpdatesSettings = UpdatesSettings()
     notifications: NotificationsSettings = NotificationsSettings()
 
     @field_validator("language")

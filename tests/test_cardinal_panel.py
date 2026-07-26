@@ -73,6 +73,31 @@ def test_lots_list_paginates():
     assert f"ad:lot:{PAGE_SIZE}" in callbacks and "ad:lot:0" not in callbacks
 
 
+def test_lots_list_has_delivery_text_button():
+    cardinal = make_cardinal()
+    _, markup = build_lots_list(cardinal)
+    assert "ad:text" in all_callback_data(markup)
+
+
+def test_sales_bar_scales_and_clamps():
+    from cardinal.tg.handlers.stats import sales_bar
+
+    assert sales_bar(0, 0) == "▱" * 8
+    assert sales_bar(4, 4) == "▰" * 8
+    half = sales_bar(2, 4)
+    assert half.count("▰") == 4 and len(half) == 8
+    # Даже одна продажа видна на графике.
+    assert sales_bar(1, 100).count("▰") == 1
+
+
+def test_notifications_menu_has_bulk_buttons_and_restore():
+    cardinal = make_cardinal()
+    _, markup = build_notifications_menu(cardinal)
+    callbacks = all_callback_data(markup)
+    assert "nt:all:1" in callbacks and "nt:all:0" in callbacks  # «включить/выключить все»
+    assert "nt:t:restore" in callbacks  # тумблер уведомлений автовосстановления
+
+
 def test_module_names_match_settings_fields():
     cardinal = make_cardinal()
     for name in MODULE_NAMES:
@@ -184,10 +209,40 @@ def test_stats_view_totals():
     view = build_stats_view(cardinal)
     assert view is not None
     text, markup = view
-    assert today in text
+    # День отображается как ДД.ММ (например 26.07), а не ISO.
+    assert f"{today[8:10]}.{today[5:7]}" in text
     assert "2" in text and "300.00" in text  # неделя
     assert "400.00" in text  # месяц: 300 + 100
     assert "menu" in all_callback_data(markup)
+
+
+def test_stats_view_bot_work_block(tmp_path):
+    from cardinal.stats_store import (
+        ACTION_AUTORESPONSE,
+        ACTION_DELIVERY,
+        ACTION_GREETING,
+        ACTION_RAISE,
+        StatsStore,
+    )
+    from cardinal.tg.handlers.stats import build_stats_view
+
+    cardinal = make_cardinal()
+    cardinal.modules = [SimpleNamespace(name="digest", get_last_days=lambda days: [])]
+    store = StatsStore(str(tmp_path / "stats.sqlite"))
+    for _ in range(3):
+        store.record(ACTION_DELIVERY)
+    store.record(ACTION_RAISE)
+    store.record(ACTION_AUTORESPONSE)
+    store.record(ACTION_GREETING)
+    cardinal.stats = store
+
+    text, _ = build_stats_view(cardinal)
+    l10n = cardinal.l10n
+    assert l10n("st_bot_title") in text
+    assert l10n("st_bot_delivered", today=3, week=3, total=3) in text
+    assert l10n("st_bot_raised", today=1, week=1, total=1) in text
+    # Автоответы и приветствия показываются одной суммой.
+    assert l10n("st_bot_responses", today=2, week=2, total=2) in text
 
 
 def test_locales_have_same_keys():

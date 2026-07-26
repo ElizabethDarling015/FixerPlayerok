@@ -12,7 +12,7 @@
 ![status](https://img.shields.io/badge/status-beta-orange)
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
-
+![downloads](https://img.shields.io/github/downloads/scwee/PlayerokCardinal/total)
 ![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
 
 ![PLAYEROK](https://img.shields.io/badge/PLAYEROK-BOT-brightgreen?style=for-the-badge)
@@ -75,7 +75,11 @@
 - Переменные в текстах автоответа / приветствия / выдачи.
 - Плагины без правки кода бота (папка `plugins/`).
 - Бэкап конфигов и данных zip-архивом из Telegram.
+- Автопроверка обновлений: уведомление в Telegram о новой версии на GitHub
+  или полная автоустановка с перезапуском (`[updates] auto_install`).
 - Автозапуск через systemd (`./cardinal.sh --service`, Linux).
+- Статус и логи одной командой: `./cardinal.sh --status`, `./cardinal.sh --logs`,
+  обновление кода — `./cardinal.sh --upgrade`.
 
 ## Преимущества
 

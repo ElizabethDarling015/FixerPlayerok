@@ -10,6 +10,9 @@ from cardinal_helpers import make_cardinal, make_chat, make_chat_message
 def make_module(tmp_path, cardinal=None) -> tuple[GreetingModule, object]:
     cardinal = cardinal or make_cardinal()
     cardinal.settings.modules.greeting = True
+    # «Человеческая» задержка перед приветствием выключена — тесты не должны реально спать.
+    cardinal.settings.humanize.reply_delay_min = 0.0
+    cardinal.settings.humanize.reply_delay_max = 0.0
     module = GreetingModule(cardinal, db_path=str(tmp_path / "greeting.sqlite3"))
     return module, cardinal
 

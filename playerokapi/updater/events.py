@@ -197,3 +197,18 @@ class ChatCreatedEvent(BaseEvent):
     def __init__(self, runner, chat: types.Chat):
         super().__init__(EventTypes.CHAT_CREATED, runner)
         self.chat: types.Chat = chat
+
+
+class SessionExpiredEvent(BaseEvent):
+    """
+    Сессия аккаунта мертва: cookies протухли или отозваны, поллинг больше не авторизован.
+
+    Эмитится `Runner` не более одного раза на «смерть» сессии (см. вахдог в `runner.py`);
+    после первого же успешного опроса детектор взводится заново, так что повторная смерть
+    породит новое событие.
+    """
+
+    def __init__(self, runner, cause: str):
+        super().__init__(EventTypes.SESSION_EXPIRED, runner)
+        self.cause: str = cause
+        """Краткое описание причины (текст исходной ошибки: код HTTP, код GraphQL и т.п.)."""
