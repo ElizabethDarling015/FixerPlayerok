@@ -1,0 +1,44 @@
+# Секреты
+.env
+.env.local
+.env.production
+!.env.example
+configs/*.toml
+
+# База данных
+bot.db
+*.db
+*.sqlite
+*.sqlite3
+storage/
+
+# Бэкапы
+backups/
+
+# Логи
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+
+# Виртуальные окружения
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Специфичные файлы проекта и локальные копии
+graphql_collected.json
+Fixer Playerok/
