@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import html
+import json
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from ...settings import save_main_settings
+from ...settings import save_main_settings, STORAGE_DIR
 from .common import cancel_markup, nav_row, on_off, safe_edit
 
 router = Router(name="menu")
@@ -18,9 +20,39 @@ router = Router(name="menu")
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
 MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online", "digest")
 
+#: Файл-флаг: каким чатам уже установили reply-клавиатуру (чтобы не переотправлять и не разворачивать).
+_KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
+
 
 class EditGreeting(StatesGroup):
     text = State()
+
+
+def _kb_installed(chat_id: int) -> bool:
+    try:
+        return chat_id in json.loads(_KB_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+
+def _mark_kb_installed(chat_id: int) -> None:
+    try:
+        data = set()
+        if _KB_STATE_FILE.exists():
+            data = set(json.loads(_KB_STATE_FILE.read_text(encoding="utf-8")))
+        data.add(chat_id)
+        _KB_STATE_FILE.write_text(json.dumps(sorted(data)), encoding="utf-8")
+    except Exception:
+        pass
+
+
+async def install_reply_keyboard(message: Message, cardinal) -> None:
+    """Один раз ставит клавиатуру «Меню» под полем ввода (носитель — короткое сообщение)."""
+    if _kb_installed(message.chat.id):
+        return
+    await message.answer(f"📋 {cardinal.l10n('btn_reply_menu')}",
+                         reply_markup=build_reply_menu_keyboard(cardinal))
+    _mark_kb_installed(message.chat.id)
 
 
 def build_main_menu(cardinal) -> tuple[str, object]:
@@ -34,7 +66,6 @@ def build_main_menu(cardinal) -> tuple[str, object]:
         balance=balance,
         uptime=cardinal.uptime,
     )
-
     builder = InlineKeyboardBuilder()
     builder.button(text=l10n("menu_section_toggles"), callback_data="gl")
     builder.button(text=l10n("menu_section_autodelivery"), callback_data="ad")
@@ -47,6 +78,25 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
     builder.adjust(1, 2, 2, 2, 2, 1)
     return text, builder.as_markup()
+
+
+def build_reply_menu_keyboard(cardinal) -> ReplyKeyboardMarkup:
+    """
+    Клавиатура с кнопкой «Меню» под полем ввода, как в TG-магазинах.
+
+    Устанавливается один раз; пользователь сворачивает её стрелкой —
+    и дальше она отображается компактной пилюлей слева от поля ввода.
+    """
+    builder = ReplyKeyboardBuilder()
+    builder.button(text=cardinal.l10n("btn_reply_menu"))
+    return builder.as_markup(resize_keyboard=True)
+
+
+async def is_reply_menu_button(message: Message, state: FSMContext, cardinal) -> bool:
+    """Фильтр: текст совпадает с кнопкой «Меню» и не идёт FSM-диалог."""
+    if await state.get_state() is not None:
+        return False
+    return (message.text or "").strip() == cardinal.l10n("btn_reply_menu")
 
 
 def build_toggles_menu(cardinal) -> tuple[str, object]:
@@ -63,8 +113,18 @@ def build_toggles_menu(cardinal) -> tuple[str, object]:
 
 
 @router.message(CommandStart())
+async def cmd_start(message: Message, cardinal) -> None:
+    """/start — показывает главное меню (клавиатура «Меню» ставится один раз)."""
+    await install_reply_keyboard(message, cardinal)
+    text, markup = build_main_menu(cardinal)
+    await message.answer(text, reply_markup=markup)
+
+
 @router.message(Command("menu"))
+@router.message(is_reply_menu_button)
 async def cmd_menu(message: Message, cardinal) -> None:
+    """/menu или нажатие кнопки «Меню» — открывает главное меню."""
+    await install_reply_keyboard(message, cardinal)
     text, markup = build_main_menu(cardinal)
     await message.answer(text, reply_markup=markup)
 
