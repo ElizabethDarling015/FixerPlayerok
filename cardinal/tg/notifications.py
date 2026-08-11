@@ -93,7 +93,7 @@ class Notifier:
             text = text[:4000] + "\n\n<i>...и ещё сделки (список обрезан)</i>"
         
         await self._send_all(text)
-        
+
     async def on_event(self, event) -> None:
         l10n = self.cardinal.l10n
         event_type = event.type
@@ -221,12 +221,12 @@ class Notifier:
                     item=_esc(deal.item.name if deal.item else "?"),
                 ))
 
-    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
     # Служебные уведомления (не из событий Runner)
     # ------------------------------------------------------------------
 
-    async def notify_started(self) -> None:
-        """Уведомление о старте Cardinal (аккаунт, баланс, включённые модули)."""
+    async def notify_started(self, missed_deals: list | None = None) -> None:
+        """Уведомление о старте Cardinal (аккаунт, баланс, модули + пропущенные сделки)."""
         account = self.cardinal.account
         profile = getattr(account, "profile", None)
         balance = profile.balance.value if profile is not None and profile.balance is not None else "?"
@@ -234,6 +234,17 @@ class Notifier:
         modules = ", ".join(
             name for name in type(modules_settings).model_fields if getattr(modules_settings, name)
         ) or "—"
+        
+        # Считаем пропущенные сделки и помечаем их, чтобы Runner не прислал дубли
+        missed_count = 0
+        if missed_deals:
+            missed_count = len(missed_deals)
+            for deal in missed_deals:
+                if deal and getattr(deal, "id", None):
+                    # Помечаем как "уже уведомлённые" для дедупликации
+                    self._notified_deal_events.add(f"NEW_DEAL:{deal.id}")
+                    self._notified_deal_events.add(f"ITEM_PAID:{deal.id}")
+        
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=self.cardinal.l10n("btn_home"), callback_data="menu")]
         ])
@@ -241,6 +252,7 @@ class Notifier:
             "notif_started",
             username=_esc(account.username if account else "?"),
             balance=_esc(balance),
+            missed_deals=_esc(missed_count),
             modules=_esc(modules),
         ), reply_markup=markup)
 

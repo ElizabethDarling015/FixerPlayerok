@@ -146,6 +146,7 @@ STRINGS = {
         "🐦 <b>PlayerokCardinal запущен</b>\n"
         "👤 Аккаунт: <b>{username}</b>\n"
         "💰 Баланс: <b>{balance}</b>\n"
+        "🌙 Пропущенные сделки: <b>{missed_deals}</b>\n"
         "🧩 Модули: {modules}"
     ),
     "notif_new_deal": "🛒 <b>Новая сделка</b>\nЛот: {item}\nПокупатель: {buyer}\nСтатус: {status}",

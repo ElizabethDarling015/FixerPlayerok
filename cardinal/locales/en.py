@@ -146,6 +146,7 @@ STRINGS = {
         "🐦 <b>PlayerokCardinal started</b>\n"
         "👤 Account: <b>{username}</b>\n"
         "💰 Balance: <b>{balance}</b>\n"
+        "🌙 Missed deals: <b>{missed_deals}</b>\n"
         "🧩 Modules: {modules}"
     ),
     "notif_new_deal": "🛒 <b>New deal</b>\nItem: {item}\nBuyer: {buyer}\nStatus: {status}",

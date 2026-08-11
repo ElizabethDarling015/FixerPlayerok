@@ -275,9 +275,33 @@ class Cardinal:
             name for name in type(self.settings.modules).model_fields
             if getattr(self.settings.modules, name)
         ) or "—")
+
+        # --- Собираем пропущенные сделки (за время простоя) ---
+        missed_deals = []
+        try:
+            from datetime import datetime, timedelta, timezone
+            # Получаем последние 50 сделок
+            deals = await asyncio.to_thread(self.account.get_deals, count=50)
+            if deals:
+                # Порог: сделки за последние 24 часа
+                threshold = datetime.now(timezone.utc) - timedelta(hours=24)
+                for deal in deals:
+                    if deal is None or deal.raw_status is None:
+                        continue
+                    # Считаем "пропущенными" PAID и CONFIRMED
+                    if deal.raw_status.name in ("PAID", "CONFIRMED"):
+                        created = getattr(deal, "created_at", None)
+                        if created and created >= threshold:
+                            missed_deals.append(deal)
+            if missed_deals:
+                logger.info("Найдено {} сделок за время простоя", len(missed_deals))
+        except Exception as exc:
+            logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
+        # ---------------------------------------------------------
+
         if self.notifier is not None:
             with contextlib.suppress(Exception):
-                await self.notifier.notify_started()
+                await self.notifier.notify_started(missed_deals=missed_deals)
 
         await self._stop_event.wait()
         await self._shutdown()
