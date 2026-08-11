@@ -31,14 +31,17 @@ BACKUP_EXCLUDE_DIRS = ("logs",)
 def build_system_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     builder = InlineKeyboardBuilder()
+    
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
     builder.button(text=l10n("sys_btn_backup"), callback_data="sys:backup")
     builder.button(text=l10n("sys_btn_update"), callback_data="sys:update")
     builder.button(text=l10n("sys_btn_reload"), callback_data="sys:reload")
     builder.button(text=l10n("sys_btn_restart"), callback_data="sys:restart")
-    builder.button(text=l10n("sys_btn_shutdown"), callback_data="sys:off")
-    builder.adjust(1)
+    builder.button(text=l10n("btn_close"), callback_data="close")  # ← ЗАМЕНА
+    
+    builder.adjust(2)
     builder.row(*nav_row(l10n))
+    
     return l10n("sys_title"), builder.as_markup()
 
 
@@ -186,20 +189,3 @@ async def cb_restart(query: CallbackQuery, cardinal) -> None:
     await safe_edit(query.message, cardinal.l10n("sys_restart_done"))
     await query.answer()
     cardinal.request_restart()
-
-
-@router.callback_query(F.data == "sys:off")
-async def cb_shutdown_confirm(query: CallbackQuery, cardinal) -> None:
-    l10n = cardinal.l10n
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=l10n("sys_btn_shutdown_yes"), callback_data="sys:off:yes"))
-    builder.row(*nav_row(l10n, "sys"))
-    await safe_edit(query.message, l10n("sys_shutdown_confirm"), builder.as_markup())
-    await query.answer()
-
-
-@router.callback_query(F.data == "sys:off:yes")
-async def cb_shutdown(query: CallbackQuery, cardinal) -> None:
-    await safe_edit(query.message, cardinal.l10n("sys_shutdown_done"))
-    await query.answer()
-    cardinal.request_shutdown()
