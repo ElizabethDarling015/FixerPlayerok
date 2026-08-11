@@ -45,7 +45,6 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     builder.button(text=l10n("menu_section_stats"), callback_data="st")
     builder.button(text=l10n("menu_section_system"), callback_data="sys")
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
-    builder.button(text=l10n("btn_close"), callback_data="close")
     builder.adjust(1, 2, 2, 2, 2, 1)
     return text, builder.as_markup()
 

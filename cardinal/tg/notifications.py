@@ -20,7 +20,6 @@ def _esc(value) -> str:
     """HTML-экранирование пользовательского текста для parse_mode=HTML."""
     return html.escape(str(value)) if value is not None else "?"
 
-
 class Notifier:
     """Отправляет уведомления о событиях всем администраторам панели."""
 
@@ -31,7 +30,9 @@ class Notifier:
         #: (tg_chat_id, tg_message_id) -> id чата Playerok — для ответов reply'ем из TG.
         self.reply_map: dict[tuple[int, int], str] = {}
         self.session_expired_messages: set[tuple[int, int]] = set()
-        self._recent_errors: dict[str, float] = {}  
+        self._recent_errors: dict[str, float] = {}
+        # Дедупликация: защита от повторных уведомлений по одной и той же сделке
+        self._notified_deal_events: set[str] = set()
 
     @property
     def _toggles(self):
@@ -59,6 +60,20 @@ class Notifier:
     async def on_event(self, event) -> None:
         l10n = self.cardinal.l10n
         event_type = event.type
+
+        # --- ДЕДУПЛИКАЦИЯ (ЗАЩИТА ОТ ДУБЛЕЙ) ---
+        deal = getattr(event, "deal", None)
+        if deal and getattr(deal, "id", None):
+            dedup_key = f"{event_type.name}:{deal.id}"
+            if dedup_key in self._notified_deal_events:
+                logger.debug("Пропущен дубль уведомления: {}", dedup_key)
+                return
+
+            # Запоминаем ключ. Ограничиваем размер множества, чтобы не было утечки памяти.
+            self._notified_deal_events.add(dedup_key)
+            if len(self._notified_deal_events) > 500:
+                self._notified_deal_events.clear()
+        # ---------------------------------------
 
         if event_type is EventTypes.NEW_DEAL and self._toggles.new_deal:
             deal = event.deal
