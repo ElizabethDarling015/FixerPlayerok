@@ -198,6 +198,34 @@ class Cardinal:
         balance = self.account.profile.balance.value if self.account.profile and self.account.profile.balance else "?"
         logger.success("Авторизованы как {} (баланс: {})", self.account.username, balance)
 
+        # --- ПРОВЕРКА ПРОПУЩЕННЫХ СДЕЛОК (во время простоя бота) ---
+        try:
+            from datetime import datetime, timedelta, timezone
+            missed_deals = []
+            # Получаем последние 50 сделок
+            deals = await asyncio.to_thread(self.account.get_deals, count=50)
+            if deals:
+                # Порог: сделки за последние 24 часа
+                threshold = datetime.now(timezone.utc) - timedelta(hours=24)
+                for deal in deals:
+                    if deal is None or deal.raw_status is None:
+                        continue
+                    # Считаем "пропущенными" только PAID (можно добавить CONFIRMED при желании)
+                    if deal.raw_status.name in ("PAID", "CONFIRMED"):
+                        created = getattr(deal, "created_at", None)
+                        # Если есть дата создания и она свежая — добавляем в список
+                        if created and created >= threshold:
+                            missed_deals.append(deal)
+            
+            if missed_deals and self.notifier is not None:
+                logger.info("Найдено {} сделок за время простоя — уведомляю админов", len(missed_deals))
+                await self.notifier.notify_missed_deals(missed_deals)
+            elif missed_deals:
+                logger.info("Найдено {} сделок за время простоя, но notifier недоступен", len(missed_deals))
+        except Exception as exc:
+            logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
+        # -------------------------------------------------------------
+
         # --- Менеджеры библиотеки ---
         self.autodelivery_manager = _ToggleableAutoDelivery(
             self,
