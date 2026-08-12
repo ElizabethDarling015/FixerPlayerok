@@ -221,7 +221,7 @@ class Notifier:
                     item=_esc(deal.item.name if deal.item else "?"),
                 ))
 
-        # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Служебные уведомления (не из событий Runner)
     # ------------------------------------------------------------------
 
@@ -234,7 +234,7 @@ class Notifier:
         modules = ", ".join(
             name for name in type(modules_settings).model_fields if getattr(modules_settings, name)
         ) or "—"
-        
+
         # Считаем пропущенные сделки и помечаем их, чтобы Runner не прислал дубли
         missed_count = 0
         if missed_deals:
@@ -244,7 +244,13 @@ class Notifier:
                     # Помечаем как "уже уведомлённые" для дедупликации
                     self._notified_deal_events.add(f"NEW_DEAL:{deal.id}")
                     self._notified_deal_events.add(f"ITEM_PAID:{deal.id}")
-        
+
+        # --- Считаем непрочитанные сообщения ---
+        unread_count = 0
+        if profile is not None and getattr(profile, "unread_chats_counter", None) is not None:
+            unread_count = profile.unread_chats_counter
+        # ------------------------------------------
+
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=self.cardinal.l10n("btn_home"), callback_data="menu")]
         ])
@@ -253,6 +259,7 @@ class Notifier:
             username=_esc(account.username if account else "?"),
             balance=_esc(balance),
             missed_deals=_esc(missed_count),
+            unread_messages=_esc(unread_count),
             modules=_esc(modules),
         ), reply_markup=markup)
 

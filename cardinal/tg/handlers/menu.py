@@ -101,10 +101,18 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     account = cardinal.account
     profile = getattr(account, "profile", None)
     balance = profile.balance.value if profile is not None and profile.balance is not None else "?"
+    
+    # --- Считаем непрочитанные сообщения ---
+    unread_count = 0
+    if profile is not None and getattr(profile, "unread_chats_counter", None) is not None:
+        unread_count = profile.unread_chats_counter
+    # ------------------------------------------
+    
     text = l10n(
         "menu_title",
         username=account.username if account is not None else "?",
         balance=balance,
+        unread_messages=unread_count,
         uptime=cardinal.uptime,
     )
     builder = InlineKeyboardBuilder()
@@ -208,10 +216,6 @@ async def msg_greeting_text(message: Message, state: FSMContext, cardinal) -> No
 @router.callback_query(F.data == "digest:now")
 async def cb_digest_now(query: CallbackQuery, cardinal) -> None:
     """Кнопка «Сводка сейчас»: строит и присылает сводку, не дожидаясь расписания."""
-    print("=" * 50)
-    print("ОБРАБОТЧИК digest:now ВЫЗВАН")
-    print("=" * 50)
-
     import asyncio as _asyncio
     module = next((m for m in cardinal.modules if m.name == "digest"), None)
     if module is None:

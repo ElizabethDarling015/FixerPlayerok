@@ -16,6 +16,7 @@ STRINGS = {
         "🐦 <b>PlayerokCardinal</b>\n\n"
         "👤 Account: <b>{username}</b>\n"
         "💰 Balance: <b>{balance}</b>\n"
+        "📩 New messages: <b>{unread_messages}</b>\n"
         "⏱ Uptime: <b>{uptime}</b>"
     ),
     "menu_section_toggles": "🎛 Global toggles",
@@ -150,6 +151,7 @@ STRINGS = {
         "👤 Account: <b>{username}</b>\n"
         "💰 Balance: <b>{balance}</b>\n"
         "🌙 Missed deals: <b>{missed_deals}</b>\n"
+        "📩 New messages: <b>{unread_messages}</b>\n"
         "🧩 Modules: {modules}"
     ),
     "notif_new_deal": "🛒 <b>New deal</b>\nItem: {item}\nBuyer: {buyer}\nStatus: {status}",

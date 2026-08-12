@@ -300,8 +300,12 @@ class Cardinal:
         # ---------------------------------------------------------
 
         if self.notifier is not None:
-            with contextlib.suppress(Exception):
+            try:
+                logger.info("Отправляем стартовое уведомление...")
                 await self.notifier.notify_started(missed_deals=missed_deals)
+                logger.success("Стартовое уведомление успешно отправлено")
+            except Exception as exc:
+                logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
 
         await self._stop_event.wait()
         await self._shutdown()
