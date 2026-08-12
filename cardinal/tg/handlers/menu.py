@@ -1,8 +1,10 @@
 """Главное меню панели: статус аккаунта, разделы и подменю «Глобальные переключатели»."""
 from __future__ import annotations
 
+import asyncio
 import html
 import json
+from contextlib import suppress
 from pathlib import Path
 
 from aiogram import F, Router
@@ -22,6 +24,10 @@ MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "gre
 
 #: Файл-флаг: каким чатам уже установили reply-клавиатуру (чтобы не переотправлять и не разворачивать).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
+
+#: Удалять ли сообщение-носитель после установки клавиатуры.
+#: Если твой клиент теряет кнопку «Меню» после удаления носителя — поставь False.
+DELETE_KB_CARRIER = True
 
 
 class EditGreeting(StatesGroup):
@@ -46,13 +52,48 @@ def _mark_kb_installed(chat_id: int) -> None:
         pass
 
 
+async def _delete_later(msg: Message, delay: float = 3.0) -> None:
+    await asyncio.sleep(delay)
+    with suppress(Exception):
+        await msg.delete()
+
+
+def build_reply_menu_keyboard(cardinal) -> ReplyKeyboardMarkup:
+    """
+    Клавиатура с кнопкой «Меню» под полем ввода, как в TG-магазинах.
+
+    Устанавливается один раз; пользователь сворачивает её стрелкой —
+    и дальше она отображается компактной пилюлей слева от поля ввода.
+    """
+    builder = ReplyKeyboardBuilder()
+    builder.button(text=cardinal.l10n("btn_reply_menu"))
+    return builder.as_markup(resize_keyboard=True)
+
+
 async def install_reply_keyboard(message: Message, cardinal) -> None:
-    """Один раз ставит клавиатуру «Меню» под полем ввода (носитель — короткое сообщение)."""
+    """
+    Один раз ставит клавиатуру «Меню» под полем ввода.
+
+    Reply-клавиатуру нельзя отправить без сообщения-носителя, поэтому носитель
+    отправляется и (опционально) удаляется через пару секунд — клавиатура при
+    этом остаётся установленной в чате.
+    """
     if _kb_installed(message.chat.id):
         return
-    await message.answer(f"📋 {cardinal.l10n('btn_reply_menu')}",
-                         reply_markup=build_reply_menu_keyboard(cardinal))
+    carrier = await message.answer(
+        f"📋 {cardinal.l10n('btn_reply_menu')}",
+        reply_markup=build_reply_menu_keyboard(cardinal),
+    )
     _mark_kb_installed(message.chat.id)
+    if DELETE_KB_CARRIER:
+        asyncio.create_task(_delete_later(carrier))
+
+
+async def is_reply_menu_button(message: Message, state: FSMContext, cardinal) -> bool:
+    """Фильтр: текст совпадает с кнопкой «Меню» и не идёт FSM-диалог."""
+    if await state.get_state() is not None:
+        return False
+    return (message.text or "").strip() == cardinal.l10n("btn_reply_menu")
 
 
 def build_main_menu(cardinal) -> tuple[str, object]:
@@ -78,25 +119,6 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
     builder.adjust(1, 2, 2, 2, 2, 1)
     return text, builder.as_markup()
-
-
-def build_reply_menu_keyboard(cardinal) -> ReplyKeyboardMarkup:
-    """
-    Клавиатура с кнопкой «Меню» под полем ввода, как в TG-магазинах.
-
-    Устанавливается один раз; пользователь сворачивает её стрелкой —
-    и дальше она отображается компактной пилюлей слева от поля ввода.
-    """
-    builder = ReplyKeyboardBuilder()
-    builder.button(text=cardinal.l10n("btn_reply_menu"))
-    return builder.as_markup(resize_keyboard=True)
-
-
-async def is_reply_menu_button(message: Message, state: FSMContext, cardinal) -> bool:
-    """Фильтр: текст совпадает с кнопкой «Меню» и не идёт FSM-диалог."""
-    if await state.get_state() is not None:
-        return False
-    return (message.text or "").strip() == cardinal.l10n("btn_reply_menu")
 
 
 def build_toggles_menu(cardinal) -> tuple[str, object]:
@@ -190,12 +212,12 @@ async def cb_digest_now(query: CallbackQuery, cardinal) -> None:
     print("ОБРАБОТЧИК digest:now ВЫЗВАН")
     print("=" * 50)
 
-    import asyncio
+    import asyncio as _asyncio
     module = next((m for m in cardinal.modules if m.name == "digest"), None)
     if module is None:
         await query.answer(cardinal.l10n("digest_unavailable"), show_alert=True)
         return
-    text = await asyncio.to_thread(module.build_digest)
+    text = await _asyncio.to_thread(module.build_digest)
 
     # Создаём клавиатуру с кнопкой "На главную"
     l10n = cardinal.l10n
