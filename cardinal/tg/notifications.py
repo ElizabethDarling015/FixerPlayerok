@@ -141,20 +141,28 @@ class Notifier:
                     stock=manager.get_stock_size(item_name),
                 ))
 
-        elif event_type is EventTypes.NEW_MESSAGE and self._toggles.new_message:
-            message = event.message
-            account = self.cardinal.account
-            if message is None or message.user is None or message.user.id == account.id:
-                return  # свои сообщения не пересылаем
-            await self._send_all(
-                l10n(
-                    "notif_new_message",
-                    username=_esc(message.user.username),
-                    chat_id=_esc(event.chat.id),
-                    text=_esc(message.text or ""),
-                ),
-                remember_chat=event.chat.id,
-            )
+            elif event_type is EventTypes.NEW_MESSAGE and self._toggles.new_message:
+                message = event.message
+                account = self.cardinal.account
+                if message is None:
+                    return
+            
+                # Игнорируем только если это наше собственное исходящее сообщение
+                if message.user is not None and message.user.id == account.id:
+                    return
+
+                # Для системных уведомлений (где user=None) подставляем имя "Система"
+                username = message.user.username if message.user else "Система"
+                
+                await self._send_all(
+                    l10n(
+                        "notif_new_message",
+                        username=_esc(username),
+                        chat_id=_esc(event.chat.id),
+                        text=_esc(message.text or ""),
+                    ),
+                    remember_chat=event.chat.id,
+                )
 
         elif event_type is EventTypes.NEW_REVIEW and self._toggles.new_review:
             review = event.review
