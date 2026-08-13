@@ -36,11 +36,13 @@ def build_system_menu(cardinal) -> tuple[str, object]:
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
     builder.button(text=l10n("sys_btn_backup"), callback_data="sys:backup")
 
-    # ВМЕСТО «Обновить с GitHub» — подключение/отключение Playerok
+    # Кнопка подключения/отключения + её описание в тексте
     if cardinal.playerok_connected:
         builder.button(text="🔌 Отключить Playerok", callback_data="sys:disconnect_playerok")
+        conn_hint = "• 🔌 Отключить Playerok — остановить слежение за событиями и отключиться от API без перезапуска"
     else:
         builder.button(text="🔗 Подключиться к Playerok", callback_data="sys:connect_playerok")
+        conn_hint = "• 🔗 Подключиться к Playerok — авторизоваться и запустить слежение за событиями без перезапуска"
 
     builder.button(text=l10n("sys_btn_reload"), callback_data="sys:reload")
     builder.button(text=l10n("sys_btn_restart"), callback_data="sys:restart")
@@ -49,7 +51,18 @@ def build_system_menu(cardinal) -> tuple[str, object]:
     builder.adjust(2)
     builder.row(*nav_row(l10n))
 
-    return l10n("sys_title"), builder.as_markup()
+    # Подсказки: что делает каждая кнопка раздела
+    text = (
+        l10n("sys_title") + "\n\n"
+        "• 📄 Логи — последние 30 строк журнала бота\n"
+        "• 💾 Бэкап — ZIP-архив с конфигами и данными (склады, журналы)\n"
+        f"{conn_hint}\n"
+        "• 🔄 Перезагрузка конфигов — перечитать автоответчик, автовыдачу и ЧС без перезапуска\n"
+        "• 🔁 Перезапуск — полностью перезапустить бота\n"
+        "• ❌ Закрыть — закрыть это меню"
+    )
+
+    return text, builder.as_markup()
 
 
 def build_backup_zip(config_dir: str = CONFIG_DIR, storage_dir: str = STORAGE_DIR) -> bytes:
