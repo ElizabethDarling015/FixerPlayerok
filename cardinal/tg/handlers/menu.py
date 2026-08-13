@@ -7,12 +7,12 @@ import json
 from contextlib import suppress
 from pathlib import Path
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardRemove
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ...settings import save_main_settings, STORAGE_DIR
 from .common import cancel_markup, nav_row, on_off, safe_edit
@@ -22,71 +22,61 @@ router = Router(name="menu")
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
 MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online", "digest")
 
-#: Файл-флаг: каким чатам уже установили reply-клавиатуру (чтобы не переотправлять и не разворачивать).
+#: Файл-флаг: каким чатам уже установили reply-клавиатуру (для миграции).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
-
-#: Удалять ли сообщение-носитель после установки клавиатуры.
-#: Если твой клиент теряет кнопку «Меню» после удаления носителя — поставь False.
-DELETE_KB_CARRIER = True
-
 
 class EditGreeting(StatesGroup):
     text = State()
 
+# ----------------------------------------------------------------------
+# Легаси reply-клавиатура «Меню» (большая кнопка под полем ввода) — демонтаж.
+# Синяя кнопка «Меню» слева от поля ввода — встроенное меню бота Telegram,
+# оно от reply-клавиатуры не зависит и остаётся.
+# ----------------------------------------------------------------------
 
-def _kb_installed(chat_id: int) -> bool:
+def _load_legacy_chats() -> set[int]:
     try:
-        return chat_id in json.loads(_KB_STATE_FILE.read_text(encoding="utf-8"))
+        return {int(x) for x in json.loads(_KB_STATE_FILE.read_text(encoding="utf-8"))}
     except Exception:
-        return False
+        return set()
 
+def _save_legacy_chats(chats: set[int]) -> None:
+    with suppress(Exception):
+        if chats:
+            _KB_STATE_FILE.write_text(json.dumps(sorted(chats)), encoding="utf-8")
+        else:
+            _KB_STATE_FILE.unlink(missing_ok=True)
 
-def _mark_kb_installed(chat_id: int) -> None:
-    try:
-        data = set()
-        if _KB_STATE_FILE.exists():
-            data = set(json.loads(_KB_STATE_FILE.read_text(encoding="utf-8")))
-        data.add(chat_id)
-        _KB_STATE_FILE.write_text(json.dumps(sorted(data)), encoding="utf-8")
-    except Exception:
-        pass
-
-
-async def _delete_later(msg: Message, delay: float = 3.0) -> None:
+async def _delete_later(msg: Message, delay: float = 1.5) -> None:
     await asyncio.sleep(delay)
     with suppress(Exception):
         await msg.delete()
 
-
-def build_reply_menu_keyboard(cardinal) -> ReplyKeyboardMarkup:
-    """
-    Клавиатура с кнопкой «Меню» под полем ввода, как в TG-магазинах.
-
-    Устанавливается один раз; пользователь сворачивает её стрелкой —
-    и дальше она отображается компактной пилюлей слева от поля ввода.
-    """
-    builder = ReplyKeyboardBuilder()
-    builder.button(text=cardinal.l10n("btn_reply_menu"))
-    return builder.as_markup(resize_keyboard=True)
-
-
-async def install_reply_keyboard(message: Message, cardinal) -> None:
-    """
-    Один раз ставит клавиатуру «Меню» под полем ввода.
-
-    Reply-клавиатуру нельзя отправить без сообщения-носителя, поэтому носитель
-    отправляется и (опционально) удаляется через пару секунд — клавиатура при
-    этом остаётся установленной в чате.
-    """
-    if _kb_installed(message.chat.id):
+async def clear_reply_keyboard(message: Message) -> None:
+    """Если в чате ещё стоит старая reply-клавиатура «Меню» — убирает её на клиенте."""
+    chats = _load_legacy_chats()
+    if message.chat.id not in chats:
         return
-    carrier = await message.answer(
-        f"📋 {cardinal.l10n('btn_reply_menu')}",
-        reply_markup=build_reply_menu_keyboard(cardinal),
-    )
-    _mark_kb_installed(message.chat.id)
-    if DELETE_KB_CARRIER:
-        asyncio.create_task(_delete_later(carrier))
+    svc = await message.answer("🧹", reply_markup=ReplyKeyboardRemove())
+    asyncio.create_task(_delete_later(svc))
+    chats.discard(message.chat.id)
+    _save_legacy_chats(chats)
+
+async def _migrate_legacy_reply_keyboard(bot: Bot) -> None:
+    """При старте бота убирает старую reply-клавиатуру «Меню» во всех помеченных чатах."""
+    chats = _load_legacy_chats()
+    if not chats:
+        return
+    left: set[int] = set()
+    for chat_id in chats:
+        try:
+            svc = await bot.send_message(chat_id, "🧹", reply_markup=ReplyKeyboardRemove())
+            asyncio.create_task(_delete_later(svc))
+        except Exception:  # напр. чат заблокирован — дочистим при следующем /start
+            left.add(chat_id)
+    _save_legacy_chats(left)
+
+router.startup.register(_migrate_legacy_reply_keyboard)
 
 
 async def is_reply_menu_button(message: Message, state: FSMContext, cardinal) -> bool:
@@ -144,17 +134,16 @@ def build_toggles_menu(cardinal) -> tuple[str, object]:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, cardinal) -> None:
-    """/start — показывает главное меню (клавиатура «Меню» ставится один раз)."""
-    await install_reply_keyboard(message, cardinal)
+    """/start — показывает главное меню (легаси reply-клавиатура убирается, если осталась)."""
+    await clear_reply_keyboard(message)
     text, markup = build_main_menu(cardinal)
     await message.answer(text, reply_markup=markup)
-
 
 @router.message(Command("menu"))
 @router.message(is_reply_menu_button)
 async def cmd_menu(message: Message, cardinal) -> None:
-    """/menu или нажатие кнопки «Меню» — открывает главное меню."""
-    await install_reply_keyboard(message, cardinal)
+    """/menu или набранный текст «Меню» — открывает главное меню."""
+    await clear_reply_keyboard(message)
     text, markup = build_main_menu(cardinal)
     await message.answer(text, reply_markup=markup)
 
