@@ -15,6 +15,10 @@ def main(argv: list[str] | None = None) -> int:
     """Запускает Cardinal. Возвращает код выхода процесса."""
     setup_logging()
 
+    # Парсим аргументы командной строки
+    args = argv if argv is not None else sys.argv[1:]
+    offline_mode_flag = "--offline" in args or "-o" in args
+
     if not os.path.isfile(MAIN_CONFIG):
         # Первый запуск — интерактивный мастер (создаёт конфиги и папки).
         from .first_setup import run_first_setup
@@ -30,6 +34,11 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("{}", exc)
             return 1
 
+    # Применяем флаг --offline из командной строки
+    if offline_mode_flag:
+        settings.playerok.offline_mode = True
+        logger.info("Флаг --offline: принудительный оффлайн-режим")
+
     from .core import Cardinal
 
     cardinal = Cardinal(settings)
@@ -42,8 +51,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if cardinal.restart_requested:
-        # Рестарт из TG-панели: подменяем процесс новым `python -m cardinal`
-        # (работает и под cardinal.sh, и под systemd — супервизор не нужен).
         logger.info("Перезапускаю Cardinal…")
         os.execv(sys.executable, [sys.executable, "-m", "cardinal"])
     return 0

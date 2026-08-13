@@ -57,8 +57,6 @@ class _ToggleableAutoDelivery(AutoDeliveryManager):
             return None
         return super().reserve(item_name)
 
-    # add_stock (пополнение склада из TG-панели) — публичный метод AutoDeliveryManager.
-
 
 class _ToggleableAutoRaise(AutoRaiseManager):
     """Автоподнятие, уважающее переключатель модуля: при выключенном модуле цикл пропускается."""
@@ -102,6 +100,12 @@ class Cardinal:
         self._tasks: list[asyncio.Task] = []
         self._runner_thread: threading.Thread | None = None
 
+        # Флаг состояния подключения к Playerok API
+        self._playerok_connected: bool = False
+        self._playerok_connecting: bool = False
+        self._plugins_loaded: bool = False
+        self._consume_task: asyncio.Task | None = None
+
         #: Выставляется `request_restart()`: после остановки main.py перезапустит процесс.
         self.restart_requested = False
 
@@ -118,6 +122,11 @@ class Cardinal:
         minutes, secs = divmod(rest, 60)
         prefix = f"{days}д " if days else ""
         return f"{prefix}{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    @property
+    def playerok_connected(self) -> bool:
+        """Подключен ли бот к Playerok API в данный момент."""
+        return self._playerok_connected
 
     def spawn(self, coro) -> asyncio.Task:
         """Запускает фоновую asyncio-задачу под управлением Cardinal (отменится при остановке)."""
@@ -161,6 +170,131 @@ class Cardinal:
             }
 
     # ------------------------------------------------------------------
+    # Управление подключением к Playerok API
+    # ------------------------------------------------------------------
+
+    async def connect_playerok(self) -> dict:
+        """Подключается к Playerok API вручную (кнопка в TG-панели)."""
+        if self._playerok_connected:
+            return {"ok": True,
+                    "message": "Уже подключен к Playerok",
+                    "username": self.account.username if self.account else None}
+
+        if self._playerok_connecting:
+            return {"ok": False, "message": "Подключение уже выполняется", "username": None}
+
+        self._playerok_connecting = True
+        try:
+            if self.account is None:
+                self.account = Account(
+                    cookies=self.settings.playerok.cookies,
+                    user_agent=self.settings.playerok.user_agent,
+                    proxy=self.settings.playerok.proxy,
+                    requests_timeout=int(self.settings.playerok.requests_timeout),
+                )
+
+            logger.info("Авторизуемся на Playerok (ручное подключение)…")
+            auth_attempts = 3
+            for attempt in range(1, auth_attempts + 1):
+                try:
+                    await asyncio.to_thread(self.account.get)
+                    break
+                except RequestSendingError as exc:
+                    if attempt == auth_attempts:
+                        raise
+                    logger.warning("Сеть недоступна (попытка {}/{}): {} — повтор через 10 с",
+                                   attempt, auth_attempts, exc)
+                    await asyncio.sleep(10)
+
+            balance = (self.account.profile.balance.value
+                       if self.account.profile and self.account.profile.balance else "?")
+            logger.success("Авторизованы как {} (баланс: {})", self.account.username, balance)
+
+            if self.autodelivery_manager is None:
+                self.autodelivery_manager = _ToggleableAutoDelivery(
+                    self,
+                    config={name: lot.stock_file for name, lot in self.autodelivery_config.lots.items()},
+                    delivery_text_template=self.settings.autodelivery.delivery_text,
+                    ledger_path=self.settings.autodelivery.ledger_file,
+                )
+            if self.autoraise_manager is None:
+                self.autoraise_manager = _ToggleableAutoRaise(
+                    self,
+                    raise_interval=self.settings.autoraise.interval,
+                    min_balance_reserve=self.settings.autoraise.min_balance_reserve,
+                )
+
+            self.plugin_manager.attach_to_account(self.account)
+            if not self._plugins_loaded:
+                self.plugin_manager.load_plugins()
+                self._plugins_loaded = True
+
+            self.runner = Runner(
+                self.account,
+                plugin_manager=self.plugin_manager,
+                autodelivery_manager=self.autodelivery_manager,
+                autoraise_manager=self.autoraise_manager,
+            )
+
+            self._runner_thread = threading.Thread(target=self._runner_thread_loop, daemon=True,
+                                                   name="cardinal-runner")
+            self._runner_thread.start()
+            self._consume_task = self.spawn(self._consume_events())
+
+            self._playerok_connected = True
+            logger.success("Playerok API подключён")
+
+            # Уведомляем админов об успешном подключении
+            if self.notifier is not None:
+                try:
+                    await self.notifier.notify_playerok_connected(self.account.username, balance)
+                except Exception as exc:
+                    logger.warning("Не удалось отправить уведомление о подключении: {}", exc)
+
+            return {"ok": True, "message": f"Подключён как {self.account.username}",
+                    "username": self.account.username}
+
+        except Exception as exc:
+            logger.error("Ошибка подключения к Playerok: {}", exc)
+            return {"ok": False, "message": str(exc), "username": None}
+        finally:
+            self._playerok_connecting = False
+
+    async def disconnect_playerok(self) -> dict:
+        """Отключается от Playerok API вручную (кнопка в TG-панели)."""
+        if not self._playerok_connected:
+            return {"ok": True, "message": "Уже отключен от Playerok"}
+
+        try:
+            if self.runner is not None:
+                with contextlib.suppress(Exception):
+                    self.runner.stop()
+            if self._runner_thread is not None:
+                await asyncio.to_thread(self._runner_thread.join, 5.0)
+                self._runner_thread = None
+            if self._consume_task is not None:
+                self._consume_task.cancel()
+                self._consume_task = None
+
+            self.runner = None
+            self.account = None
+            self._playerok_connected = False
+            logger.info("Playerok API отключён")
+
+            # Уведомляем админов об отключении
+            if self.notifier is not None:
+                try:
+                    await self.notifier.notify_playerok_disconnected()
+                except Exception as exc:
+                    logger.warning("Не удалось отправить уведомление об отключении: {}", exc)
+
+            return {"ok": True, "message": "Отключено от Playerok"}
+
+        except Exception as exc:
+            logger.error("Ошибка отключения от Playerok: {}", exc)
+            return {"ok": False, "message": str(exc)}
+
+    # ------------------------------------------------------------------
     # Жизненный цикл
     # ------------------------------------------------------------------
 
@@ -174,86 +308,66 @@ class Cardinal:
             with contextlib.suppress(NotImplementedError):
                 self.loop.add_signal_handler(sig, self.request_shutdown)
 
-        # --- Аккаунт Playerok ---
-        self.account = Account(
-            cookies=self.settings.playerok.cookies,
-            user_agent=self.settings.playerok.user_agent,
-            proxy=self.settings.playerok.proxy,
-            requests_timeout=int(self.settings.playerok.requests_timeout),
-        )
-        logger.info("Авторизуемся на Playerok…")
-        # Сетевые сбои (медленный прокси, curl 28) на старте не должны убивать бота —
-        # особенно после рестарта из TG-панели, когда поднять его вручную некому.
-        auth_attempts = 5
-        for attempt in range(1, auth_attempts + 1):
-            try:
-                await asyncio.to_thread(self.account.get)
-                break
-            except RequestSendingError as exc:
-                if attempt == auth_attempts:
-                    raise
-                logger.warning("Сеть недоступна (попытка {}/{}): {} — повтор через 15 с",
-                               attempt, auth_attempts, exc)
-                await asyncio.sleep(15)
-        balance = self.account.profile.balance.value if self.account.profile and self.account.profile.balance else "?"
-        logger.success("Авторизованы как {} (баланс: {})", self.account.username, balance)
+        # --- Проверяем offline_mode ---
+        offline_mode = self.settings.playerok.offline_mode
 
-        # --- ПРОВЕРКА ПРОПУЩЕННЫХ СДЕЛОК (во время простоя бота) ---
-        try:
-            from datetime import datetime, timedelta, timezone
-            missed_deals = []
-            # Получаем последние 50 сделок
-            deals = await asyncio.to_thread(self.account.get_deals, count=50)
-            if deals:
-                # Порог: сделки за последние 24 часа
-                threshold = datetime.now(timezone.utc) - timedelta(hours=24)
-                for deal in deals:
-                    if deal is None or deal.raw_status is None:
-                        continue
-                    # Считаем "пропущенными" только PAID (можно добавить CONFIRMED при желании)
-                    if deal.raw_status.name in ("PAID", "CONFIRMED"):
-                        created = getattr(deal, "created_at", None)
-                        # Если есть дата создания и она свежая — добавляем в список
-                        if created and created >= threshold:
-                            missed_deals.append(deal)
-            
-            if missed_deals and self.notifier is not None:
-                logger.info("Найдено {} сделок за время простоя — уведомляю админов", len(missed_deals))
-                await self.notifier.notify_missed_deals(missed_deals)
-            elif missed_deals:
-                logger.info("Найдено {} сделок за время простоя, но notifier недоступен", len(missed_deals))
-        except Exception as exc:
-            logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
-        # -------------------------------------------------------------
+        if not offline_mode:
+            # --- Аккаунт Playerok ---
+            self.account = Account(
+                cookies=self.settings.playerok.cookies,
+                user_agent=self.settings.playerok.user_agent,
+                proxy=self.settings.playerok.proxy,
+                requests_timeout=int(self.settings.playerok.requests_timeout),
+            )
+            logger.info("Авторизуемся на Playerok…")
+            auth_attempts = 5
+            for attempt in range(1, auth_attempts + 1):
+                try:
+                    await asyncio.to_thread(self.account.get)
+                    break
+                except RequestSendingError as exc:
+                    if attempt == auth_attempts:
+                        raise
+                    logger.warning("Сеть недоступна (попытка {}/{}): {} — повтор через 15 с",
+                                   attempt, auth_attempts, exc)
+                    await asyncio.sleep(15)
+            balance = self.account.profile.balance.value if self.account.profile and self.account.profile.balance else "?"
+            logger.success("Авторизованы как {} (баланс: {})", self.account.username, balance)
 
-        # --- Менеджеры библиотеки ---
-        self.autodelivery_manager = _ToggleableAutoDelivery(
-            self,
-            config={name: lot.stock_file for name, lot in self.autodelivery_config.lots.items()},
-            delivery_text_template=self.settings.autodelivery.delivery_text,
-            ledger_path=self.settings.autodelivery.ledger_file,
-        )
-        self.autoraise_manager = _ToggleableAutoRaise(
-            self,
-            raise_interval=self.settings.autoraise.interval,
-            min_balance_reserve=self.settings.autoraise.min_balance_reserve,
-        )
+            # --- Менеджеры библиотеки ---
+            self.autodelivery_manager = _ToggleableAutoDelivery(
+                self,
+                config={name: lot.stock_file for name, lot in self.autodelivery_config.lots.items()},
+                delivery_text_template=self.settings.autodelivery.delivery_text,
+                ledger_path=self.settings.autodelivery.ledger_file,
+            )
+            self.autoraise_manager = _ToggleableAutoRaise(
+                self,
+                raise_interval=self.settings.autoraise.interval,
+                min_balance_reserve=self.settings.autoraise.min_balance_reserve,
+            )
 
-        # --- Плагины ---
-        self.plugin_manager.attach_to_account(self.account)
-        self.plugin_manager.load_plugins()
+            # --- Плагины ---
+            self.plugin_manager.attach_to_account(self.account)
+            self.plugin_manager.load_plugins()
+            self._plugins_loaded = True
+
+            # --- Runner ---
+            self.runner = Runner(
+                self.account,
+                plugin_manager=self.plugin_manager,
+                autodelivery_manager=self.autodelivery_manager,
+                autoraise_manager=self.autoraise_manager,
+            )
+
+            self._playerok_connected = True
+        else:
+            logger.warning("🔧 OFFLINE MODE: Playerok API отключён. Работает только Telegram-панель.")
+            logger.info("Для подключения к Playerok используйте кнопку в меню /menu → Система → Подключить Playerok")
 
         # --- Модули ---
         from .modules import build_modules
         self.modules = build_modules(self)
-
-        # --- Runner ---
-        self.runner = Runner(
-            self.account,
-            plugin_manager=self.plugin_manager,
-            autodelivery_manager=self.autodelivery_manager,
-            autoraise_manager=self.autoraise_manager,
-        )
 
         # --- Telegram ---
         if self.settings.telegram.token:
@@ -266,46 +380,60 @@ class Cardinal:
         for module in self.modules:
             await module.on_start()
 
-        self._runner_thread = threading.Thread(target=self._runner_thread_loop, daemon=True,
-                                               name="cardinal-runner")
-        self._runner_thread.start()
-        self.spawn(self._consume_events())
+        # Запускаем Runner только если не в offline_mode
+        if not offline_mode and self.runner is not None:
+            self._runner_thread = threading.Thread(
+                target=self._runner_thread_loop,
+                daemon=True,
+                name="cardinal-runner"
+            )
+            self._runner_thread.start()
+            self.spawn(self._consume_events())
 
         logger.success("PlayerokCardinal запущен. Модули: {}", ", ".join(
             name for name in type(self.settings.modules).model_fields
             if getattr(self.settings.modules, name)
         ) or "—")
 
-        # --- Собираем пропущенные сделки (за время простоя) ---
-        missed_deals = []
-        try:
-            from datetime import datetime, timedelta, timezone
-            # Получаем последние 50 сделок
-            deals = await asyncio.to_thread(self.account.get_deals, count=50)
-            if deals:
-                # Порог: сделки за последние 24 часа
-                threshold = datetime.now(timezone.utc) - timedelta(hours=24)
-                for deal in deals:
-                    if deal is None or deal.raw_status is None:
-                        continue
-                    # Считаем "пропущенными" PAID и CONFIRMED
-                    if deal.raw_status.name in ("PAID", "CONFIRMED"):
-                        created = getattr(deal, "created_at", None)
-                        if created and created >= threshold:
-                            missed_deals.append(deal)
-            if missed_deals:
-                logger.info("Найдено {} сделок за время простоя", len(missed_deals))
-        except Exception as exc:
-            logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
-        # ---------------------------------------------------------
-
-        if self.notifier is not None:
+        if offline_mode:
+            logger.info("Статус: OFFLINE MODE — только Telegram-панель")
+            # Стандартное стартовое уведомление (с кнопкой «В главное меню»)
+            if self.notifier is not None:
+                try:
+                    logger.info("Отправляем стартовое уведомление (offline)...")
+                    await self.notifier.notify_started(missed_deals=[])
+                    logger.success("Стартовое уведомление успешно отправлено")
+                except Exception as exc:
+                    logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
+        else:
+            # --- Собираем пропущенные сделки (за время простоя) ---
+            missed_deals = []
             try:
-                logger.info("Отправляем стартовое уведомление...")
-                await self.notifier.notify_started(missed_deals=missed_deals)
-                logger.success("Стартовое уведомление успешно отправлено")
+                from datetime import datetime, timedelta, timezone
+                # Получаем последние 50 сделок
+                deals = await asyncio.to_thread(self.account.get_deals, count=50)
+                if deals:
+                    # Порог: сделки за последние 24 часа
+                    threshold = datetime.now(timezone.utc) - timedelta(hours=24)
+                    for deal in deals:
+                        if deal is None or deal.raw_status is None:
+                            continue
+                        if deal.raw_status.name in ("PAID", "CONFIRMED"):
+                            created = getattr(deal, "created_at", None)
+                            if created and created >= threshold:
+                                missed_deals.append(deal)
+                if missed_deals:
+                    logger.info("Найдено {} сделок за время простоя", len(missed_deals))
             except Exception as exc:
-                logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
+                logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
+
+            if self.notifier is not None:
+                try:
+                    logger.info("Отправляем стартовое уведомление...")
+                    await self.notifier.notify_started(missed_deals=missed_deals)
+                    logger.success("Стартовое уведомление успешно отправлено")
+                except Exception as exc:
+                    logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
 
         await self._stop_event.wait()
         await self._shutdown()
@@ -338,7 +466,7 @@ class Cardinal:
             for event in self.runner.listen(requests_delay=self.settings.playerok.requests_delay,
                                             ignore_exceptions=True):
                 self.loop.call_soon_threadsafe(self.event_queue.put_nowait, event)
-        except Exception as exc:  # noqa: BLE001 — пробрасываем любой сбой в основной цикл
+        except Exception as exc:
             logger.exception("Поток Runner упал")
             self.loop.call_soon_threadsafe(self.event_queue.put_nowait, exc)
 

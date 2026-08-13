@@ -42,9 +42,10 @@ class PlayerokSettings(BaseModel):
     user_agent: str | None = None
     proxy: str | None = None
     requests_delay: float = Field(default=5.0, gt=0)
-    #: Таймаут HTTP-запросов к Playerok, сек. Медленным прокси может не хватать
-    #: стандартных 15 — тогда в логе curl: (28) Connection timed out.
     requests_timeout: float = Field(default=30.0, gt=0)
+    
+    # НОВОЕ: режим разработки — бот работает только через Telegram, без подключения к Playerok API
+    offline_mode: bool = False
 
     @field_validator("cookies")
     @classmethod

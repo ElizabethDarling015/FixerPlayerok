@@ -9,6 +9,7 @@
 #   ./cardinal.sh --check    проверить токен и авторизацию на Playerok (бота не запускает)
 #   ./cardinal.sh --update   принудительно обновить зависимости и запустить
 #   ./cardinal.sh --service  установить systemd-сервис автозапуска (Linux)
+#   ./cardinal.sh --offline  запуск в оффлайн-режиме (без подключения к Playerok API)
 #   ./cardinal.sh --help     справка
 #
 # Идемпотентный: повторный запуск ничего не ломает и не трогает конфиги.
@@ -167,13 +168,14 @@ usage() {
     exit 0
 }
 
-MODE="run"; FORCE_SETUP=0
+MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0
 case "${1:-}" in
     --help|-h)  usage ;;
     --setup)    FORCE_SETUP=1 ;;
     --check)    MODE="check" ;;
     --update)   MODE="update" ;;
     --service)  MODE="service" ;;
+    --offline|-o) OFFLINE_MODE=1 ;;
     "")         ;;
     *)          die "Неизвестный аргумент: $1 (см. ./cardinal.sh --help)" ;;
 esac
@@ -679,4 +681,9 @@ echo "  ${GREY}Check:${NC}       ./cardinal.sh --check"
 echo "  ${GREY}Автозапуск:${NC}  ./cardinal.sh --service"
 echo "  ${GREY}Создатель:${NC}   ${CYAN}https://t.me/Scwee_xz${NC}"
 echo
-exec "$VENV_PY" -m cardinal
+if [ "$OFFLINE_MODE" = "1" ]; then
+    echo "🔧 OFFLINE MODE: запуск без подключения к Playerok API"
+    exec "$VENV_PY" -m cardinal --offline
+else
+    exec "$VENV_PY" -m cardinal
+fi

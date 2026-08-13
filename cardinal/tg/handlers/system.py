@@ -17,6 +17,7 @@ from ...logging_setup import LOG_FILE
 from ...self_update import DEFAULT_REPO, update_from_github
 from ...settings import CONFIG_DIR, STORAGE_DIR, ConfigError
 from .common import nav_row, safe_edit
+from .menu import build_main_menu
 
 router = Router(name="system")
 
@@ -31,17 +32,23 @@ BACKUP_EXCLUDE_DIRS = ("logs",)
 def build_system_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     builder = InlineKeyboardBuilder()
-    
+
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
     builder.button(text=l10n("sys_btn_backup"), callback_data="sys:backup")
-    builder.button(text=l10n("sys_btn_update"), callback_data="sys:update")
+
+    # ВМЕСТО «Обновить с GitHub» — подключение/отключение Playerok
+    if cardinal.playerok_connected:
+        builder.button(text="🔌 Отключить Playerok", callback_data="sys:disconnect_playerok")
+    else:
+        builder.button(text="🔗 Подключиться к Playerok", callback_data="sys:connect_playerok")
+
     builder.button(text=l10n("sys_btn_reload"), callback_data="sys:reload")
     builder.button(text=l10n("sys_btn_restart"), callback_data="sys:restart")
-    builder.button(text=l10n("btn_close"), callback_data="close")  # ← ЗАМЕНА
-    
+    builder.button(text=l10n("btn_close"), callback_data="close")
+
     builder.adjust(2)
     builder.row(*nav_row(l10n))
-    
+
     return l10n("sys_title"), builder.as_markup()
 
 
@@ -189,3 +196,33 @@ async def cb_restart(query: CallbackQuery, cardinal) -> None:
     await safe_edit(query.message, cardinal.l10n("sys_restart_done"))
     await query.answer()
     cardinal.request_restart()
+
+
+@router.callback_query(F.data == "sys:connect_playerok")
+async def cb_connect_playerok(query: CallbackQuery, cardinal) -> None:
+    """Подключение к Playerok: статус в сообщении, успех → главное меню, ошибка → alert + «Система»."""
+    await safe_edit(query.message, "🔌 Подключаюсь…")
+
+    result = await cardinal.connect_playerok()
+
+    if result["ok"]:
+        await query.answer("✅ Подключено к Playerok")
+        # Сообщение превращается в стартовое (как при онлайн-запуске)
+        text, markup = build_main_menu(cardinal)
+        await safe_edit(query.message, text, markup)
+    else:
+        await query.answer(f"❌ Ошибка подключения: {result['message']}", show_alert=True)
+        text, markup = build_system_menu(cardinal)
+        await safe_edit(query.message, text, markup)
+
+
+@router.callback_query(F.data == "sys:disconnect_playerok")
+async def cb_disconnect_playerok(query: CallbackQuery, cardinal) -> None:
+    """Отключение от Playerok: статус в сообщении, затем снова меню «Система»."""
+    await safe_edit(query.message, "🔌 Отключаюсь…")
+
+    result = await cardinal.disconnect_playerok()
+
+    await query.answer(result["message"], show_alert=not result["ok"])
+    text, markup = build_system_menu(cardinal)
+    await safe_edit(query.message, text, markup)

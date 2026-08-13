@@ -105,6 +105,13 @@ def build_main_menu(cardinal) -> tuple[str, object]:
         unread_messages=unread_count,
         uptime=cardinal.uptime,
     )
+    
+    # Добавляем строку подключения после первой строки (заголовка)
+    conn = "🟢 Online" if cardinal.playerok_connected else "🔴 Offline"
+    conn_line = f"🔌 Подключение: {conn}"
+    head, sep, tail = text.partition("\n")
+    text = head + "\n" + conn_line + sep + tail
+    
     builder = InlineKeyboardBuilder()
     builder.button(text=l10n("menu_section_toggles"), callback_data="gl")
     builder.button(text=l10n("menu_section_autodelivery"), callback_data="ad")

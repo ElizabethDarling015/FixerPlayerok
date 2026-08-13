@@ -259,17 +259,25 @@ class Notifier:
             unread_count = profile.unread_chats_counter
         # ------------------------------------------
 
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=self.cardinal.l10n("btn_home"), callback_data="menu")]
-        ])
-        await self._send_all(self.cardinal.l10n(
+        text = self.cardinal.l10n(
             "notif_started",
             username=_esc(account.username if account else "?"),
             balance=_esc(balance),
             missed_deals=_esc(missed_count),
             unread_messages=_esc(unread_count),
             modules=_esc(modules),
-        ), reply_markup=markup)
+        )
+
+        # Строка состояния подключения — сразу после заголовка
+        conn = "🟢 Online" if self.cardinal.playerok_connected else "🔴 Offline"
+        conn_line = f"🔌 Подключение: {conn}"
+        head, sep, tail = text.partition("\n")
+        text = head + "\n" + conn_line + "\n" + sep + tail
+
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=self.cardinal.l10n("btn_home"), callback_data="menu")]
+        ])
+        await self._send_all(text, reply_markup=markup)
 
     async def notify_error(self, error_text: str) -> None:
         if self._toggles.errors:
