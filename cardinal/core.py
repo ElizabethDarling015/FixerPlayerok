@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import os
 import signal
 import threading
 import time
@@ -39,6 +41,7 @@ from .settings import (
 
 if TYPE_CHECKING:
     from aiogram import Bot, Dispatcher
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
     from .modules.base import BaseModule
     from .tg.notifications import Notifier
@@ -108,6 +111,9 @@ class Cardinal:
 
         #: Выставляется `request_restart()`: после остановки main.py перезапустит процесс.
         self.restart_requested = False
+
+        # Путь к файлу с сохранённым уведомлением о выключении
+        self.SHUTDOWN_MSG_FILE = os.path.join("storage", "shutdown_message.json")
 
     # ------------------------------------------------------------------
     # Вспомогательное
@@ -309,6 +315,9 @@ class Cardinal:
             with contextlib.suppress(NotImplementedError):
                 self.loop.add_signal_handler(sig, self.request_shutdown)
 
+        # Удаляем уведомление о выключении от прошлого запуска
+        await self._cleanup_shutdown_message()
+
         # --- Проверяем offline_mode ---
         offline_mode = self.settings.playerok.offline_mode
 
@@ -442,6 +451,9 @@ class Cardinal:
 
     async def _shutdown(self) -> None:
         logger.info("Останавливаем PlayerokCardinal…")
+
+        await self._notify_shutdown()
+
         for module in self.modules:
             with contextlib.suppress(Exception):
                 await module.on_stop()
@@ -457,6 +469,76 @@ class Cardinal:
             with contextlib.suppress(Exception):
                 await self.bot.session.close()
         logger.info("PlayerokCardinal остановлен.")
+
+    async def _notify_shutdown(self) -> None:
+        """Отправляет уведомление в Telegram о выключении бота с кнопкой и сохраняет ID сообщений."""
+        if self.bot is None:
+            return
+
+        try:
+            admin_ids = self.settings.telegram.admin_ids
+        except AttributeError:
+            logger.warning("Не удалось получить admin_ids для уведомления о выключении")
+            return
+
+        if not admin_ids:
+            return
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="До завтра 👋", callback_data="shutdown_ack")
+        ]])
+
+        saved_messages = []
+        for admin_id in admin_ids:
+            try:
+                msg = await self.bot.send_message(
+                    chat_id=admin_id,
+                    text="🌙 Отбой на сегодня, закругляемся.",
+                    reply_markup=keyboard,
+                )
+                saved_messages.append({"chat_id": admin_id, "message_id": msg.message_id})
+                logger.info("Уведомление о выключении отправлено админу {}", admin_id)
+            except Exception as exc:
+                logger.warning("Не удалось отправить уведомление админу {}: {}", admin_id, exc)
+
+        if saved_messages:
+            try:
+                os.makedirs("storage", exist_ok=True)
+                with open(self.SHUTDOWN_MSG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(saved_messages, f, ensure_ascii=False)
+            except Exception as exc:
+                logger.warning("Не удалось сохранить ID сообщения о выключении: {}", exc)
+
+    async def _cleanup_shutdown_message(self) -> None:
+        """Удаляет уведомление о выключении от предыдущего запуска бота."""
+        if self.bot is None:
+            return
+        if not os.path.isfile(self.SHUTDOWN_MSG_FILE):
+            return
+
+        try:
+            with open(self.SHUTDOWN_MSG_FILE, "r", encoding="utf-8") as f:
+                messages = json.load(f)
+        except Exception as exc:
+            logger.warning("Не удалось прочитать файл уведомления о выключении: {}", exc)
+            messages = []
+
+        for item in messages:
+            try:
+                await self.bot.delete_message(
+                    chat_id=item["chat_id"],
+                    message_id=item["message_id"],
+                )
+                logger.info("Удалено предыдущее уведомление о выключении у админа {}", item["chat_id"])
+            except Exception as exc:
+                logger.debug("Не удалось удалить сообщение {}: {}", item.get("message_id"), exc)
+
+        try:
+            os.remove(self.SHUTDOWN_MSG_FILE)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Фоновые циклы

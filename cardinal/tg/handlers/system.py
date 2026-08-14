@@ -428,3 +428,31 @@ async def cb_disconnect_playerok(query: CallbackQuery, cardinal) -> None:
     await query.answer(result["message"], show_alert=not result["ok"])
     text, markup = build_system_menu(cardinal)
     await safe_edit(query.message, text, markup)
+
+# ------------------------------------------------------------------
+# Обработчик кнопки "До завтра" из уведомления о выключении
+# ------------------------------------------------------------------
+
+@router.callback_query(F.data == "shutdown_ack")
+async def cb_shutdown_ack(query: CallbackQuery, cardinal) -> None:
+    """Удаляет уведомление о выключении и очищает файл с сохранёнными ID сообщений."""
+    # Удаляем сообщение с кнопкой
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    
+    # Удаляем файл с сохранёнными ID сообщений
+    shutdown_file = cardinal.SHUTDOWN_MSG_FILE
+    try:
+        if os.path.isfile(shutdown_file):
+            os.remove(shutdown_file)
+            logger.info("Удалён файл уведомления о выключении: {}", shutdown_file)
+    except Exception:
+        pass
+    
+    # Пытаемся ответить на callback, но игнорируем ошибку "query is too old"
+    try:
+        await query.answer("Сообщение удалено")
+    except Exception:
+        pass
