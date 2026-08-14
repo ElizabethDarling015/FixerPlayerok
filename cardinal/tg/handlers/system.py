@@ -1,4 +1,4 @@
-"""Раздел «Система»: логи, бэкап, обновление с GitHub, перезагрузка, выключение."""
+"""Раздел «Система»: логи, бэкап, обновление с GitHub, тесты UI, выключение."""
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +28,6 @@ MAX_TEXT_LENGTH = 3500
 #: Подпапки storage/, не попадающие в бэкап (логи большие и не нужны для восстановления).
 BACKUP_EXCLUDE_DIRS = ("logs",)
 
-
 def build_system_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     builder = InlineKeyboardBuilder()
@@ -44,7 +43,7 @@ def build_system_menu(cardinal) -> tuple[str, object]:
         builder.button(text="🔗 Подключиться к Playerok", callback_data="sys:connect_playerok")
         conn_hint = "• 🔗 Подключиться к Playerok — авторизоваться и запустить слежение за событиями без перезапуска"
 
-    builder.button(text=l10n("sys_btn_reload"), callback_data="sys:reload")
+    builder.button(text=l10n("sys_btn_tests"), callback_data="sys:tests")
     builder.button(text=l10n("sys_btn_restart"), callback_data="sys:restart")
     builder.button(text=l10n("btn_close"), callback_data="close")
 
@@ -57,13 +56,48 @@ def build_system_menu(cardinal) -> tuple[str, object]:
         "• 📄 Логи — последние 30 строк журнала бота\n"
         "• 💾 Бэкап — ZIP-архив с конфигами и данными (склады, журналы)\n"
         f"{conn_hint}\n"
-        "• 🔄 Перезагрузка конфигов — перечитать автоответчик, автовыдачу и ЧС без перезапуска\n"
+        "• 🧪 Тесты — отправить тестовые уведомления для настройки UI\n"
         "• 🔁 Перезапуск — полностью перезапустить бота\n"
         "• ❌ Закрыть — закрыть это меню"
     )
 
     return text, builder.as_markup()
 
+
+def build_tests_menu(cardinal) -> tuple[str, object]:
+    """Меню тестов UI для настройки внешнего вида уведомлений."""
+    l10n = cardinal.l10n
+    builder = InlineKeyboardBuilder()
+
+    # Добавляем кнопки тестов
+    builder.button(text=l10n("test_user_message"), callback_data="test:user_msg")
+    builder.button(text=l10n("test_support_message"), callback_data="test:support_msg")
+    builder.button(text=l10n("test_new_deal"), callback_data="test:new_deal")
+    builder.button(text=l10n("test_deal_confirmed"), callback_data="test:deal_confirmed")
+    builder.button(text=l10n("test_new_review"), callback_data="test:new_review")
+    builder.button(text=l10n("test_delivery_ok"), callback_data="test:delivery_ok")
+    builder.button(text=l10n("test_error"), callback_data="test:error")
+    
+    # Добавляем кнопку-заглушку, если количество нечётное (для двух колонок)
+    # Сейчас 7 кнопок — добавляем 8-ю для ровной сетки 2x4
+    builder.button(text="➖", callback_data="noop")
+
+    # Раскладываем кнопки в 2 колонки
+    builder.adjust(2)
+    builder.row(*nav_row(l10n, "sys"))
+
+    text = (
+        l10n("test_title") + "\n\n"
+        "Отправьте тестовое уведомление, чтобы увидеть его внешний вид и настроить под себя.\n\n"
+        "💡 <i>Совет: редактируйте строки в <code>cardinal/locales/ru.py</code> и перезапускайте тесты для живой настройки!</i>"
+    )
+
+    return text, builder.as_markup()
+
+
+# ------------------------------------------------------------------
+# Обработчики раздела "Система"
+# ------------------------------------------------------------------
 
 def build_backup_zip(config_dir: str = CONFIG_DIR, storage_dir: str = STORAGE_DIR) -> bytes:
     """
@@ -85,7 +119,6 @@ def build_backup_zip(config_dir: str = CONFIG_DIR, storage_dir: str = STORAGE_DI
                     arcname = os.path.join(base_name, os.path.relpath(full_path, base_dir))
                     archive.write(full_path, arcname)
     return buffer.getvalue()
-
 
 def read_log_tail(log_file: str = LOG_FILE, lines: int = LOG_TAIL_LINES) -> str:
     """Последние строки файла лога (пустая строка, если файла нет)."""
@@ -129,16 +162,150 @@ async def cb_backup(query: CallbackQuery, cardinal) -> None:
     await query.answer()
 
 
-@router.callback_query(F.data == "sys:reload")
-async def cb_reload(query: CallbackQuery, cardinal) -> None:
-    l10n = cardinal.l10n
-    try:
-        details = cardinal.reload_configs()
-    except ConfigError as exc:
-        await query.answer(str(exc)[:190], show_alert=True)
-        return
-    await query.answer(l10n("sys_reloaded", details=details), show_alert=True)
+@router.callback_query(F.data == "sys:tests")
+async def cb_tests(query: CallbackQuery, cardinal) -> None:
+    """Показать меню тестов UI."""
+    text, markup = build_tests_menu(cardinal)
+    await safe_edit(query.message, text, markup)
+    await query.answer()
 
+
+# ------------------------------------------------------------------
+# Обработчики тестовых уведомлений (заменяют текущее сообщение)
+# ------------------------------------------------------------------
+
+@router.callback_query(F.data == "test:user_msg")
+async def cb_test_user_msg(query: CallbackQuery, cardinal) -> None:
+    """Тест: сообщение от обычного пользователя."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_new_message",
+        username="Test",
+        section="World of Tanks → Аккаунты",
+        text="Здравствуйте! Хочу узнать, можно ли получить скидку при покупке сразу нескольких аккаунтов?",
+    )
+    
+    # Кнопка "Назад" в меню тестов
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:support_msg")
+async def cb_test_support_msg(query: CallbackQuery, cardinal) -> None:
+    """Тест: сообщение от поддержки."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_new_message",
+        username="Admin",
+        section="Служба поддержки",
+        text="Ваш запрос принят. Среднее время ответа — 15 минут.",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:new_deal")
+async def cb_test_new_deal(query: CallbackQuery, cardinal) -> None:
+    """Тест: новая сделка."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_new_deal",
+        item="Аккаунт Steam с играми",
+        buyer="Player123",
+        status="PAID",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:deal_confirmed")
+async def cb_test_deal_confirmed(query: CallbackQuery, cardinal) -> None:
+    """Тест: сделка подтверждена."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_deal_confirmed",
+        item="Гем-пакет 1000 гемов",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:new_review")
+async def cb_test_new_review(query: CallbackQuery, cardinal) -> None:
+    """Тест: новый отзыв."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_new_review",
+        rating="5",
+        author="HappyBuyer",
+        text="Отличный продавец! Всё получил быстро, товар соответствует описанию. Рекомендую! 👍",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:delivery_ok")
+async def cb_test_delivery_ok(query: CallbackQuery, cardinal) -> None:
+    """Тест: успешная доставка."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_delivery_ok",
+        item="Ключ активации Windows 11",
+        stock="42",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:error")
+async def cb_test_error(query: CallbackQuery, cardinal) -> None:
+    """Тест: ошибка."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_error",
+        error="ConnectionError: Не удалось подключиться к серверу Playerok (timeout after 15s)",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+# ------------------------------------------------------------------
+# Остальные обработчики раздела "Система"
+# ------------------------------------------------------------------
 
 @router.callback_query(F.data == "sys:update")
 async def cb_update_confirm(query: CallbackQuery, cardinal) -> None:

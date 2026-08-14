@@ -157,7 +157,12 @@ STRINGS = {
     "notif_new_deal": "🛒 <b>Новая сделка</b>\nЛот: {item}\nПокупатель: {buyer}\nСтатус: {status}",
     "notif_item_paid": "💸 <b>Лот оплачен</b>\nЛот: {item}\nПокупатель: {buyer}",
     "notif_delivery_ok": "📦 <b>Товар выдан</b>\nЛот: {item}\nОстаток на складе: {stock} шт.",
-    "notif_new_message": "✉️ <b>{username}</b> (чат <code>{chat_id}</code>):\n{text}\n\n<i>Ответьте на это сообщение, чтобы написать в чат Playerok.</i>",
+    "notif_new_message": (
+        "💌 <b>{username}</b>\n"
+        "📂 Раздел: <b>{section}</b>\n\n"
+        "💬 <i>{text}</i>\n\n"
+        "👆 <i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
+    ),
     "notif_new_review": "⭐ <b>Новый отзыв</b> ({rating}/5) от {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Проблема в сделке</b>\nЛот: {item}\nСделка: <code>{deal_id}</code>",
     "notif_deal_problem_resolved": "✅ Проблема в сделке <code>{deal_id}</code> решена.",
@@ -208,6 +213,17 @@ STRINGS = {
     "sys_shutdown_confirm": "Точно выключить Cardinal? Запустить обратно можно только с сервера.",
     "sys_btn_shutdown_yes": "Да, выключить",
     "sys_shutdown_done": "🛑 Выключаюсь…",
+
+ # --- Тесты UI ---
+    "sys_btn_tests": "🧪 Тесты",
+    "test_title": "🧪 <b>Тесты уведомлений</b>",
+    "test_user_message": "👤 Сообщение от Test",
+    "test_support_message": "🛠 Сообщение от Admin",
+    "test_new_deal": "🛒 Новая сделка",
+    "test_deal_confirmed": "🤝 Сделка подтверждена",
+    "test_new_review": "⭐ Новый отзыв",
+    "test_delivery_ok": "📦 Успешная доставка",
+    "test_error": "🚨 Ошибка",
 
     # --- Плагины ---
     "pl_title": "🧩 <b>Плагины</b>\n\nЗагружены из папки <code>plugins/</code>:",

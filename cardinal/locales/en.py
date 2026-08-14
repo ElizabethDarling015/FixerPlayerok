@@ -157,7 +157,12 @@ STRINGS = {
     "notif_new_deal": "🛒 <b>New deal</b>\nItem: {item}\nBuyer: {buyer}\nStatus: {status}",
     "notif_item_paid": "💸 <b>Item paid</b>\nItem: {item}\nBuyer: {buyer}",
     "notif_delivery_ok": "📦 <b>Item delivered</b>\nItem: {item}\nStock left: {stock} pcs.",
-    "notif_new_message": "✉️ <b>{username}</b> (chat <code>{chat_id}</code>):\n{text}\n\n<i>Reply to this message to answer in the Playerok chat.</i>",
+    "notif_new_message": (
+        "💌 <b>{username}</b>\n"
+        "📂 Section: <b>{section}</b>\n\n"
+        "💬 <i>{text}</i>\n\n"
+        "👆 <i>Reply to this message to write to Playerok chat</i>"
+    ),
     "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
     "notif_deal_problem_resolved": "✅ Problem in deal <code>{deal_id}</code> resolved.",
@@ -208,6 +213,17 @@ STRINGS = {
     "sys_shutdown_confirm": "Really shut down Cardinal? You can only start it again from the server.",
     "sys_btn_shutdown_yes": "Yes, shut down",
     "sys_shutdown_done": "🛑 Shutting down…",
+
+    # --- UI Tests ---
+    "sys_btn_tests": "🧪 Tests",
+    "test_title": "🧪 <b>Notification Tests</b>",
+    "test_user_message": "👤 Message from Test",
+    "test_support_message": "🛠 Message from Admin",
+    "test_new_deal": "🛒 New Deal",
+    "test_deal_confirmed": "🤝 Deal Confirmed",
+    "test_new_review": "⭐ New Review",
+    "test_delivery_ok": "📦 Successful Delivery",
+    "test_error": "🚨 Error",
 
     # --- Plugins ---
     "pl_title": "🧩 <b>Plugins</b>\n\nLoaded from <code>plugins/</code>:",

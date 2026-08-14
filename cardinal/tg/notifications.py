@@ -143,6 +143,7 @@ class Notifier:
 
         elif event_type is EventTypes.NEW_MESSAGE and self._toggles.new_message:
             message = event.message
+            chat = event.chat
             account = self.cardinal.account
             if message is None:
                 return
@@ -153,12 +154,53 @@ class Notifier:
 
             # Для системных уведомлений (где user=None) подставляем имя "Система"
             username = message.user.username if message.user else "Система"
+            
+            # --- Извлекаем информацию о категории и игре ---
+            category_name = None
+            game_name = None
+            
+            # Приоритет 1: напрямую из сообщения
+            if message.game and message.game.name:
+                game_name = message.game.name
+            
+            if message.item and message.item.category and message.item.category.name:
+                category_name = message.item.category.name
+            
+            # Приоритет 2: через сделку в сообщении
+            if not category_name and message.deal and message.deal.item:
+                if message.deal.item.category and message.deal.item.category.name:
+                    category_name = message.deal.item.category.name
+                if not game_name and message.deal.item.game and message.deal.item.game.name:
+                    game_name = message.deal.item.game.name
+            
+            # Приоритет 3: через сделки чата
+            if not category_name and chat.deals:
+                for deal in chat.deals:
+                    if deal and deal.item:
+                        if deal.item.category and deal.item.category.name:
+                            category_name = deal.item.category.name
+                        if not game_name and deal.item.game and deal.item.game.name:
+                            game_name = deal.item.game.name
+                        if category_name:
+                            break
+            
+            # Формируем строку раздела
+            section_info = ""
+            if game_name and category_name:
+                section_info = f"{game_name} → {category_name}"
+            elif game_name:
+                section_info = game_name
+            elif category_name:
+                section_info = category_name
+            else:
+                section_info = "Не определено"
+            # -----------------------------------------
                 
             await self._send_all(
                 l10n(
                     "notif_new_message",
                     username=_esc(username),
-                    chat_id=_esc(event.chat.id),
+                    section=_esc(section_info),
                     text=_esc(message.text or ""),
                 ),
                 remember_chat=event.chat.id,
