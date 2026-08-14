@@ -1,14 +1,8 @@
-"""
-Уведомления Cardinal в Telegram: события `Runner` → сообщения администраторам.
-
-Каждый тип уведомления включается/выключается в `[notifications]` главного конфига
-(переключается из TG-панели). На уведомление о новом сообщении Playerok можно ответить
-reply'ем — Cardinal перешлёт текст в соответствующий чат Playerok (см. `reply_map` и
-`handlers/replies.py`).
-"""
+"""Уведомления Cardinal: отправка сообщений администраторам."""
 from __future__ import annotations
 
 import html
+from typing import Any
 
 from loguru import logger
 
@@ -16,12 +10,192 @@ from playerokapi.common.enums import EventTypes
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-def _esc(value) -> str:
-    """HTML-экранирование пользовательского текста для parse_mode=HTML."""
-    return html.escape(str(value)) if value is not None else "?"
+
+# ---------------------------------------------------------------------------
+# Системные маркеры в сообщениях, которые дублируют отдельные события.
+# Если сообщение содержит такой маркер — не отправляем NEW_MESSAGE,
+# так как событие придёт отдельно через опрос сделок.
+# ---------------------------------------------------------------------------
+KNOWN_SYSTEM_MARKERS = {
+    "{{ITEM_PAID}}",
+    "{{DEAL_CONFIRMED}}",
+    "{{DEAL_CONFIRMED_AUTOMATICALLY}}",
+    "{{DEAL_PROBLEM_RESOLVED}}",
+    "{{DEAL_ROLLED_BACK}}",
+    "{{DEAL_HAS_PROBLEM}}",
+}
+
+
+def _esc(value: Any) -> str:
+    """HTML-экранирование для безопасной вставки в Telegram."""
+    if value is None:
+        return "?"
+    return html.escape(str(value))
+
+
+def _is_system_marker_message(text: str | None) -> bool:
+    """Проверяет, является ли сообщение системным маркером."""
+    if not text:
+        return False
+    return any(marker in text for marker in KNOWN_SYSTEM_MARKERS)
+
+
+def _is_support_message(message: Any) -> bool:
+    """Проверяет, является ли сообщение от поддержки/модератора."""
+    if not message:
+        return False
+    
+    # Проверяем поле moderator (если оно заполнено)
+    if getattr(message, "moderator", None) is not None:
+        return True
+    
+    # Проверяем роль пользователя
+    user = getattr(message, "user", None)
+    if user:
+        role = getattr(user, "role", None)
+        if role is not None:
+            role_name = getattr(role, "name", str(role))
+            if role_name.upper() in ("MODERATOR", "CHECKER"):
+                return True
+    
+    return False
+
+
+def _get_section_from_deal(deal: Any) -> str:
+    """Извлекает раздел (игра → категория) из сделки."""
+    if not deal:
+        return "Не определено"
+    
+    item = getattr(deal, "item", None)
+    if not item:
+        return "Не определено"
+    
+    game = getattr(item, "game", None)
+    category = getattr(item, "category", None)
+    
+    game_name = getattr(game, "name", None) if game else None
+    category_name = getattr(category, "name", None) if category else None
+    
+    if game_name and category_name:
+        return f"{game_name} → {category_name}"
+    elif game_name:
+        return game_name
+    elif category_name:
+        return category_name
+    return "Не определено"
+
+
+def _get_support_context(message: Any, chat: Any) -> dict:
+    """
+    Определяет контекст сообщения поддержки.
+    
+    Возвращает словарь:
+    {
+        "is_support_chat": bool,      # True если это отдельный чат поддержки
+        "is_deal_chat": bool,         # True если поддержка в чате с покупателем
+        "buyer": str | None,          # Имя покупателя (если есть)
+        "item_name": str | None,      # Название лота (если есть)
+        "section": str,               # Раздел (игра → категория)
+    }
+    """
+    result = {
+        "is_support_chat": False,
+        "is_deal_chat": False,
+        "buyer": None,
+        "item_name": None,
+        "section": "🛠 Служба поддержки",
+    }
+    
+    if not chat:
+        return result
+    
+    # Проверяем тип чата
+    chat_type = getattr(chat, "type", None)
+    if chat_type is not None:
+        type_name = getattr(chat_type, "name", str(chat_type))
+        if type_name.upper() in ("SUPPORT", "ПОДДЕРЖКА"):
+            result["is_support_chat"] = True
+            return result
+    
+    # Если это не чат поддержки, проверяем есть ли сделки в чате
+    deals = getattr(chat, "deals", [])
+    if deals:
+        result["is_deal_chat"] = True
+        
+        # Берём первую активную сделку для контекста
+        for deal in deals:
+            if deal is None:
+                continue
+            
+            # Получаем покупателя
+            deal_user = getattr(deal, "user", None)
+            if deal_user:
+                result["buyer"] = getattr(deal_user, "username", None)
+            
+            # Получаем лот и раздел
+            deal_item = getattr(deal, "item", None)
+            if deal_item:
+                result["item_name"] = getattr(deal_item, "name", None)
+                result["section"] = _get_section_from_deal(deal)
+            
+            # Прерываемся после первой найденной сделки с данными
+            if result["buyer"] or result["item_name"]:
+                break
+    
+    return result
+
+
+def _get_section_from_message(message: Any, chat: Any) -> str:
+    """Извлекает раздел из сообщения."""
+    if not message:
+        return "Не определено"
+    
+    # Проверяем, является ли сообщение от поддержки/модератора
+    if _is_support_message(message):
+        return "🛠 Служба поддержки"
+    
+    # Пробуем получить из самого сообщения
+    game = getattr(message, "game", None)
+    item = getattr(message, "item", None)
+    
+    game_name = getattr(game, "name", None) if game else None
+    category = getattr(item, "category", None) if item else None
+    category_name = getattr(category, "name", None) if category else None
+    
+    # Если не нашли в сообщении, пробуем из сделки
+    deal = getattr(message, "deal", None)
+    if deal:
+        return _get_section_from_deal(deal)
+    
+    # Если не нашли в сделке, пробуем из чата
+    if chat and not game_name and not category_name:
+        deals = getattr(chat, "deals", [])
+        if deals:
+            for chat_deal in deals:
+                section = _get_section_from_deal(chat_deal)
+                if section != "Не определено":
+                    return section
+    
+    if game_name and category_name:
+        return f"{game_name} → {category_name}"
+    elif game_name:
+        return game_name
+    elif category_name:
+        return category_name
+    
+    # Специальный случай для чата поддержки (по типу чата)
+    if chat:
+        chat_type = getattr(chat, "type", None)
+        if chat_type is not None:
+            type_name = getattr(chat_type, "name", str(chat_type))
+            if type_name.upper() in ("SUPPORT", "ПОДДЕРЖКА"):
+                return "🛠 Служба поддержки"
+    
+    return "Не определено"
+
 
 class Notifier:
-    """Отправляет уведомления о событиях всем администраторам панели."""
+    """Отправляет уведомления о событиях всем администраторам."""
 
     def __init__(self, cardinal, bot, admins):
         self.cardinal = cardinal
@@ -80,8 +254,10 @@ class Notifier:
             item_name = deal.item.name if deal and deal.item else "?"
             buyer = deal.user.username if deal and deal.user else "?"
             raw_status = deal.raw_status.name if deal and deal.raw_status else "?"
+            section = _get_section_from_deal(deal)
             lines.append(
                 f"{i}. <b>{_esc(item_name)}</b>\n"
+                f"   📂 {_esc(section)}\n"
                 f"   👤 Покупатель: {_esc(buyer)}\n"
                 f"   📋 Статус: {_esc(raw_status)}"
             )
@@ -99,9 +275,15 @@ class Notifier:
         event_type = event.type
 
         # --- ДЕДУПЛИКАЦИЯ (ЗАЩИТА ОТ ДУБЛЕЙ) ---
+        # Должна быть ПЕРВЫМ блоком в on_event!
         deal = getattr(event, "deal", None)
         if deal and getattr(deal, "id", None):
-            dedup_key = f"{event_type.name}:{deal.id}"
+            # Для NEW_DEAL и ITEM_PAID используем общий ключ — они дублируют друг друга
+            if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID):
+                dedup_key = f"DEAL:{deal.id}"
+            else:
+                dedup_key = f"{event_type.name}:{deal.id}"
+            
             if dedup_key in self._notified_deal_events:
                 logger.debug("Пропущен дубль уведомления: {}", dedup_key)
                 return
@@ -112,34 +294,44 @@ class Notifier:
                 self._notified_deal_events.clear()
         # ---------------------------------------
 
-        if event_type is EventTypes.NEW_DEAL and self._toggles.new_deal:
-            deal = event.deal
-            await self._send_all(l10n(
-                "notif_new_deal",
-                item=_esc(deal.item.name if deal.item else "?"),
-                buyer=_esc(deal.user.username if deal.user else "?"),
-                status=_esc(deal.raw_status.name if deal.raw_status else "?"),
-            ))
-
-        elif event_type is EventTypes.ITEM_PAID and self._toggles.item_paid:
-            deal = event.deal
-            item_name = deal.item.name if deal and deal.item else "?"
-            await self._send_all(l10n(
-                "notif_item_paid",
-                item=_esc(item_name),
-                buyer=_esc(deal.user.username if deal and deal.user else "?"),
-            ))
+        # Объединяем NEW_DEAL и ITEM_PAID в одно уведомление
+        # Оба события означают одно и то же: покупатель оплатил лот
+        if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID):
+            # Проверяем переключатели: достаточно одного включённого
+            if self._toggles.new_deal or self._toggles.item_paid:
+                deal = event.deal
+                section = _get_section_from_deal(deal)
+                item_name = deal.item.name if deal and deal.item else "?"
+                buyer = deal.user.username if deal and deal.user else "?"
+                status = deal.raw_status.name if deal and deal.raw_status else "?"
+                price = deal.item.price if deal and deal.item and getattr(deal.item, "price", None) is not None else "?"
+                
+                await self._send_all(l10n(
+                    "notif_new_deal",
+                    section=_esc(section),
+                    item=_esc(item_name),
+                    buyer=_esc(buyer),
+                    status=_esc(status),
+                    price=_esc(price),
+                ))
+            
             # Авто-выдача выполняется Runner'ом до того, как событие дошло сюда: если журнал
             # говорит «sent» — товар выдан, шлём отдельное уведомление с остатком склада.
-            manager = self.cardinal.autodelivery_manager
-            if (self._toggles.delivery and deal is not None and manager is not None
-                    and manager.ledger is not None
-                    and manager.ledger.get_state(deal.id) == "sent"):
-                await self._send_all(l10n(
-                    "notif_delivery_ok",
-                    item=_esc(item_name),
-                    stock=manager.get_stock_size(item_name),
-                ))
+            # Работает только для ITEM_PAID (именно к этому событию привязана авто-выдача)
+            if event_type is EventTypes.ITEM_PAID:
+                deal = event.deal
+                manager = self.cardinal.autodelivery_manager
+                if (self._toggles.delivery and deal is not None and manager is not None
+                        and manager.ledger is not None
+                        and manager.ledger.get_state(deal.id) == "sent"):
+                    section = _get_section_from_deal(deal)
+                    item_name = deal.item.name if deal and deal.item else "?"
+                    await self._send_all(l10n(
+                        "notif_delivery_ok",
+                        section=_esc(section),
+                        item=_esc(item_name),
+                        stock=manager.get_stock_size(item_name),
+                    ))
 
         elif event_type is EventTypes.NEW_MESSAGE and self._toggles.new_message:
             message = event.message
@@ -152,123 +344,167 @@ class Notifier:
             if message.user is not None and message.user.id == account.id:
                 return
 
+            # --- ФИЛЬТРАЦИЯ СИСТЕМНЫХ МАРКЕРОВ ---
+            # Если сообщение содержит известный маркер — пропускаем,
+            # так как событие придёт отдельно через опрос сделок
+            if _is_system_marker_message(message.text):
+                logger.debug("Пропущено системное сообщение с маркером: {}", message.text)
+                return
+            # ---------------------------------------
+
             # Для системных уведомлений (где user=None) подставляем имя "Система"
             username = message.user.username if message.user else "Система"
             
-            # --- Извлекаем информацию о категории и игре ---
-            category_name = None
-            game_name = None
+            # Проверяем, является ли сообщение от поддержки
+            is_support = _is_support_message(message)
             
-            # Приоритет 1: напрямую из сообщения
-            if message.game and message.game.name:
-                game_name = message.game.name
-            
-            if message.item and message.item.category and message.item.category.name:
-                category_name = message.item.category.name
-            
-            # Приоритет 2: через сделку в сообщении
-            if not category_name and message.deal and message.deal.item:
-                if message.deal.item.category and message.deal.item.category.name:
-                    category_name = message.deal.item.category.name
-                if not game_name and message.deal.item.game and message.deal.item.game.name:
-                    game_name = message.deal.item.game.name
-            
-            # Приоритет 3: через сделки чата
-            if not category_name and chat.deals:
-                for deal in chat.deals:
-                    if deal and deal.item:
-                        if deal.item.category and deal.item.category.name:
-                            category_name = deal.item.category.name
-                        if not game_name and deal.item.game and deal.item.game.name:
-                            game_name = deal.item.game.name
-                        if category_name:
-                            break
-            
-            # Формируем строку раздела
-            section_info = ""
-            if game_name and category_name:
-                section_info = f"{game_name} → {category_name}"
-            elif game_name:
-                section_info = game_name
-            elif category_name:
-                section_info = category_name
-            else:
-                section_info = "Не определено"
-            # -----------------------------------------
+            if is_support:
+                # Получаем контекст поддержки
+                support_ctx = _get_support_context(message, chat)
                 
-            await self._send_all(
-                l10n(
-                    "notif_new_message",
-                    username=_esc(username),
-                    section=_esc(section_info),
-                    text=_esc(message.text or ""),
-                ),
-                remember_chat=event.chat.id,
-            )
+                if support_ctx["is_deal_chat"]:
+                    # Поддержка в чате с покупателем — показываем контекст сделки
+                    buyer = support_ctx["buyer"] or "?"
+                    item_name = support_ctx["item_name"] or "?"
+                    section = support_ctx["section"]
+                    
+                    await self._send_all(
+                        l10n(
+                            "notif_support_in_deal_chat",
+                            username=_esc(f"🛠 {username}"),
+                            section=_esc(section),
+                            buyer=_esc(buyer),
+                            item=_esc(item_name),
+                            text=_esc(message.text or ""),
+                        ),
+                        remember_chat=event.chat.id,
+                    )
+                else:
+                    # Отдельный чат поддержки
+                    await self._send_all(
+                        l10n(
+                            "notif_new_message",
+                            username=_esc(f"🛠 {username}"),
+                            section=_esc("🛠 Служба поддержки"),
+                            text=_esc(message.text or ""),
+                        ),
+                        remember_chat=event.chat.id,
+                    )
+            else:
+                # Обычное сообщение от покупателя
+                section = _get_section_from_message(message, chat)
+                text = message.text or ""
+                
+                await self._send_all(
+                    l10n(
+                        "notif_new_message",
+                        username=_esc(username),
+                        section=_esc(section),
+                        text=_esc(text),
+                    ),
+                    remember_chat=event.chat.id,
+                )
 
         elif event_type is EventTypes.NEW_REVIEW and self._toggles.new_review:
             review = event.review
+            rating = getattr(review, "rating", "?")
+            author = review.creator.username if getattr(review, "creator", None) else "?"
+            text = getattr(review, "text", "") or ""
+            
             await self._send_all(l10n(
                 "notif_new_review",
-                rating=_esc(getattr(review, "rating", "?")),
-                author=_esc(review.creator.username if getattr(review, "creator", None) else "?"),
-                text=_esc(getattr(review, "text", "") or ""),
+                rating=_esc(rating),
+                author=_esc(author),
+                text=_esc(text),
             ))
 
         elif event_type is EventTypes.DEAL_HAS_PROBLEM and self._toggles.deal_problem:
             deal = event.deal
+            section = _get_section_from_deal(deal)
+            item_name = deal.item.name if deal.item else "?"
+            
             await self._send_all(l10n(
                 "notif_deal_problem",
-                item=_esc(deal.item.name if deal.item else "?"),
+                section=_esc(section),
+                item=_esc(item_name),
                 deal_id=_esc(deal.id),
             ))
 
         elif event_type is EventTypes.DEAL_PROBLEM_RESOLVED and self._toggles.deal_problem:
-            await self._send_all(l10n("notif_deal_problem_resolved", deal_id=_esc(event.deal.id)))
+            deal = event.deal
+            section = _get_section_from_deal(deal)
+            
+            await self._send_all(l10n(
+                "notif_deal_problem_resolved",
+                section=_esc(section),
+                deal_id=_esc(deal.id),
+            ))
 
         elif event_type in (EventTypes.DEAL_CONFIRMED, EventTypes.DEAL_CONFIRMED_AUTOMATICALLY) \
                 and self._toggles.deal_confirmed:
             deal = event.deal
+            section = _get_section_from_deal(deal)
+            item_name = deal.item.name if deal.item else "?"
+            price = deal.item.price if deal.item and getattr(deal.item, "price", None) is not None else "?"
+            
             await self._send_all(l10n(
                 "notif_deal_confirmed",
-                item=_esc(deal.item.name if deal.item else "?"),
+                section=_esc(section),
+                item=_esc(item_name),
+                price=_esc(price),
             ))
 
         elif event_type is EventTypes.DEAL_ROLLED_BACK and self._toggles.deal_rolled_back:
             deal = event.deal
+            section = _get_section_from_deal(deal)
+            item_name = deal.item.name if deal.item else "?"
+            
             await self._send_all(l10n(
                 "notif_deal_rolled_back",
-                item=_esc(deal.item.name if deal.item else "?"),
+                section=_esc(section),
+                item=_esc(item_name),
             ))
 
         elif event_type is EventTypes.ITEM_RAISED and self._toggles.item_raised:
             result = event.result
+            item_name = getattr(result, "item_name", "?")
+            spent = getattr(result, "spent", "?")
+            
             await self._send_all(l10n(
                 "notif_item_raised",
-                item=_esc(getattr(result, "item_name", "?")),
-                spent=_esc(getattr(result, "spent", "?")),
+                item=_esc(item_name),
+                spent=_esc(spent),
             ))
 
         elif event_type is EventTypes.INSUFFICIENT_BALANCE and self._toggles.insufficient_balance:
             result = event.result
             priority_status = getattr(result, "priority_status", None)
+            item_name = getattr(result, "item_name", "?")
+            price = priority_status.price if priority_status else "?"
+            available = getattr(result, "available", "?")
+            
             await self._send_all(l10n(
                 "notif_insufficient_balance",
-                item=_esc(getattr(result, "item_name", "?")),
-                price=_esc(priority_status.price if priority_status else "?"),
-                available=_esc(getattr(result, "available", "?")),
+                item=_esc(item_name),
+                price=_esc(price),
+                available=_esc(available),
             ))
 
         # Отдельное предупреждение (независимо от остальных переключателей): сделка
         # с покупателем из чёрного списка.
+        # ДОЛЖНО БЫТЬ ПОСЛЕДНИМ блоком, отдельный if (не elif)!
         if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID) and self._toggles.blacklist:
             deal = getattr(event, "deal", None)
             buyer = deal.user.username if deal is not None and deal.user is not None else None
             if self.cardinal.is_blacklisted(buyer):
+                section = _get_section_from_deal(deal)
+                item_name = deal.item.name if deal and deal.item else "?"
+                
                 await self._send_all(l10n(
                     "notif_blacklist_deal",
+                    section=_esc(section),
                     buyer=_esc(buyer),
-                    item=_esc(deal.item.name if deal.item else "?"),
+                    item=_esc(item_name),
                 ))
 
     # ------------------------------------------------------------------
@@ -292,8 +528,8 @@ class Notifier:
             for deal in missed_deals:
                 if deal and getattr(deal, "id", None):
                     # Помечаем как "уже уведомлённые" для дедупликации
-                    self._notified_deal_events.add(f"NEW_DEAL:{deal.id}")
-                    self._notified_deal_events.add(f"ITEM_PAID:{deal.id}")
+                    # Используем общий ключ DEAL: для объединения NEW_DEAL и ITEM_PAID
+                    self._notified_deal_events.add(f"DEAL:{deal.id}")
 
         # --- Считаем непрочитанные сообщения ---
         unread_count = 0

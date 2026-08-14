@@ -69,18 +69,15 @@ def build_tests_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     builder = InlineKeyboardBuilder()
 
-    # Добавляем кнопки тестов
+    # Добавляем кнопки тестов (8 кнопок — чётное количество, заглушка не нужна)
     builder.button(text=l10n("test_user_message"), callback_data="test:user_msg")
+    builder.button(text=l10n("test_support_in_deal"), callback_data="test:support_in_deal")
     builder.button(text=l10n("test_support_message"), callback_data="test:support_msg")
     builder.button(text=l10n("test_new_deal"), callback_data="test:new_deal")
     builder.button(text=l10n("test_deal_confirmed"), callback_data="test:deal_confirmed")
     builder.button(text=l10n("test_new_review"), callback_data="test:new_review")
     builder.button(text=l10n("test_delivery_ok"), callback_data="test:delivery_ok")
     builder.button(text=l10n("test_error"), callback_data="test:error")
-    
-    # Добавляем кнопку-заглушку, если количество нечётное (для двух колонок)
-    # Сейчас 7 кнопок — добавляем 8-ю для ровной сетки 2x4
-    builder.button(text="➖", callback_data="noop")
 
     # Раскладываем кнопки в 2 колонки
     builder.adjust(2)
@@ -180,12 +177,11 @@ async def cb_test_user_msg(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
     text = l10n(
         "notif_new_message",
-        username="Test",
+        username="loner42",
         section="World of Tanks → Аккаунты",
         text="Здравствуйте! Хочу узнать, можно ли получить скидку при покупке сразу нескольких аккаунтов?",
     )
     
-    # Кнопка "Назад" в меню тестов
     builder = InlineKeyboardBuilder()
     builder.button(text=l10n("btn_back"), callback_data="sys:tests")
     builder.adjust(1)
@@ -196,13 +192,34 @@ async def cb_test_user_msg(query: CallbackQuery, cardinal) -> None:
 
 @router.callback_query(F.data == "test:support_msg")
 async def cb_test_support_msg(query: CallbackQuery, cardinal) -> None:
-    """Тест: сообщение от поддержки."""
+    """Тест: сообщение из отдельного чата поддержки."""
     l10n = cardinal.l10n
     text = l10n(
         "notif_new_message",
-        username="Admin",
-        section="Служба поддержки",
-        text="Ваш запрос принят. Среднее время ответа — 15 минут.",
+        username="🛠 Admin",
+        section="🛠 Служба поддержки",
+        text="Здравствуйте! Чем могу помочь? Опишите вашу проблему, и мы постараемся решить её как можно скорее.",
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+    
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:support_in_deal")
+async def cb_test_support_in_deal(query: CallbackQuery, cardinal) -> None:
+    """Тест: поддержка в чате сделки (модератор заглянул в спор с покупателем)."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_support_in_deal_chat",
+        username="🛠 Нина А.",
+        section="ChatGPT → Аккаунты",
+        buyer="loner42",
+        item="🔑 ЧАТГПТ-5.6 PLUS ⭐️ ЛИЧНЫЙ АККАУНТ (1 МЕСЯЦ) ⚡️ АВТОВЫДАЧА",
+        text="Здравствуйте. При продаже игрового аккаунта с полным доступом вы должны предоставить не только данные авторизации, но и все привязки или перепривязать на ресурсы покупателя, если этого сделано не было, то товар не считается предоставленным в полной мере.\n\nПожалуйста, предоставьте покупателю полный доступ к аккаунту в течение 24 часов — в противном случае мы будем вынуждены оформить возврат средств покупателю",
     )
     
     builder = InlineKeyboardBuilder()
@@ -215,13 +232,15 @@ async def cb_test_support_msg(query: CallbackQuery, cardinal) -> None:
 
 @router.callback_query(F.data == "test:new_deal")
 async def cb_test_new_deal(query: CallbackQuery, cardinal) -> None:
-    """Тест: новая сделка."""
+    """Тест: новая сделка (объединённое уведомление)."""
     l10n = cardinal.l10n
     text = l10n(
         "notif_new_deal",
-        item="Аккаунт Steam с играми",
-        buyer="Player123",
+        section="DataGrip → Лицензии",
+        item="🗄 DataGrip — Бессрочная лицензия | Lifetime [Автовыдача 24/7]",
+        buyer="loner42",
         status="PAID",
+        price="1500",
     )
     
     builder = InlineKeyboardBuilder()
@@ -238,7 +257,9 @@ async def cb_test_deal_confirmed(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
     text = l10n(
         "notif_deal_confirmed",
+        section="World of Tanks → Валюта",
         item="Гем-пакет 1000 гемов",
+        price="1500",
     )
     
     builder = InlineKeyboardBuilder()
@@ -274,6 +295,7 @@ async def cb_test_delivery_ok(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
     text = l10n(
         "notif_delivery_ok",
+        section="Steam → Ключи",
         item="Ключ активации Windows 11",
         stock="42",
     )
