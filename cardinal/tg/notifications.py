@@ -237,7 +237,7 @@ class Notifier:
         """Уведомление о старте Cardinal (аккаунт, баланс, модули + пропущенные сделки)."""
         account = self.cardinal.account
         profile = getattr(account, "profile", None)
-        balance = profile.balance.value if profile is not None and profile.balance is not None else "?"
+        balance = profile.balance.format_balance(detailed=True) if profile is not None and profile.balance is not None else "?"
         modules_settings = self.cardinal.settings.modules
         modules = ", ".join(
             name for name in type(modules_settings).model_fields if getattr(modules_settings, name)
@@ -273,6 +273,10 @@ class Notifier:
         conn_line = f"🔌 Подключение: {conn}"
         head, sep, tail = text.partition("\n")
         text = head + "\n" + conn_line + "\n" + sep + tail
+
+        # Пустые строки между блоками: аккаунт/баланс, сделки/сообщения, модули
+        for marker in ("🌙", "🧩"):
+            text = text.replace(f"\n{marker}", f"\n\n{marker}")
 
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=self.cardinal.l10n("btn_home"), callback_data="menu")]

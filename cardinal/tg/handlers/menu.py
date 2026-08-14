@@ -90,7 +90,7 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     account = cardinal.account
     profile = getattr(account, "profile", None)
-    balance = profile.balance.value if profile is not None and profile.balance is not None else "?"
+    balance = profile.balance.format_balance(detailed=True) if profile is not None and profile.balance is not None else "?"
     
     # --- Считаем непрочитанные сообщения ---
     unread_count = 0
@@ -111,6 +111,9 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     conn_line = f"🔌 Подключение: {conn}"
     head, sep, tail = text.partition("\n")
     text = head + "\n" + conn_line + sep + tail
+
+    # Пустая строка между блоками «аккаунт/баланс» и «сообщения/аптайм»
+    text = text.replace("\n📩", "\n\n📩")
     
     builder = InlineKeyboardBuilder()
     builder.button(text=l10n("menu_section_toggles"), callback_data="gl")

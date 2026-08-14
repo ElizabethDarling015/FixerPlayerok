@@ -29,6 +29,7 @@ class OnlineModule(BaseModule):
                 continue
             try:
                 account = await asyncio.to_thread(self.cardinal.account.get)
+                await asyncio.to_thread(self.cardinal.account.get_balance)  # освежить разбивку баланса
                 profile = getattr(account, "profile", None)
                 if profile is not None and profile.is_online is False:
                     logger.warning("Вечный онлайн: сайт считает аккаунт оффлайн (is_online=False)")

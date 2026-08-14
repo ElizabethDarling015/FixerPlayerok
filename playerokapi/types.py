@@ -70,6 +70,34 @@ class AccountBalance:
         """Ожидаемый доход (в обработке)."""
 
 
+    @staticmethod
+    def _fmt(x: float) -> str:
+        """Округляет до копеек и убирает лишние нули: 1706.70 -> '1706.7', 3000.00 -> '3000'."""
+        s = f"{float(x):.2f}"
+        return s.rstrip("0").rstrip(".") if "." in s else s
+
+    def format_balance(self, detailed: bool = False) -> str:
+        """
+        Форматирует баланс для отображения.
+
+        :param detailed: Если True, показывает разбивку (доступно/заморожено).
+        :return: Строка вида "4706.7" или "4706.7 (доступно: 3000, заморожено: 1706.7)"
+        """
+        total = self.value if self.value is not None else 0
+        if not detailed:
+            return self._fmt(total)
+
+        available = self.available if self.available is not None else 0
+        frozen = self.frozen if self.frozen is not None else 0
+
+        # Если сервер вернул frozen=0, но разница есть — считаем заморожено как разницу
+        if frozen == 0 and available < total:
+            frozen = total - available
+
+        return (f"{self._fmt(total)} "
+                f"(доступно: {self._fmt(available)}, заморожено: {self._fmt(frozen)})")
+
+
 class AccountItemsStats:
     """Статистика по лотам аккаунта."""
 

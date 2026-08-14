@@ -198,6 +198,7 @@ class Cardinal:
             for attempt in range(1, auth_attempts + 1):
                 try:
                     await asyncio.to_thread(self.account.get)
+                    await asyncio.to_thread(self.account.get_balance)
                     break
                 except RequestSendingError as exc:
                     if attempt == auth_attempts:
@@ -324,6 +325,7 @@ class Cardinal:
             for attempt in range(1, auth_attempts + 1):
                 try:
                     await asyncio.to_thread(self.account.get)
+                    await asyncio.to_thread(self.account.get_balance)
                     break
                 except RequestSendingError as exc:
                     if attempt == auth_attempts:

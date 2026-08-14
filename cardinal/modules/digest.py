@@ -90,7 +90,7 @@ class DigestModule(BaseModule):
 
         account = self.cardinal.account
         profile = getattr(account, "profile", None)
-        balance = profile.balance.value if profile is not None and profile.balance is not None else "?"
+        balance = profile.balance.format_balance(detailed=True) if profile is not None and profile.balance is not None else "?"
 
         manager = self.cardinal.autodelivery_manager
         stock_lines = []

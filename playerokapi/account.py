@@ -348,7 +348,21 @@ class Account:
             raise UnauthorizedError(cause="сервер ответил успешно, но не вернул данные пользователя — "
                                           "обычно это значит, что токен просрочен")
 
-        self.profile = parser.account_profile(raw_user)
+        previous_balance = self.profile.balance if self.profile else None
+        new_profile = parser.account_profile(raw_user)
+        # Запрос viewer возвращает урезанный баланс (только value) — переносим
+        # подробные поля из предыдущего профиля (их загружает `get_balance()`),
+        # чтобы поллинг Runner'а не «стирал» разбивку доступно/заморожено.
+        if (new_profile is not None and new_profile.balance is not None
+                and new_profile.balance.available is None
+                and new_profile.balance.frozen is None
+                and previous_balance is not None):
+            new_profile.balance.available = previous_balance.available
+            new_profile.balance.frozen = previous_balance.frozen
+            new_profile.balance.withdrawable = previous_balance.withdrawable
+            new_profile.balance.pending_income = previous_balance.pending_income
+        self.profile = new_profile
+        
         self.id = raw_user.get("id")
         self.username = self.profile.username if self.profile else raw_user.get("username")
         if self._runner is not None:
