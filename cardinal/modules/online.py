@@ -28,7 +28,12 @@ class OnlineModule(BaseModule):
             if not self.enabled:
                 continue
             try:
-                account = await asyncio.to_thread(self.cardinal.account.get)
+                # Если аккаунт не подключён (offline-режим) — пропускаем итерацию
+                if self.cardinal.account is None or not self.cardinal.playerok_connected:
+                    await asyncio.sleep(60)
+                    continue
+
+                account = await asyncio.to_thread(self.cardinal.account.get)                
                 await asyncio.to_thread(self.cardinal.account.get_balance)  # освежить разбивку баланса
                 profile = getattr(account, "profile", None)
                 if profile is not None and profile.is_online is False:

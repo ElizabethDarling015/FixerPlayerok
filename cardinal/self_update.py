@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 #: Репозиторий по умолчанию (owner/name).
-DEFAULT_REPO = "scwee/PlayerokCardinal"
+DEFAULT_REPO = "ElizabethDarling015/FixerPlayerok"
 DEFAULT_BRANCH = "main"
 
 #: Каталоги из архива, которые можно перезаписать целиком.
@@ -108,13 +108,22 @@ def _is_git_checkout(root: Path) -> bool:
 
 
 def _ensure_origin(root: Path, repo: str) -> None:
+    expected_url = f"https://github.com/{repo}.git"
     remote = _run(["git", "remote", "get-url", "origin"], root)
+    
+    # Если remote существует, проверяем, указывает ли он на нужный репозиторий
     if remote.returncode == 0 and remote.stdout.strip():
+        current_url = remote.stdout.strip()
+        if current_url == expected_url or current_url.endswith(f"{repo}.git"):
+            return  # URL правильный, ничего не делаем
+        # Иначе обновляем URL на ваш репозиторий
+        _run(["git", "remote", "set-url", "origin", expected_url], root)
         return
+
+    # Если remote не существует, создаем его
     url = f"https://github.com/{repo}.git"
     added = _run(["git", "remote", "add", "origin", url], root)
     if added.returncode != 0:
-        # remote мог появиться между проверками — пробуем set-url
         _run(["git", "remote", "set-url", "origin", url], root)
 
 

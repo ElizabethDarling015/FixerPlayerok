@@ -2,7 +2,14 @@
 from __future__ import annotations
 
 import html
+import asyncio
+import time
+import json
+import os
+
 from typing import Any
+
+from ..settings import STORAGE_DIR
 
 from loguru import logger
 
@@ -25,6 +32,9 @@ KNOWN_SYSTEM_MARKERS = {
     "{{DEAL_HAS_PROBLEM}}",
 }
 
+# Путь к файлу с историей отправленных уведомлений (переживает перезапуск бота)
+HISTORY_FILE = os.path.join(STORAGE_DIR, "notification_history.json")
+
 
 def _esc(value: Any) -> str:
     """HTML-экранирование для безопасной вставки в Telegram."""
@@ -45,18 +55,23 @@ def _is_support_message(message: Any) -> bool:
     if not message:
         return False
     
-    # Проверяем поле moderator (если оно заполнено)
+    # 1. Поле moderator (если Playerok явно пометил сообщение как от модератора)
     if getattr(message, "moderator", None) is not None:
         return True
     
-    # Проверяем роль пользователя
+    # 2. По роли пользователя
     user = getattr(message, "user", None)
     if user:
         role = getattr(user, "role", None)
         if role is not None:
-            role_name = getattr(role, "name", str(role))
-            if role_name.upper() in ("MODERATOR", "CHECKER"):
+            role_name = getattr(role, "name", str(role)).upper()
+            if role_name in ("MODERATOR", "CHECKER", "ADMIN", "SUPPORT"):
                 return True
+    
+    # 3. По префиксу в никнейме (модераторы Playerok часто имеют ⚖️, 🔰, 🛠)
+    username = getattr(user, "username", "") if user else ""
+    if any(prefix in username for prefix in ("⚖️", "🔰", "🛠", "⚠️", "👮")):
+        return True
     
     return False
 
@@ -195,7 +210,7 @@ def _get_section_from_message(message: Any, chat: Any) -> str:
 
 
 class Notifier:
-    """Отправляет уведомления о событиях всем администраторам."""
+    """Отправляет уведомления о событиям всем администраторам."""
 
     def __init__(self, cardinal, bot, admins):
         self.cardinal = cardinal
@@ -207,6 +222,10 @@ class Notifier:
         self._recent_errors: dict[str, float] = {}
         # Дедупликация: защита от повторных уведомлений по одной и той же сделке
         self._notified_deal_events: set[str] = set()
+        # Хранилище отправленных сообщений для последующего удаления
+        # Загружается из файла, чтобы пережить перезапуск бота
+        # {chat_id: [(message_id, timestamp), ...]}
+        self._sent_messages: dict[int, list[tuple[int, float]]] = self._load_history()
 
     @property
     def _toggles(self):
@@ -220,19 +239,194 @@ class Notifier:
             except Exception:
                 logger.exception("Не удалось отправить уведомление админу {}", admin_id)
                 continue
+            # Сохраняем для возможных ответов reply'ем
             if remember_chat is not None:
                 self.reply_map[(sent.chat.id, sent.message_id)] = remember_chat
-
+            # Сохраняем ID для последующего удаления (очистка истории)
+            self._sent_messages.setdefault(sent.chat.id, []).append((sent.message_id, time.time()))
+            self._save_history()  # сохраняем в файл, чтобы пережить перезапуск
+            
     async def send_text(self, text: str) -> None:
         """Отправляет произвольный текст всем админам (используется модулями, например сводкой)."""
         await self._send_all(text)
 
     # ------------------------------------------------------------------
-    # События Runner
+    # Очистка истории уведомлений в Telegram (логи не трогаются)
     # ------------------------------------------------------------------
 
+    def _cleanup_old_entries(self, max_age_seconds: int = 7 * 24 * 3600) -> None:
+        """Удаляет из хранилища записи старше max_age_seconds (по умолчанию 7 дней)."""
+        cutoff = time.time() - max_age_seconds
+        for chat_id in list(self._sent_messages.keys()):
+            self._sent_messages[chat_id] = [
+                (mid, ts) for mid, ts in self._sent_messages[chat_id] if ts >= cutoff
+            ]
+            if not self._sent_messages[chat_id]:
+                del self._sent_messages[chat_id]
+
+    def _load_history(self) -> dict[int, list[tuple[int, float]]]:
+        """Загружает историю отправленных уведомлений из файла."""
+        try:
+            if os.path.isfile(HISTORY_FILE):
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return {int(k): [tuple(x) for x in v] for k, v in data.items()}
+        except Exception as exc:
+            logger.debug("Не удалось загрузить историю уведомлений: {}", exc)
+        return {}
+
+    def _save_history(self) -> None:
+        """Сохраняет историю отправленных уведомлений в файл."""
+        try:
+            os.makedirs(STORAGE_DIR, exist_ok=True)
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump({str(k): [list(x) for x in v] for k, v in self._sent_messages.items()}, f)
+        except Exception as exc:
+            logger.debug("Не удалось сохранить историю уведомлений: {}", exc)
+
+    async def clear_notifications(self, since_timestamp: float | None = None) -> dict:
+        """
+        Удаляет уведомления из Telegram.
+
+        :param since_timestamp: Удалять только сообщения отправленные после этого времени.
+                                Если None — удаляются все накопленные сообщения.
+        :return: dict с количеством удалённых/ошибок.
+        """
+        self._cleanup_old_entries()
+        
+        removed = 0
+        failed = 0
+        skipped = 0
+        
+        for chat_id, messages in list(self._sent_messages.items()):
+            to_delete = []
+            remaining = []
+            
+            for message_id, timestamp in messages:
+                if since_timestamp is None or timestamp >= since_timestamp:
+                    to_delete.append(message_id)
+                else:
+                    remaining.append((message_id, timestamp))
+            
+            if not to_delete:
+                continue
+            
+            # Telegram позволяет удалять до 100 сообщений за раз через delete_messages
+            for i in range(0, len(to_delete), 100):
+                batch = to_delete[i:i + 100]
+                try:
+                    # delete_messages (plural) — удаляет пакетом, быстрее чем по одному
+                    await self.bot.delete_messages(chat_id, batch)
+                    removed += len(batch)
+                except Exception:
+                    # Если batch-метод не сработал (старый aiogram), пробуем по одному
+                    for mid in batch:
+                        try:
+                            await self.bot.delete_message(chat_id, mid)
+                            removed += 1
+                        except Exception:
+                            failed += 1
+                            skipped += 1
+            
+            # Оставляем только те, что не удалялись
+            if remaining:
+                self._sent_messages[chat_id] = remaining
+            else:
+                self._sent_messages.pop(chat_id, None)
+        
+        # Сохраняем обновлённую историю в файл
+        self._save_history()
+        
+        logger.info("Очистка уведомлений: удалено={}, ошибок={}", removed, failed)
+        return {"removed": removed, "failed": failed}
+
+    async def _resolve_section_via_chat_api(self, chat) -> str:
+        """
+        Для чатов, где WS не прислал привязку к лоту, делаем доп. запрос API,
+        чтобы получить полную информацию о чате и его сделках.
+        """
+        account = self.cardinal.account
+        if account is None or chat is None or not getattr(chat, "id", None):
+            return "Не определено"
+        try:
+            full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+        except Exception as exc:
+            logger.debug("Не удалось получить чат {}: {}", chat.id, exc)
+            return "Не определено"
+        if not full_chat:
+            return "Не определено"
+        
+        # Берём раздел из сделок чата
+        deals = getattr(full_chat, "deals", []) or []
+        for deal in deals:
+            section = _get_section_from_deal(deal)
+            if section != "Не определено":
+                return section
+        return "Не определено"
+
+    async def _resolve_section_via_deal_api(self, deal) -> str:
+        """
+        Для событий сделок без полного item, делаем доп. запросы API.
+        """
+        account = self.cardinal.account
+        if account is None or deal is None:
+            return "Не определено"
+
+        # --- Стратегия 1: через чат сделки ---
+        deal_chat = getattr(deal, "chat", None)
+        if deal_chat and getattr(deal_chat, "id", None):
+            try:
+                full_chat = await asyncio.to_thread(account.get_chat, deal_chat.id)
+                if full_chat:
+                    chat_deals = getattr(full_chat, "deals", []) or []
+                    for d in chat_deals:
+                        if d and getattr(d, "id", None) == deal.id:
+                            section = _get_section_from_deal(d)
+                            if section != "Не определено":
+                                return section
+                    for d in chat_deals:
+                        section = _get_section_from_deal(d)
+                        if section != "Не определено":
+                            return section
+            except Exception as exc:
+                logger.debug("Стратегия 1 (чат) не удалась: {}", exc)
+
+        # --- Стратегия 2: через лот сделки (упрощённая) ---
+        deal_item = getattr(deal, "item", None)
+        if deal_item and getattr(deal_item, "id", None):
+            try:
+                full_item = await asyncio.to_thread(account.get_item, deal_item.id)
+                if full_item:
+                    game = getattr(full_item, "game", None)
+                    category = getattr(full_item, "category", None)
+                    game_name = getattr(game, "name", None) if game else None
+                    category_name = getattr(category, "name", None) if category else None
+                    
+                    if game_name and category_name:
+                        return f"{game_name} → {category_name}"
+                    elif game_name:
+                        return game_name
+                    elif category_name:
+                        return category_name
+            except Exception as exc:
+                logger.debug("Стратегия 2 (item) не удалась: {}", exc)
+
+        # --- Стратегия 3: через список всех сделок ---
+        try:
+            page = await asyncio.to_thread(account.get_deals, count=50)
+            if page and getattr(page, "deals", None):
+                for d in page.deals:
+                    if d and getattr(d, "id", None) == getattr(deal, "id", None):
+                        section = _get_section_from_deal(d)
+                        if section != "Не определено":
+                            return section
+        except Exception as exc:
+            logger.debug("Стратегия 3 (get_deals) не удалась: {}", exc)
+
+        return "Не определено"
+
     # ------------------------------------------------------------------
-    # Уведомления о пропущенных сделках (при старте бота)
+    # События Runner
     # ------------------------------------------------------------------
 
     async def notify_missed_deals(self, missed_deals: list) -> None:
@@ -306,6 +500,10 @@ class Notifier:
                 status = deal.raw_status.name if deal and deal.raw_status else "?"
                 price = deal.item.price if deal and deal.item and getattr(deal.item, "price", None) is not None else "?"
                 
+                # Если раздел не определился — пробуем через API
+                if section == "Не определено":
+                    section = await self._resolve_section_via_deal_api(deal)
+                
                 await self._send_all(l10n(
                     "notif_new_deal",
                     section=_esc(section),
@@ -340,33 +538,47 @@ class Notifier:
             if message is None:
                 return
             
-            # Игнорируем только если это наше собственное исходящее сообщение
+            # Игнорируем собственные исходящие сообщения
             if message.user is not None and message.user.id == account.id:
                 return
 
-            # --- ФИЛЬТРАЦИЯ СИСТЕМНЫХ МАРКЕРОВ ---
-            # Если сообщение содержит известный маркер — пропускаем,
-            # так как событие придёт отдельно через опрос сделок
+            # Фильтрация системных маркеров
             if _is_system_marker_message(message.text):
                 logger.debug("Пропущено системное сообщение с маркером: {}", message.text)
                 return
-            # ---------------------------------------
 
-            # Для системных уведомлений (где user=None) подставляем имя "Система"
             username = message.user.username if message.user else "Система"
-            
-            # Проверяем, является ли сообщение от поддержки
             is_support = _is_support_message(message)
             
             if is_support:
                 # Получаем контекст поддержки
                 support_ctx = _get_support_context(message, chat)
                 
-                if support_ctx["is_deal_chat"]:
-                    # Поддержка в чате с покупателем — показываем контекст сделки
+                # Если раздел не определился из контекста — пробуем через API
+                if support_ctx["section"] == "Не определено":
+                    api_section = await self._resolve_section_via_chat_api(chat)
+                    if api_section != "Не определено":
+                        support_ctx["section"] = api_section
+                
+                if support_ctx["is_deal_chat"] or (support_ctx["section"] not in ("Не определено", "🛠 Служба поддержки")):
                     buyer = support_ctx["buyer"] or "?"
                     item_name = support_ctx["item_name"] or "?"
                     section = support_ctx["section"]
+                    
+                    # Если всё ещё нет buyer/item — пробуем через API
+                    if (buyer == "?" or item_name == "?") and chat:
+                        try:
+                            full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+                            if full_chat:
+                                for deal in (getattr(full_chat, "deals", []) or []):
+                                    if deal and getattr(deal, "user", None):
+                                        buyer = getattr(deal.user, "username", buyer)
+                                    if deal and getattr(deal, "item", None):
+                                        item_name = getattr(deal.item, "name", item_name)
+                                    if buyer != "?" and item_name != "?":
+                                        break
+                        except Exception:
+                            pass
                     
                     await self._send_all(
                         l10n(
@@ -393,6 +605,11 @@ class Notifier:
             else:
                 # Обычное сообщение от покупателя
                 section = _get_section_from_message(message, chat)
+                
+                # Если раздел не определился — пробуем через API
+                if section == "Не определено":
+                    section = await self._resolve_section_via_chat_api(chat)
+                
                 text = message.text or ""
                 
                 await self._send_all(
@@ -421,7 +638,20 @@ class Notifier:
         elif event_type is EventTypes.DEAL_HAS_PROBLEM and self._toggles.deal_problem:
             deal = event.deal
             section = _get_section_from_deal(deal)
-            item_name = deal.item.name if deal.item else "?"
+            item_name = deal.item.name if deal and deal.item else "?"
+            
+            # Если раздел или имя лота не определились — пробуем через API
+            if section == "Не определено" or item_name == "?":
+                api_section = await self._resolve_section_via_deal_api(deal)
+                if api_section != "Не определено":
+                    section = api_section
+                # Пробуем получить имя лота
+                try:
+                    full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+                    if full_deal and getattr(full_deal, "item", None):
+                        item_name = getattr(full_deal.item, "name", item_name)
+                except Exception:
+                    pass
             
             await self._send_all(l10n(
                 "notif_deal_problem",
@@ -433,6 +663,10 @@ class Notifier:
         elif event_type is EventTypes.DEAL_PROBLEM_RESOLVED and self._toggles.deal_problem:
             deal = event.deal
             section = _get_section_from_deal(deal)
+            
+            # Если раздел не определился — пробуем через API
+            if section == "Не определено":
+                section = await self._resolve_section_via_deal_api(deal)
             
             await self._send_all(l10n(
                 "notif_deal_problem_resolved",
@@ -447,6 +681,19 @@ class Notifier:
             item_name = deal.item.name if deal.item else "?"
             price = deal.item.price if deal.item and getattr(deal.item, "price", None) is not None else "?"
             
+            # Если раздел или имя лота не определились — пробуем через API
+            if section == "Не определено" or item_name == "?":
+                api_section = await self._resolve_section_via_deal_api(deal)
+                if api_section != "Не определено":
+                    section = api_section
+                try:
+                    full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+                    if full_deal and getattr(full_deal, "item", None):
+                        item_name = getattr(full_deal.item, "name", item_name)
+                        price = getattr(full_deal.item, "price", price) or price
+                except Exception:
+                    pass
+            
             await self._send_all(l10n(
                 "notif_deal_confirmed",
                 section=_esc(section),
@@ -458,6 +705,18 @@ class Notifier:
             deal = event.deal
             section = _get_section_from_deal(deal)
             item_name = deal.item.name if deal.item else "?"
+            
+            # Если раздел или имя лота не определились — пробуем через API
+            if section == "Не определено" or item_name == "?":
+                api_section = await self._resolve_section_via_deal_api(deal)
+                if api_section != "Не определено":
+                    section = api_section
+                try:
+                    full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+                    if full_deal and getattr(full_deal, "item", None):
+                        item_name = getattr(full_deal.item, "name", item_name)
+                except Exception:
+                    pass
             
             await self._send_all(l10n(
                 "notif_deal_rolled_back",
@@ -499,6 +758,10 @@ class Notifier:
             if self.cardinal.is_blacklisted(buyer):
                 section = _get_section_from_deal(deal)
                 item_name = deal.item.name if deal and deal.item else "?"
+                
+                # Если раздел не определился — пробуем через API
+                if section == "Не определено":
+                    section = await self._resolve_section_via_deal_api(deal)
                 
                 await self._send_all(l10n(
                     "notif_blacklist_deal",

@@ -28,7 +28,6 @@ STRINGS = {
     "menu_section_plugins": "🧩 Плагины",
     "menu_section_system": "⚙️ Система",
     "menu_btn_digest": "📊 Сводка сейчас",
-    "menu_btn_digest": "📊 Сводка сейчас",
     "btn_reply_menu": "Меню",
     "menu_keyboard_hint": "📋 Кнопка «Меню» — под полем ввода. Нажми на стрелку, чтобы свернуть её в компактный вид.",
     "module_autodelivery": "Авто-выдача",
@@ -146,7 +145,6 @@ STRINGS = {
     "nt_blacklist": "Сделки с ЧС",
 
     # --- Тексты уведомлений ---
-    # ОСТАВЬТЕ ЭТУ СТРОКУ ОРИГИНАЛЬНОЙ:
     "notif_started": (
         "🐦 <b>PlayerokCardinal запущен</b>\n"
         "👤 Аккаунт: <b>{username}</b>\n"
@@ -155,7 +153,6 @@ STRINGS = {
         "📩 Новые сообщения: <b>{unread_messages}</b>\n"
         "🧩 Модули: {modules}"
     ),
-    
     "notif_new_deal": (
         "🛒 <b>Новая сделка</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -166,7 +163,6 @@ STRINGS = {
         "💰 <b>Цена:</b> {price} ₽\n"
         "🤖 <i>Авто-выдача активна</i>"
     ),
-    
     "notif_item_paid": (
         "💸 <b>Лот оплачен</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -175,14 +171,12 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "💰 <b>Цена:</b> {price} ₽"
     ),
-    
     "notif_delivery_ok": (
         "📦 <b>Товар выдан</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
         "🎁 <b>Лот:</b> {item}\n"
         "📊 <b>Остаток на складе:</b> {stock} шт."
     ),
-    
     "notif_new_message": (
         "✉️ <b>{username}</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n\n"
@@ -190,7 +184,6 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
     ),
-    
     "notif_support_in_deal_chat": (
         "✉️ <b>{username}</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -200,25 +193,12 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "<i>Поддержка просматривает чат сделки. Ответьте для продолжения диалога.</i>"
     ),
-    
-    # Новое: сообщение поддержки в чате с покупателем
-    "notif_support_in_deal_chat": (
-        "✉️ <b>{username}</b>\n\n"
-        "📂 <b>Раздел:</b> {section}\n"
-        "👤 <b>Покупатель:</b> {buyer}\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
-        "💬 {text}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Поддержка просматривает чат сделки. Ответьте для продолжения диалога.</i>"
-    ),
-    
     "notif_new_review": (
         "⭐ <b>Новый отзыв</b>\n\n"
         "👤 <b>Автор:</b> {author}\n"
         "⭐ <b>Оценка:</b> {rating}/5\n\n"
         "💬 {text}"
     ),
-    
     "notif_deal_problem": (
         "⚠️ <b>Проблема в сделке</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -226,14 +206,12 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "🆔 <b>ID сделки:</b> <code>{deal_id}</code>"
     ),
-    
     "notif_deal_problem_resolved": (
         "✅ <b>Проблема решена</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "🆔 <b>ID сделки:</b> <code>{deal_id}</code>"
     ),
-    
     "notif_deal_confirmed": (
         "🤝 <b>Сделка подтверждена</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -241,49 +219,41 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "💰 <b>Цена:</b> {price} ₽"
     ),
-    
     "notif_deal_rolled_back": (
         "↩️ <b>Сделка возвращена</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
         "🎁 <b>Лот:</b> {item}"
     ),
-    
     "notif_item_raised": (
         "📈 <b>Лот поднят</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "💸 <b>Потрачено:</b> {spent} ₽"
     ),
-    
     "notif_insufficient_balance": (
         "💸 <b>Не хватает баланса</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "💰 <b>Нужно:</b> {price} ₽\n"
         "📊 <b>Доступно:</b> {available} ₽"
     ),
-    
     "notif_error": (
         "🚨 <b>Ошибка Cardinal</b>\n\n"
         "<pre>{error}</pre>"
     ),
-    
     "notif_stock_empty": (
         "📭 <b>Склад пуст</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n\n"
         "Пополните склад, чтобы авто-выдача продолжила работать."
     ),
-    
     "notif_restore_ok": (
         "♻️ <b>Лот восстановлен</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "🆔 <b>Новый ID:</b> <code>{item_id}</code>"
     ),
-    
     "notif_restore_fail": (
         "♻️❌ <b>Ошибка восстановления</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n\n"
         "<pre>{error}</pre>"
     ),
-    
     "notif_restore_premium_fallback": (
         "♻️⚠️ <b>Лот восстановлен бесплатно</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
@@ -291,7 +261,6 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "Премиум-статус не оплатился: {reason}"
     ),
-    
     "notif_blacklist_deal": (
         "🚫 <b>Сделка с покупателем из ЧС</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -300,7 +269,6 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "⚠️ Проверьте сделку вручную"
     ),
-    
     "reply_sent": "✅ Отправлено в чат Playerok.",
     "reply_failed": "❌ Не удалось отправить: {error}",
     "reply_unknown": "Не понимаю, куда отправить: ответьте на уведомление о сообщении.",
@@ -336,13 +304,20 @@ STRINGS = {
     "sys_btn_shutdown_yes": "Да, выключить",
     "sys_shutdown_done": "🛑 Выключаюсь…",
 
- # --- Тесты UI ---
+    # --- Очистка уведомлений ---
+    "sys_btn_clear": "🗑 Очистить уведомления",
+    "clear_title": "🗑 <b>Очистка уведомлений</b>",
+    "clear_today": "📅 За 24 часа",
+    "clear_week": "📅 За 7 дней",
+    "clear_all": "🗑 Все уведомления",
+    "clear_result": "🗑 Удалено сообщений: {removed}\n⚠️ Ошибок: {failed}",
+
+    # --- Тесты UI ---
     "sys_btn_tests": "🧪 Тесты",
     "test_title": "🧪 <b>Тесты уведомлений</b>",
     "test_user_message": "👤 Сообщение от Test",
     "test_support_message": "🛠 Отдельный чат поддержки",
     "test_support_in_deal": "🛠 Поддержка в чате сделки",
-    "test_support_message": "🛠 Сообщение от Admin",
     "test_new_deal": "🛒 Новая сделка",
     "test_deal_confirmed": "🤝 Сделка подтверждена",
     "test_new_review": "⭐ Новый отзыв",
