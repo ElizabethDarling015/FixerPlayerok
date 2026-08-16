@@ -4,13 +4,14 @@
 # Достаточно закинуть проект на чистый сервер и запустить: Python 3.11+ поставится
 # автоматически (apt/dnf/pacman/apk/zypper/brew), дальше venv, зависимости, настройка, запуск.
 #
-#   ./cardinal.sh            первый запуск: установка + настройка + запуск бота
-#   ./cardinal.sh --setup    заново пройти настройку (перезапишет configs/main.toml)
-#   ./cardinal.sh --check    проверить токен и авторизацию на Playerok (бота не запускает)
-#   ./cardinal.sh --update   принудительно обновить зависимости и запустить
-#   ./cardinal.sh --service  установить systemd-сервис автозапуска (Linux)
-#   ./cardinal.sh --offline  запуск в оффлайн-режиме (без подключения к Playerok API)
-#   ./cardinal.sh --help     справка
+#   ./cardinal.sh              первый запуск: установка + настройка + запуск бота
+#   ./cardinal.sh --setup      заново пройти настройку (перезапишет configs/main.toml)
+#   ./cardinal.sh --check      проверить токен и авторизацию на Playerok (бота не запускает)
+#   ./cardinal.sh --update     принудительно обновить зависимости и запустить
+#   ./cardinal.sh --update_fixer обновить код с репозитория FixerPlayerok
+#   ./cardinal.sh --service    установить systemd-сервис автозапуска (Linux)
+#   ./cardinal.sh --offline    запуск в оффлайн-режиме (без подключения к Playerok API)
+#   ./cardinal.sh --help       справка
 #
 # Идемпотентный: повторный запуск ничего не ломает и не трогает конфиги.
 #
@@ -168,12 +169,13 @@ usage() {
     exit 0
 }
 
-MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0
+MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0; UPDATE_FIXER=0
 case "${1:-}" in
     --help|-h)  usage ;;
     --setup)    FORCE_SETUP=1 ;;
     --check)    MODE="check" ;;
     --update)   MODE="update" ;;
+    --update_fixer) UPDATE_FIXER=1 ;;
     --service)  MODE="service" ;;
     --offline|-o) OFFLINE_MODE=1 ;;
     "")         ;;
@@ -464,6 +466,71 @@ fi
 ok "Python найден: ${BOLD}$($PYTHON --version)${NC}"
 
 # ----------------------------------------------------------------------
+# Режим --update_fixer: обновление кода с GitHub (ElizabethDarling015/FixerPlayerok)
+# ----------------------------------------------------------------------
+if [ "$UPDATE_FIXER" = "1" ]; then
+    step "Обновление Fixer с GitHub…"
+    
+    # Проверяем наличие venv
+    if [ ! -x ".venv/bin/python" ]; then
+        info "Виртуальное окружение не найдено. Сначала запустите ./cardinal.sh для установки."
+        die "Прервано."
+    fi
+    
+    VENV_PY=".venv/bin/python"
+    
+    # Запускаем Python скрипт обновления
+    info "Скачиваю и применяю обновления с ElizabethDarling015/FixerPlayerok…"
+    
+    if "$VENV_PY" - <<'PYEOF'
+import sys
+from pathlib import Path
+from cardinal.self_update import update_from_github
+
+print("🔄 Обновление с репозитория: ElizabethDarling015/FixerPlayerok")
+print(f"📁 Целевая директория: {Path.cwd()}")
+print("-" * 60)
+
+result = update_from_github(
+    root=Path.cwd(),
+    repo="ElizabethDarling015/FixerPlayerok",
+    branch="main",
+    update_deps=True
+)
+
+print("\n" + "=" * 60)
+if result.ok:
+    print(f"✅ {result.message}")
+    if result.detail:
+        print(f"📝 Детали:\n{result.detail}")
+    if result.changed:
+        print("\n🎉 Код успешно обновлён!")
+        print("💡 Запустите бота: ./cardinal.sh")
+        sys.exit(0)
+    else:
+        print("\nℹ️  Изменений не обнаружено — у вас последняя версия.")
+        sys.exit(0)
+else:
+    print(f"❌ {result.message}")
+    if result.detail:
+        print(f"📝 Детали ошибки:\n{result.detail}")
+    print("\n💡 Проверьте:")
+    print("   - Правильность имени репозитория")
+    print("   - Доступность репозитория")
+    print("   - Подключение к интернету")
+    sys.exit(1)
+PYEOF
+    then
+        echo
+        ok "Обновление завершено успешно!"
+        info "Запустите бота: ${BOLD}./cardinal.sh${NC}"
+        exit 0
+    else
+        die "Ошибка обновления. Проверьте подключение к интернету и доступность репозитория."
+    fi
+fi
+
+# ----------------------------------------------------------------------
 # Режим --service: systemd-юнит (только Linux)
 # ----------------------------------------------------------------------
 if [ "$MODE" = "service" ]; then
@@ -678,6 +745,7 @@ echo "  ${GREY}Стоп:${NC}        Ctrl+C"
 echo "  ${GREY}Логи:${NC}        storage/logs/cardinal.log"
 echo "  ${GREY}Setup:${NC}       ./cardinal.sh --setup"
 echo "  ${GREY}Check:${NC}       ./cardinal.sh --check"
+echo "  ${GREY}Обновление:${NC}  ./cardinal.sh --update_fixer"
 echo "  ${GREY}Автозапуск:${NC}  ./cardinal.sh --service"
 echo "  ${GREY}Создатель:${NC}   ${CYAN}https://t.me/Scwee_xz${NC}"
 echo

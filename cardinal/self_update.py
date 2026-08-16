@@ -317,3 +317,41 @@ def update_from_github(
         "\n".join(p for p in detail_parts if p),
         changed=result.changed,
     )
+
+# В конец файла cardinal/self_update.py добавить:
+
+def main() -> int:
+    """CLI для обновления с GitHub."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Обновление Fixer с GitHub")
+    parser.add_argument("--repo", default=DEFAULT_REPO, help="Репозиторий owner/name")
+    parser.add_argument("--branch", default=DEFAULT_BRANCH, help="Ветка")
+    parser.add_argument("--no-deps", action="store_true", help="Не обновлять зависимости")
+    
+    args = parser.parse_args()
+    
+    print(f"🔄 Обновление с: {args.repo} (ветка: {args.branch})")
+    
+    result = update_from_github(
+        repo=args.repo,
+        branch=args.branch,
+        update_deps=not args.no_deps
+    )
+    
+    print("\n" + "=" * 50)
+    if result.ok:
+        print(f"✅ {result.message}")
+        if result.detail:
+            print(f"📝 {result.detail}")
+        return 0
+    else:
+        print(f"❌ {result.message}")
+        if result.detail:
+            print(f"📝 {result.detail}")
+        return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
