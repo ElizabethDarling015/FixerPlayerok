@@ -6,6 +6,7 @@
 чаты аккаунта помечаются как уже поприветствованные — иначе бот поздоровался бы со всеми
 старыми клиентами при первом же их сообщении.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,12 +17,12 @@ import time
 from string import Template
 
 from loguru import logger
-
 from playerokapi.common.enums import EventTypes
-
 from .base import BaseModule
 
-DB_FILE = os.path.join("storage", "greeting.sqlite3")
+# Решение 3: Абсолютный путь к базе (не зависит от рабочей директории)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB_FILE = os.path.join(_BASE_DIR, "storage", "greeting.sqlite3")
 
 
 class GreetingModule(BaseModule):
@@ -36,15 +37,16 @@ class GreetingModule(BaseModule):
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS greeted (chat_id TEXT PRIMARY KEY, greeted_at REAL NOT NULL)"
             )
+        # Решение 2: Логирование при инициализации
+        logger.info(f"Приветствие: база данных: {os.path.abspath(db_path)}")
 
     # ------------------------------------------------------------------
     # Хранилище
     # ------------------------------------------------------------------
-
     def is_greeted(self, chat_id: str) -> bool:
         with self._lock:
             row = self._conn.execute("SELECT 1 FROM greeted WHERE chat_id = ?", (chat_id,)).fetchone()
-        return row is not None
+            return row is not None
 
     def mark_greeted(self, chat_id: str) -> bool:
         """Атомарно помечает чат поприветствованным. `False`, если он уже был помечен."""
@@ -53,24 +55,28 @@ class GreetingModule(BaseModule):
                 "INSERT OR IGNORE INTO greeted (chat_id, greeted_at) VALUES (?, ?)",
                 (chat_id, time.time()),
             )
-        return cursor.rowcount > 0
+            return cursor.rowcount > 0
 
     def _db_is_empty(self) -> bool:
         with self._lock:
             row = self._conn.execute("SELECT 1 FROM greeted LIMIT 1").fetchone()
-        return row is None
+            return row is None
 
     # ------------------------------------------------------------------
     # Логика
     # ------------------------------------------------------------------
-
     async def on_start(self) -> None:
+        # Решение 2: Подробное логирование при старте
+        logger.info(f"Приветствие: старт модуля, база пуста? {self._db_is_empty()}")
+        
         # Первый запуск (пустая база): существующие чаты — не «новые покупатели».
         if not self._db_is_empty():
+            logger.info("Приветствие: база НЕ пуста — пропускаем seed")
             return
+
+        logger.info("Приветствие: база пуста — начинаю seed существующих чатов...")
         seeded = await asyncio.to_thread(self._seed_existing_chats)
-        if seeded:
-            logger.info("Приветствие: {} существующих чатов помечены как уже поприветствованные", seeded)
+        logger.info(f"Приветствие: помечено {seeded} существующих чатов")
 
     #: Предохранитель от бесконечной пагинации: 400 страниц × 50 = 20 000 чатов.
     SEED_MAX_PAGES = 400
@@ -79,6 +85,7 @@ class GreetingModule(BaseModule):
         account = self.cardinal.account
         seeded = 0
         after_cursor = None
+
         for page_number in range(1, self.SEED_MAX_PAGES + 1):
             try:
                 page = account.get_chats(count=50, after_cursor=after_cursor)
@@ -93,15 +100,16 @@ class GreetingModule(BaseModule):
             if not page.page_info or not page.page_info.has_next_page:
                 break
             if page_number == self.SEED_MAX_PAGES:
-                # Чатов больше лимита: часть старых не размечена — бот может
-                # поздороваться со старым клиентом как с новым.
-                logger.warning("Приветствие: разметка остановлена на {} чатах (лимит {} страниц) — "
-                               "старые чаты за пределами лимита не помечены", seeded, self.SEED_MAX_PAGES)
+                logger.warning(
+                    "Приветствие: разметка остановлена на {} чатах (лимит {} страниц) — "
+                    "старые чаты за пределами лимита не помечены", seeded, self.SEED_MAX_PAGES
+                )
                 break
             next_cursor = page.page_info.end_cursor
             if not next_cursor or next_cursor == after_cursor:
                 break
             after_cursor = next_cursor
+
         return seeded
 
     def format_greeting(self, username: str, chat_id: str) -> str:
@@ -112,19 +120,35 @@ class GreetingModule(BaseModule):
     async def on_event(self, event) -> None:
         if not self.enabled or event.type is not EventTypes.NEW_MESSAGE:
             return
+
         message = event.message
         account = self.cardinal.account
+
         if message is None or message.user is None or message.user.id == account.id:
             return
+
         if self.cardinal.is_blacklisted(message.user.username):
             return  # покупатель в чёрном списке — не приветствуем
-        if not self.mark_greeted(event.chat.id):
-            return  # уже здоровались (или чат размечен при первом запуске)
 
+        chat_id = event.chat.id
         username = message.user.username or "?"
-        logger.info("Приветствуем нового собеседника {} (чат {})", username, event.chat.id)
-        await asyncio.to_thread(account.send_message, event.chat.id,
-                                self.format_greeting(username, event.chat.id))
+        
+        # Решение 2: Логирование при каждой проверке
+        if self.is_greeted(chat_id):
+            logger.debug(f"Приветствие: чат {chat_id} ({username}) уже помечен — пропускаем")
+            return
+        
+        if not self.mark_greeted(chat_id):
+            logger.warning(f"Приветствие: не удалось пометить чат {chat_id} ({username})")
+            return
+
+        logger.info(f"Приветствуем нового собеседника {username} (чат {chat_id})")
+        
+        await asyncio.to_thread(
+            account.send_message,
+            chat_id,
+            self.format_greeting(username, chat_id)
+        )
 
     async def on_stop(self) -> None:
         with self._lock:
