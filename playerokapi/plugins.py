@@ -12,6 +12,7 @@
 - Автоматические хуки `PRE_<имя_метода>`/`POST_<имя_метода>` на каждый публичный метод `Account`
   (после `attach_to_account`) — например `PRE_send_message`, `POST_create_item`.
 - Динамическое включение/выключение плагинов без перезапуска (`enable_plugin`/`disable_plugin`).
+- Регистрацию Telegram-хендлеров плагинов через опциональную функцию `init_tg(dispatcher, bot)`.
 
 Использование опционально: если не создавать `PluginManager`, библиотека работает как обычный
 API-клиент без какого-либо оверхеда.
@@ -64,6 +65,11 @@ class PluginManager:
         self.plugins: dict[str, PluginInfo] = {}
         self.account = None
         self._hooks: dict[str, list[tuple[str, Callable]]] = {}
+        # Реестр плагинов, уже зарегистрировавших TG-хендлеры (защита от двойной регистрации).
+        self._tg_handlers: dict[str, Callable] = {}
+        # Ссылки на Telegram-объекты (заполняются register_tg_handlers).
+        self.dispatcher = None
+        self.bot = None
 
     # ------------------------------------------------------------------
     # Регистрация и вызов хендлеров
@@ -216,7 +222,7 @@ class PluginManager:
             self.plugins[plugin_uuid].enabled = True
 
     def disable_plugin(self, plugin_uuid: str) -> None:
-        """Выключает плагин (его хендлеры перестают вызываться, но остаются зарегистрированными)."""
+        """Выключает плагин (его хендлеры перестанут вызываться, но останутся зарегистрированными)."""
         if plugin_uuid in self.plugins:
             self.plugins[plugin_uuid].enabled = False
 
@@ -232,5 +238,63 @@ class PluginManager:
         plugin = self.plugins.pop(plugin_uuid, None)
         if plugin is not None:
             self.unbind_all(plugin_uuid)
+            self.unregister_tg_handlers(plugin_uuid)
             logger.info("Плагин %s выгружен", plugin.name)
         return plugin
+
+    # ------------------------------------------------------------------
+    # Telegram-хендлеры плагинов
+    # ------------------------------------------------------------------
+
+    def register_tg_handlers(self, dispatcher, bot) -> None:
+        """
+        Вызывает `init_tg(dispatcher, bot)` у всех активных плагинов, которые ещё не
+        зарегистрированы. Повторный вызов (например, после переподключения Playerok)
+        не дублирует роутеры.
+
+        :param dispatcher: Aiogram Dispatcher.
+        :param bot: Aiogram Bot.
+        """
+        self.dispatcher = dispatcher
+        self.bot = bot
+
+        for plugin_uuid, plugin_info in list(self.plugins.items()):
+            if not plugin_info.enabled:
+                continue
+
+            if plugin_uuid in self._tg_handlers:
+                continue
+
+            init_tg_func = getattr(plugin_info.module, "init_tg", None)
+            if not callable(init_tg_func):
+                continue
+
+            try:
+                init_tg_func(dispatcher, bot)
+                self._tg_handlers[plugin_uuid] = init_tg_func
+                logger.info(
+                    "Зарегистрированы Telegram-хендлеры плагина %s (%s)",
+                    plugin_info.name,
+                    plugin_info.version or "?",
+                )
+            except Exception:
+                logger.exception(
+                    "Ошибка при регистрации Telegram-хендлеров плагина %s",
+                    plugin_info.name,
+                )
+
+    def unregister_tg_handlers(self, plugin_uuid: str) -> None:
+        """
+        Убирает ссылку на `init_tg` плагина из реестра.
+
+        Примечание: aiogram не даёт штатного способа «вынуть» уже включённый router
+        из dispatcher'а, поэтому фактические хендлеры останутся до перезапуска бота.
+        """
+        self._tg_handlers.pop(plugin_uuid, None)
+
+    def get_loaded_plugins_info(self) -> list[tuple[str, str, str]]:
+        """Возвращает список кортежей `(uuid, name, version)` для всех загруженных плагинов."""
+        return [
+            (p.uuid, p.name, p.version or "?")
+            for p in self.plugins.values()
+        ]

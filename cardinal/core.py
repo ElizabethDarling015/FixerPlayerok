@@ -37,6 +37,7 @@ from .settings import (
     load_autodelivery_config,
     load_autoresponse_config,
     load_blacklist_config,
+    save_main_settings,
 )
 
 if TYPE_CHECKING:
@@ -236,6 +237,9 @@ class Cardinal:
                 self.plugin_manager.load_plugins()
                 self._plugins_loaded = True
 
+            if self.dispatcher is not None and self.bot is not None:
+                self.plugin_manager.register_tg_handlers(self.dispatcher, self.bot)
+
             self.runner = Runner(
                 self.account,
                 plugin_manager=self.plugin_manager,
@@ -250,6 +254,13 @@ class Cardinal:
 
             self._playerok_connected = True
             logger.success("Playerok API подключён")
+
+            # === НОВОЕ: успешное подключение сбрасывает сохранённый offline-режим,
+            # === чтобы следующий запуск бота был онлайн
+            if self.settings.playerok.offline_mode:
+                self.settings.playerok.offline_mode = False
+                save_main_settings(self.settings)
+                logger.info("offline_mode сброшен в false и сохранён")
 
             # Уведомляем админов об успешном подключении
             if self.notifier is not None:
@@ -375,6 +386,9 @@ class Cardinal:
         else:
             logger.warning("🔧 OFFLINE MODE: Playerok API отключён. Работает только Telegram-панель.")
             logger.info("Для подключения к Playerok используйте кнопку в меню /menu → Система → Подключить Playerok")
+ 
+            self.plugin_manager.load_plugins()
+            self._plugins_loaded = True
 
         # --- Модули ---
         from .modules import build_modules
@@ -384,6 +398,10 @@ class Cardinal:
         if self.settings.telegram.token:
             from .tg.bot import setup_telegram
             self.bot, self.dispatcher, self.notifier = setup_telegram(self)
+            
+            # === НОВОЕ: даём плагинам зарегистрировать свои команды ===
+            self.plugin_manager.register_tg_handlers(self.dispatcher, self.bot)
+            
             self.spawn(self._tg_polling())
         else:
             logger.warning("Токен Telegram-бота не задан — панель управления и уведомления недоступны.")

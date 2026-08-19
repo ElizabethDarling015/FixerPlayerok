@@ -1885,143 +1885,135 @@ fragment ChatMessageButton on ChatMessageButton {
 """,
     'items': """
 query items($filter: ItemFilter, $pagination: Pagination, $sort: Sort, $showForbiddenImage: Boolean) {
-  items(filter: $filter, pagination: $pagination, sort: $sort) {
-    edges {
-      ...ItemEdgeFields
-      __typename
-    }
-    pageInfo {
-      startCursor
-      endCursor
-      hasPreviousPage
-      hasNextPage
-      __typename
-    }
-    totalCount
-    __typename
-  }
+items(filter: $filter, pagination: $pagination, sort: $sort) {
+edges {
+...ItemEdgeFields
+__typename
 }
-
+pageInfo {
+startCursor
+endCursor
+hasPreviousPage
+hasNextPage
+__typename
+}
+totalCount
+__typename
+}
+}
 fragment ItemEdgeFields on ItemProfileEdge {
-  cursor
-  node {
-    ...ItemEdgeNode
-    __typename
-  }
-  __typename
+cursor
+node {
+...ItemEdgeNode
+__typename
 }
-
+__typename
+}
 fragment ItemEdgeNode on ItemProfile {
-  ...MyItemEdgeNode
-  ...ForeignItemEdgeNode
-  __typename
+...MyItemEdgeNode
+...ForeignItemEdgeNode
+__typename
 }
-
 fragment MyItemEdgeNode on MyItemProfile {
-  id
-  slug
-  priority
-  status
-  name
-  price
-  rawPrice
-  statusExpirationDate
-  sellerType
-  attachment(showForbiddenImage: $showForbiddenImage) {
-    ...PartialFile
-    __typename
-  }
-  isAttachmentsForbidden
-  user {
-    ...UserItemEdgeNode
-    __typename
-  }
-  game {
-    name
-    __typename
-  }
-  category {
-    name
-    __typename
-  }
-  approvalDate
-  createdAt
-  priorityPosition
-  viewsCounter
-  dealsCounter
-  feeMultiplier
-  isAutomated
-  __typename
+id
+slug
+priority
+status
+name
+price
+rawPrice
+statusExpirationDate
+sellerType
+attachment(showForbiddenImage: $showForbiddenImage) {
+...PartialFile
+__typename
 }
-
+isAttachmentsForbidden
+user {
+...UserItemEdgeNode
+__typename
+}
+game {
+name
+__typename
+}
+category {
+name
+__typename
+}
+approvalDate
+createdAt
+priorityPosition
+viewsCounter
+dealsCounter
+feeMultiplier
+isAutomated
+__typename
+}
 fragment PartialFile on File {
-  id
-  url
-  __typename
+id
+url
+__typename
 }
-
 fragment UserItemEdgeNode on UserFragment {
-  ...UserEdgeNode
-  __typename
+...UserEdgeNode
+__typename
 }
-
 fragment UserEdgeNode on UserFragment {
-  ...RegularUserFragment
-  __typename
+...RegularUserFragment
+__typename
 }
-
 fragment RegularUserFragment on UserFragment {
-  id
-  username
-  role
-  avatarURL
-  isOnline
-  isBlocked
-  rating
-  testimonialCounter
-  createdAt
-  supportChatId
-  systemChatId
-  __typename
+id
+username
+role
+avatarURL
+isOnline
+isBlocked
+rating
+testimonialCounter
+createdAt
+supportChatId
+systemChatId
+__typename
 }
-
 fragment ForeignItemEdgeNode on ForeignItemProfile {
-  id
-  slug
-  priority
-  status
-  name
-  price
-  rawPrice
-  sellerType
-  attachment(showForbiddenImage: $showForbiddenImage) {
-    ...PartialFile
-    __typename
-  }
-  isAttachmentsForbidden
-  user {
-    ...UserItemEdgeNode
-    __typename
-  }
-  game {
-    name
-    __typename
-  }
-  category {
-    name
-    __typename
-  }
-  approvalDate
-  priorityPosition
-  createdAt
-  viewsCounter
-  dealsCounter
-  feeMultiplier
-  isAutomated
-  __typename
+id
+slug
+priority
+status
+name
+price
+rawPrice
+sellerType
+attachment(showForbiddenImage: $showForbiddenImage) {
+...PartialFile
+__typename
+}
+isAttachmentsForbidden
+user {
+...UserItemEdgeNode
+__typename
+}
+game {
+name
+__typename
+}
+category {
+name
+__typename
+}
+approvalDate
+priorityPosition
+createdAt
+viewsCounter
+dealsCounter
+feeMultiplier
+isAutomated
+__typename
 }
 """,
-    'item': """
+'item': """
 query item($slug: String, $id: UUID, $hasSupportAccess: Boolean!, $showForbiddenImage: Boolean) {
   item(slug: $slug, id: $id) {
     ...RegularItemWithUserVipStatus
@@ -10070,3 +10062,91 @@ fragment ChatDealForeignItemEdgeNode on ForeignItemProfile {
 }
 """,
 }
+
+QUERY_TEXTS['items'] = """
+query items($filter: ItemFilter, $pagination: Pagination, $sort: Sort, $showForbiddenImage: Boolean) {
+  items(filter: $filter, pagination: $pagination, sort: $sort) {
+    edges {
+      ...ItemEdgeFields
+    }
+    pageInfo {
+      startCursor
+      endCursor
+      hasPreviousPage
+      hasNextPage
+    }
+    totalCount
+  }
+}
+
+fragment ItemEdgeFields on ItemProfileEdge {
+  cursor
+  node {
+    ... on ForeignItemProfile {
+      id
+      slug
+      priority
+      status
+      name
+      price
+      rawPrice
+      sellerType
+      attachment {
+        ...PartialFile
+      }
+      isAttachmentsForbidden
+      user {
+        ...RegularUserFragment
+      }
+      game {
+        ...RegularGameProfile
+      }
+      category {
+        ...MinimalGameCategory
+      }
+      approvalDate
+      priorityPosition
+      createdAt
+      viewsCounter
+      dealsCounter
+      feeMultiplier
+      isAutomated
+    }
+  }
+}
+
+fragment RegularUserFragment on UserFragment {
+  id
+  username
+  role
+  avatarURL
+  isOnline
+  isBlocked
+  rating
+  testimonialCounter
+  createdAt
+  supportChatId
+  systemChatId
+}
+
+fragment PartialFile on File {
+  id
+  url
+}
+
+fragment RegularGameProfile on GameProfile {
+  id
+  name
+  type
+  slug
+  logo {
+    ...PartialFile
+  }
+}
+
+fragment MinimalGameCategory on GameCategory {
+  id
+  slug
+  name
+}
+""",

@@ -1,7 +1,8 @@
 """
-Раздел «Плагины»: список загруженных плагинов `PluginManager`, включение/выключение,
-установка нового плагина `.py`-файлом из Telegram (с предупреждением безопасности),
-удаление с подтверждением (выгрузка хендлеров + удаление файла).
+Раздел «Плагины»: список загруженных плагинов `PluginManager`, меню работы
+с плагином (действия объявляет сам плагин через `MENU_ACTIONS`), включение/
+выключение, установка нового `.py`-файлом из Telegram (с предупреждением
+безопасности), удаление с подтверждением.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
-from .common import PAGE_SIZE, cancel_markup, nav_row, on_off, pager_row, paginate, safe_edit
+from .common import cancel_markup, nav_row, on_off, pager_row, paginate, safe_edit
 
 router = Router(name="plugins")
 
@@ -28,6 +29,10 @@ class InstallPlugin(StatesGroup):
 def _plugin_uuids(cardinal) -> list[str]:
     return sorted(cardinal.plugin_manager.plugins)
 
+
+# ----------------------------------------------------------------------
+# Список плагинов
+# ----------------------------------------------------------------------
 
 def build_plugins_menu(cardinal, page: int = 0) -> tuple[str, object]:
     l10n = cardinal.l10n
@@ -49,17 +54,76 @@ def build_plugins_menu(cardinal, page: int = 0) -> tuple[str, object]:
     builder = InlineKeyboardBuilder()
     for offset, uid in enumerate(page_uuids):
         plugin = manager.plugins[uid]
+        # Имя плагина открывает меню работы с ним, 🔌 — быстрый тумблер.
         builder.row(
-            InlineKeyboardButton(text=f"{on_off(l10n, plugin.enabled)} {plugin.name[:32]}",
-                                 callback_data=f"pl:t:{start + offset}"),
-            InlineKeyboardButton(text="🗑", callback_data=f"pl:d:{start + offset}"),
+            InlineKeyboardButton(
+                text=f"{on_off(l10n, plugin.enabled)} {plugin.name[:28]}",
+                callback_data=f"pl:menu:{start + offset}",
+            ),
+            InlineKeyboardButton(text="🔌", callback_data=f"pl:t:{start + offset}"),
         )
+
     if pager := pager_row("pl:p", page, total_pages):
         builder.row(*pager)
+
     builder.row(InlineKeyboardButton(text=l10n("pl_btn_install"), callback_data="pl:install"))
     builder.row(*nav_row(l10n))
     return text, builder.as_markup()
 
+
+# ----------------------------------------------------------------------
+# Меню работы с плагином
+# ----------------------------------------------------------------------
+
+def build_plugin_menu(cardinal, index: int) -> tuple[str, object] | None:
+    """
+    Меню конкретного плагина: его собственные действия (объявлены в модуле
+    плагина как `MENU_ACTIONS = [(label, callback_data), ...]`) + стандартные
+    кнопки: «Удалить», «Назад», заглушка при нечёте, «Главное меню» снизу.
+    """
+    l10n = cardinal.l10n
+    manager = cardinal.plugin_manager
+    uuids = _plugin_uuids(cardinal)
+
+    if not (0 <= index < len(uuids)):
+        return None
+
+    plugin = manager.plugins[uuids[index]]
+
+    text = f"{on_off(l10n, plugin.enabled)} <b>{html.escape(plugin.name)}</b>"
+    if plugin.version:
+        text += f" v{html.escape(plugin.version)}"
+    if plugin.description:
+        text += f"\n\n{html.escape(plugin.description)}"
+    if plugin.credits:
+        text += f"\n👤 {html.escape(plugin.credits)}"
+
+    builder = InlineKeyboardBuilder()
+
+    # Собственные действия плагина
+    actions = list(getattr(plugin.module, "MENU_ACTIONS", []) or [])
+    for label, callback_data in actions:
+        builder.button(text=label, callback_data=f"{callback_data}:{index}")
+
+    # Стандартные кнопки
+    builder.button(text="🗑 Удалить плагин", callback_data=f"pl:d:{index}")
+    builder.button(text="⬅️ Назад", callback_data="pl")
+
+    # Заглушка, если кнопок нечётное количество (чтобы сетка была по 2)
+    if (len(actions) + 2) % 2 == 1:
+        builder.button(text="•", callback_data="noop")
+
+    builder.adjust(2)
+
+    # Главное меню — растянуто снизу
+    builder.row(*nav_row(l10n))
+
+    return text, builder.as_markup()
+
+
+# ----------------------------------------------------------------------
+# Хендлеры
+# ----------------------------------------------------------------------
 
 @router.callback_query(F.data == "pl")
 async def cb_menu(query: CallbackQuery, cardinal) -> None:
@@ -75,6 +139,18 @@ async def cb_menu_page(query: CallbackQuery, cardinal) -> None:
     await query.answer()
 
 
+@router.callback_query(F.data.startswith("pl:menu:"))
+async def cb_plugin_menu(query: CallbackQuery, cardinal) -> None:
+    """Открытие меню работы с плагином."""
+    index = int(query.data.rsplit(":", 1)[1])
+    view = build_plugin_menu(cardinal, index)
+    if view is None:
+        await query.answer()
+        return
+    await safe_edit(query.message, *view)
+    await query.answer()
+
+
 @router.callback_query(F.data.startswith("pl:t:"))
 async def cb_toggle(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
@@ -84,6 +160,7 @@ async def cb_toggle(query: CallbackQuery, cardinal) -> None:
     if not (0 <= index < len(uuids)):
         await query.answer()
         return
+
     plugin = manager.plugins[uuids[index]]
     if plugin.enabled:
         manager.disable_plugin(plugin.uuid)
@@ -91,13 +168,16 @@ async def cb_toggle(query: CallbackQuery, cardinal) -> None:
     else:
         manager.enable_plugin(plugin.uuid)
         await query.answer(l10n("pl_toggled_on", name=plugin.name))
+
+    # Остаёмся там, где были: если открыто меню плагина — перерисуем его,
+    # иначе список. Проще всего перерисовать список.
     text, markup = build_plugins_menu(cardinal)
     await safe_edit(query.message, text, markup)
 
 
 @router.callback_query(F.data.startswith("pl:d:"))
 async def cb_delete(query: CallbackQuery, cardinal) -> None:
-    """Удаление плагина: первый тап — подтверждение, `...:yes` — выгрузка и удаление файла."""
+    """Удаление: первый тап — подтверждение, `...:yes` — выгрузка и удаление файла."""
     l10n = cardinal.l10n
     manager = cardinal.plugin_manager
     parts = query.data.split(":")  # pl:d:<index> или pl:d:<index>:yes
@@ -106,6 +186,7 @@ async def cb_delete(query: CallbackQuery, cardinal) -> None:
     if not (0 <= index < len(uuids)):
         await query.answer()
         return
+
     plugin = manager.plugins[uuids[index]]
 
     if not confirmed:
@@ -138,11 +219,12 @@ async def msg_plugin_file(message: Message, state: FSMContext, cardinal) -> None
     l10n = cardinal.l10n
     document = message.document
     filename = document.file_name or "plugin.py"
+
     if not filename.endswith(".py"):
         await message.answer(l10n("pl_install_failed", error="ожидается файл .py"))
         return
-    await state.clear()
 
+    await state.clear()
     manager = cardinal.plugin_manager
     os.makedirs(manager.plugins_dir, exist_ok=True)
     path = os.path.join(manager.plugins_dir, os.path.basename(filename))
@@ -156,9 +238,14 @@ async def msg_plugin_file(message: Message, state: FSMContext, cardinal) -> None
         logger.exception("Не удалось загрузить установленный из TG плагин {}", path)
         await message.answer(l10n("pl_install_failed", error=html.escape(str(exc))))
         return
+
     if plugin_info is None:
         await message.answer(l10n("pl_install_failed", error="файл не похож на плагин"))
         return
+
+    # Если TG уже создан — сразу регистрируем хендлеры нового плагина
+    if manager.dispatcher is not None and manager.bot is not None:
+        manager.register_tg_handlers(manager.dispatcher, manager.bot)
 
     await message.answer(l10n("pl_installed", name=html.escape(plugin_info.name)))
     text, markup = build_plugins_menu(cardinal)
