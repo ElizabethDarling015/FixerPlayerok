@@ -178,10 +178,41 @@ STRINGS = {
         "📊 <b>Остаток на складе:</b> {stock} шт."
     ),
     "notif_new_message": (
-        "✉️ <b>{username}</b>\n\n"
+        "💌 <b>{username}</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n\n"
         "💬 {text}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
+        "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
+    ),
+        "notif_payout": (
+        "💳 <b>Выплата с баланса</b>\n\n"
+        "💸 <b>Сумма:</b> <code>-{amount} ₽</code>\n"
+        "🏦 <b>Способ:</b> {method}\n"
+        "📋 <b>Статус:</b> {status}\n"
+        "🕒 <b>Дата:</b> {date}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
+    ),
+    "notif_payout_plain": (
+        "💳 <b>Выплата с баланса</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
+    ),
+        "notif_item_expiring": (
+        "⏳ <b>Лот скоро снимут с продажи</b>\n\n"
+        "🎁 <b>Лот:</b> {item}\n"
+        "📂 <b>Раздел:</b> {section}\n"
+        "💰 <b>Цена:</b> {price}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
+    ),
+    "notif_item_expiring_plain": (
+        "⏳ <b>Лот скоро снимут с продажи</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
         "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
     ),
     "notif_support_in_deal_chat": (
@@ -323,6 +354,9 @@ STRINGS = {
     "test_new_review": "⭐ Новый отзыв",
     "test_delivery_ok": "📦 Успешная доставка",
     "test_error": "🚨 Ошибка",
+    "test_payout": "💳 Выплата",
+    "test_item_expiring": "⏳ Снятие лота",
+    "test_photo": "🖼 Фото лота",
 
     # --- Плагины ---
     "pl_title": "🧩 <b>Плагины</b>\n\nЗагружены из папки <code>plugins/</code>:",

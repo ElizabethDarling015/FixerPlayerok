@@ -439,30 +439,44 @@ class Cardinal:
             missed_deals = []
             try:
                 from datetime import datetime, timedelta, timezone
-                # Получаем последние 50 сделок
-                deals = await asyncio.to_thread(self.account.get_deals, count=50)
-                if deals:
-                    # Порог: сделки за последние 24 часа
+                deals_response = await asyncio.to_thread(self.account.get_deals, count=50)
+                if deals_response:
                     threshold = datetime.now(timezone.utc) - timedelta(hours=24)
-                    for deal in deals:
-                        if deal is None or deal.raw_status is None:
-                            continue
-                        if deal.raw_status.name in ("PAID", "CONFIRMED"):
+                    
+                    # Максимально безопасное извлечение списка сделок
+                    deals_list = []
+                    if hasattr(deals_response, 'edges'): deals_list = deals_response.edges
+                    elif hasattr(deals_response, 'deals'): deals_list = deals_response.deals
+                    elif hasattr(deals_response, '__iter__'): deals_list = list(deals_response)
+                    elif isinstance(deals_response, dict):
+                        deals_list = deals_response.get('edges', []) or deals_response.get('deals', []) or []
+
+                    for deal_edge in deals_list:
+                        deal = getattr(deal_edge, 'node', None) or (deal_edge.get('node') if isinstance(deal_edge, dict) else deal_edge)
+                        if not deal: continue
+                        
+                        raw_status = getattr(deal, 'raw_status', None) or getattr(deal, 'status', None)
+                        if not raw_status: continue
+                        
+                        status_name = raw_status.name if hasattr(raw_status, 'name') else str(raw_status)
+                        if status_name in ("PAID", "CONFIRMED"):
                             created = getattr(deal, "created_at", None)
                             if created and created >= threshold:
                                 missed_deals.append(deal)
-                if missed_deals:
-                    logger.info("Найдено {} сделок за время простоя", len(missed_deals))
             except Exception as exc:
-                logger.warning("Не удалось проверить пропущенные сделки при старте: {}", exc)
+                logger.warning("Не удалось проверить пропущенные сделки: {}", exc)
 
+            # === ГАРАНТИРОВАННАЯ ОТПРАВКА УВЕДОМЛЕНИЯ ===
+            logger.info("=== ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ: self.notifier = {} ===", self.notifier is not None)
             if self.notifier is not None:
                 try:
-                    logger.info("Отправляем стартовое уведомление...")
+                    logger.info("=== ОТПРАВЛЯЕМ СТАРТОВОЕ УВЕДОМЛЕНИЕ (с кнопкой меню) ===")
                     await self.notifier.notify_started(missed_deals=missed_deals)
-                    logger.success("Стартовое уведомление успешно отправлено")
+                    logger.success("=== Стартовое уведомление УСПЕШНО отправлено ===")
                 except Exception as exc:
-                    logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
+                    logger.exception("=== КРИТИЧЕСКАЯ ОШИБКА при отправке уведомления: {} ===", exc)
+            else:
+                logger.error("=== self.notifier равен None! Бот не может отправить уведомление ===")
 
         await self._stop_event.wait()
         await self._shutdown()

@@ -669,7 +669,11 @@ if [ "$FIRST_INSTALL" = "1" ] || [ "$MODE" = "update" ] || ! "$VENV_PY" -c "impo
         || die "Не удалось обновить pip."
     _pkg_quiet "Устанавливаю зависимости…" "$VENV_PY" -m pip install -e ".[cardinal]" -q \
         || die "Не удалось установить зависимости."
-    ok "Зависимости установлены."
+    
+    # Явно устанавливаем браузеры для Playwright (выполняется быстро, если уже установлено)
+    info "Проверяю/устанавливаю браузеры Playwright…"
+    "$VENV_PY" -m playwright install chromium >/dev/null 2>&1 || true
+    ok "Зависимости и браузеры установлены."
 else
     ok "Зависимости на месте ${GREY}(обновить: ./cardinal.sh --update)${NC}."
 fi

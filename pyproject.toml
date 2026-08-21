@@ -27,6 +27,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "graphql-core>=3.2",
+    "playwright",
 ]
 cardinal = [
     "aiogram>=3.7",

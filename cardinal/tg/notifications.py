@@ -7,13 +7,15 @@ import time
 import json
 import os
 
+from datetime import datetime
+
 from typing import Any
 
 from ..settings import STORAGE_DIR
 
 from loguru import logger
 
-from playerokapi.common.enums import EventTypes
+from playerokapi.common.enums import EventTypes, TransactionOperations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -209,6 +211,136 @@ def _get_section_from_message(message: Any, chat: Any) -> str:
     return "Не определено"
 
 
+# ---------------------------------------------------------------------------
+# Выплаты: распознавание системного сообщения и форматирование деталей
+# ---------------------------------------------------------------------------
+
+#: Маркеры системного сообщения о выводе средств (в нижнем регистре).
+PAYOUT_TEXT_MARKERS = (
+    "ваша выплата успешно проведена",
+    "сумма отправлена на указанные реквизиты",
+)
+
+#: По этому маркеру отрезаем «маркетинговый» хвост с просьбой об отзыве.
+#: Чтобы оставить текст целиком — поставьте "" .
+PAYOUT_TEXT_CUT_MARKER = "спасибо, что вы с нами"
+
+
+def _is_payout_message(text: str | None) -> bool:
+    """True, если сообщение — системное уведомление о выплате."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(marker in low for marker in PAYOUT_TEXT_MARKERS)
+
+
+def _clean_payout_text(text: str) -> str:
+    """Убирает хвост «Спасибо, что вы с нами!..» из текста выплаты."""
+    if PAYOUT_TEXT_CUT_MARKER:
+        pos = text.lower().find(PAYOUT_TEXT_CUT_MARKER)
+        if pos != -1:
+            text = text[:pos]
+    return text.strip()
+
+
+def _fmt_money(value) -> str:
+    """5100 -> '5 100', 1234.5 -> '1 234.5' (разделитель тысяч — пробел)."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    abs_num = abs(num)
+    if abs_num == int(abs_num):
+        s = f"{int(abs_num):,}".replace(",", " ")
+    else:
+        s = f"{abs_num:,.2f}".replace(",", " ").rstrip("0").rstrip(".")
+    return s
+
+
+def _fmt_payout_status(status) -> str:
+    """Статус выплаты человекочитаемо + эмодзи."""
+    if status is None:
+        return "—"
+    raw = getattr(status, "name", status)
+    s = str(raw).upper()
+    if any(k in s for k in ("COMPLETED", "SUCCESS", "CONFIRMED", "УСПЕШН")):
+        return "✅ Успешно"
+    if any(k in s for k in ("PENDING", "PROCESSING", "ОБРАБОТК", "ОЖИДАНИ")):
+        return "⏳ В обработке"
+    if any(k in s for k in ("FAILED", "CANCEL", "ROLLED", "ОТКЛОН", "ВОЗВРАТ")):
+        return "❌ Не удалось"
+    return str(raw)
+
+
+def _fmt_payout_method(method) -> str:
+    """Способ вывода: СБП / карта / USDT."""
+    if not method:
+        return "—"
+    m = str(method).upper()
+    if "SBP" in m or "SPB" in m or "СБП" in m or "СПБ" in m:
+        return "СБП"
+    if "CARD" in m:
+        return "💳 Карта"
+    if "USDT" in m or "CRYPTO" in m:
+        return "₮ USDT"
+    return str(method)
+
+
+def _fmt_datetime(iso) -> str:
+    """ISO-дата -> '19.08.2026, 11:58' (локальное время)."""
+    if not iso:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%d.%m.%Y, %H:%M")
+    except ValueError:
+        return str(iso)
+
+
+#: Маркеры системного сообщения о скором снятии лота (в нижнем регистре).
+ITEM_EXPIRING_MARKERS = (
+    "будет снят с продажи через 7 дней",
+    "по истечении срока выставления",
+    "обновите статус товара",
+)
+
+
+def _is_item_expiring_message(text: str | None) -> bool:
+    """True, если сообщение — системное предупреждение о снятии лота."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(marker in low for marker in ITEM_EXPIRING_MARKERS)
+
+
+def _get_section_from_item(item) -> str:
+    """Раздел (игра → категория) напрямую из лота."""
+    if not item:
+        return "Не определено"
+    game = getattr(item, "game", None)
+    category = getattr(item, "category", None)
+    game_name = getattr(game, "name", None) if game else None
+    category_name = getattr(category, "name", None) if category else None
+    if game_name and category_name:
+        return f"{game_name} → {category_name}"
+    if game_name:
+        return game_name
+    if category_name:
+        return category_name
+    return "Не определено"
+
+def _get_item_image(item) -> str | None:
+    """URL первой картинки лота (та самая обложка из списков Playerok)."""
+    if not item:
+        return None
+    for att in getattr(item, "attachments", None) or []:
+        url = getattr(att, "url", None)
+        if url:
+            return url
+    att = getattr(item, "attachment", None)  # у ItemProfile — одиночная обложка
+    return getattr(att, "url", None) if att else None
+
+
 class Notifier:
     """Отправляет уведомления о событиям всем администраторам."""
 
@@ -231,20 +363,36 @@ class Notifier:
     def _toggles(self):
         return self.cardinal.settings.notifications
 
-    async def _send_all(self, text: str, remember_chat: str | None = None, reply_markup=None) -> None:
-        """Шлёт текст всем админам; при `remember_chat` запоминает сообщения для ответа reply'ем."""
+    async def _send_all(self, text: str, remember_chat: str | None = None, reply_markup=None,
+                        photo_url: str | None = None) -> None:
+        """
+        Шлёт уведомление всем админам; при `remember_chat` запоминает для ответа reply'ем.
+
+        Если задан `photo_url` — отправляет фото лота с текстом в подписи
+        (лимит подписи TG — 1024). При любой ошибке — обычный текст.
+        """
+        use_photo = bool(photo_url) and len(text) <= 1024
         for admin_id in self.admins.all_ids:
-            try:
-                sent = await self.bot.send_message(admin_id, text, reply_markup=reply_markup)
-            except Exception:
-                logger.exception("Не удалось отправить уведомление админу {}", admin_id)
-                continue
+            sent = None
+            if use_photo:
+                try:
+                    sent = await self.bot.send_photo(
+                        admin_id, photo_url, caption=text, reply_markup=reply_markup
+                    )
+                except Exception as exc:
+                    logger.debug("Фото не ушло админу {}: {} — шлю текстом", admin_id, exc)
+            if sent is None:
+                try:
+                    sent = await self.bot.send_message(admin_id, text, reply_markup=reply_markup)
+                except Exception:
+                    logger.exception("Не удалось отправить уведомление админу {}", admin_id)
+                    continue
             # Сохраняем для возможных ответов reply'ем
             if remember_chat is not None:
                 self.reply_map[(sent.chat.id, sent.message_id)] = remember_chat
-            # Сохраняем ID для последующего удаления (очистка истории)
+            # Сохраняем ID для последующей очистки истории
             self._sent_messages.setdefault(sent.chat.id, []).append((sent.message_id, time.time()))
-            self._save_history()  # сохраняем в файл, чтобы пережить перезапуск
+            self._save_history()
             
     async def send_text(self, text: str) -> None:
         """Отправляет произвольный текст всем админам (используется модулями, например сводкой)."""
@@ -426,6 +574,145 @@ class Notifier:
         return "Не определено"
 
     # ------------------------------------------------------------------
+    # Выплаты: сумма для уведомления
+    # ------------------------------------------------------------------
+
+    async def _fetch_latest_payout(self) -> dict:
+        """
+        Достаёт последнюю выплату из API Playerok (сумма/способ/статус/дата).
+
+        Основной источник — запрос `payouts`; если пусто/ошибка — фолбэк
+        по транзакциям вывода (`transactions`, operation=WITHDRAW).
+        """
+        result: dict = {"amount": None, "method": None, "status": None, "date": None}
+        account = self.cardinal.account
+        if account is None:
+            return result
+
+        try:
+            page = await asyncio.to_thread(account.get_payouts, 5)
+            payouts = list(page.payouts) if page and page.payouts else []
+        except Exception as exc:
+            logger.debug("Не удалось получить payouts: {}", exc)
+            payouts = []
+
+        if payouts:
+            latest = max(payouts, key=lambda p: str(p.created_at or p.completed_at or ""))
+            result["amount"] = latest.value
+            result["method"] = latest.payment_gateway or latest.provider_id
+            result["status"] = latest.status
+            result["date"] = latest.completed_at or latest.created_at
+            return result
+
+        try:
+            tx_page = await asyncio.to_thread(account.get_transactions, 10)
+            txs = list(tx_page.transactions) if tx_page and tx_page.transactions else []
+        except Exception as exc:
+            logger.debug("Не удалось получить transactions: {}", exc)
+            return result
+
+        for tx in txs:
+            if tx.operation is TransactionOperations.WITHDRAW:
+                result["amount"] = tx.value
+                result["method"] = tx.provider.name if tx.provider else tx.provider_id
+                result["status"] = tx.status.name if tx.status else None
+                result["date"] = tx.created_at
+                break
+        return result
+
+    async def _notify_payout(self, message, chat) -> None:
+        """Красивое уведомление о выплате с суммой (reply сохраняется)."""
+        l10n = self.cardinal.l10n
+        info = await self._fetch_latest_payout()
+        text = _esc(_clean_payout_text(message.text or "")) or "…"
+        remember = chat.id if chat is not None else None
+
+        if info["amount"] is None:
+            # API недоступно — новый вид, но без суммы
+            await self._send_all(l10n("notif_payout_plain", text=text), remember_chat=remember)
+            return
+
+        await self._send_all(
+            l10n(
+                "notif_payout",
+                amount=_fmt_money(info["amount"]),
+                method=_esc(_fmt_payout_method(info["method"])),
+                status=_esc(_fmt_payout_status(info["status"])),
+                date=_esc(_fmt_datetime(info["date"])),
+                text=text,
+            ),
+            remember_chat=remember,
+        )
+
+    # ------------------------------------------------------------------
+    # Снятие лота через 7 дней: какой товар имеется в виду
+    # ------------------------------------------------------------------
+
+    async def _resolve_expiring_item(self, message, chat):
+        """
+        Ищет лот, о котором говорит системное сообщение.
+
+        1) `message.item` из WS-кадра; 2) API: `get_chat` → `last_message.item`
+        (системное сообщение в чате уведомлений привязано к лоту).
+        """
+        item = getattr(message, "item", None)
+        if item and getattr(item, "name", None):
+            return item
+
+        account = self.cardinal.account
+        if account is not None and chat is not None and getattr(chat, "id", None):
+            try:
+                full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+                last = getattr(full_chat, "last_message", None) if full_chat else None
+                item = getattr(last, "item", None) if last else None
+                if item and getattr(item, "name", None):
+                    return item
+            except Exception as exc:
+                logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
+        return None
+
+    async def _resolve_item_image(self, item) -> str | None:
+        """Обложка лота: из полезной нагрузки события, иначе — доп. запрос API."""
+        url = _get_item_image(item)
+        if url:
+            return url
+        account = self.cardinal.account
+        item_id = getattr(item, "id", None) if item is not None else None
+        if account is None or not item_id:
+            return None
+        try:
+            full_item = await asyncio.to_thread(account.get_item, item_id)
+            return _get_item_image(full_item)
+        except Exception as exc:
+            logger.debug("Не удалось получить обложку лота {}: {}", item_id, exc)
+            return None
+
+    async def _notify_item_expiring(self, message, chat) -> None:
+        """Уведомление о скором снятии лота — с названием, разделом и ценой."""
+        l10n = self.cardinal.l10n
+        item = await self._resolve_expiring_item(message, chat)
+        text = _esc((message.text or "").strip()) or "…"
+        remember = chat.id if chat is not None else None
+
+        if item is None:
+            await self._send_all(
+                l10n("notif_item_expiring_plain", text=text), remember_chat=remember
+            )
+            return
+        photo = await self._resolve_item_image(item)
+
+        price = getattr(item, "price", None)
+        await self._send_all(
+            l10n(
+                "notif_item_expiring",
+                item=_esc(getattr(item, "name", "?") or "?"),
+                section=_esc(_get_section_from_item(item)),
+                price=f"{_fmt_money(price)} ₽" if price is not None else "—",
+                text=text,
+            ),
+            remember_chat=remember,
+        )
+    # ------------------------------------------------------------------
     # События Runner
     # ------------------------------------------------------------------
 
@@ -477,7 +764,7 @@ class Notifier:
                 dedup_key = f"DEAL:{deal.id}"
             else:
                 dedup_key = f"{event_type.name}:{deal.id}"
-            
+
             if dedup_key in self._notified_deal_events:
                 logger.debug("Пропущен дубль уведомления: {}", dedup_key)
                 return
@@ -489,21 +776,23 @@ class Notifier:
         # ---------------------------------------
 
         # Объединяем NEW_DEAL и ITEM_PAID в одно уведомление
-        # Оба события означают одно и то же: покупатель оплатил лот
         if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID):
+            deal = event.deal
+            # Обложка лота для уведомлений (None, если достать не удалось)
+            photo = await self._resolve_item_image(getattr(deal, "item", None))
+
             # Проверяем переключатели: достаточно одного включённого
             if self._toggles.new_deal or self._toggles.item_paid:
-                deal = event.deal
                 section = _get_section_from_deal(deal)
                 item_name = deal.item.name if deal and deal.item else "?"
                 buyer = deal.user.username if deal and deal.user else "?"
                 status = deal.raw_status.name if deal and deal.raw_status else "?"
                 price = deal.item.price if deal and deal.item and getattr(deal.item, "price", None) is not None else "?"
-                
+
                 # Если раздел не определился — пробуем через API
                 if section == "Не определено":
                     section = await self._resolve_section_via_deal_api(deal)
-                
+
                 await self._send_all(l10n(
                     "notif_new_deal",
                     section=_esc(section),
@@ -511,13 +800,11 @@ class Notifier:
                     buyer=_esc(buyer),
                     status=_esc(status),
                     price=_esc(price),
-                ))
-            
+                ), photo_url=photo)
+
             # Авто-выдача выполняется Runner'ом до того, как событие дошло сюда: если журнал
             # говорит «sent» — товар выдан, шлём отдельное уведомление с остатком склада.
-            # Работает только для ITEM_PAID (именно к этому событию привязана авто-выдача)
             if event_type is EventTypes.ITEM_PAID:
-                deal = event.deal
                 manager = self.cardinal.autodelivery_manager
                 if (self._toggles.delivery and deal is not None and manager is not None
                         and manager.ledger is not None
@@ -529,7 +816,7 @@ class Notifier:
                         section=_esc(section),
                         item=_esc(item_name),
                         stock=manager.get_stock_size(item_name),
-                    ))
+                    ), photo_url=photo)
 
         elif event_type is EventTypes.NEW_MESSAGE and self._toggles.new_message:
             message = event.message
@@ -537,7 +824,7 @@ class Notifier:
             account = self.cardinal.account
             if message is None:
                 return
-            
+
             # Игнорируем собственные исходящие сообщения
             if message.user is not None and message.user.id == account.id:
                 return
@@ -547,24 +834,34 @@ class Notifier:
                 logger.debug("Пропущено системное сообщение с маркером: {}", message.text)
                 return
 
+            # Системное уведомление о выводе средств — отдельный шаблон с суммой
+            if _is_payout_message(message.text):
+                await self._notify_payout(message, chat)
+                return
+
+            # Системное предупреждение о снятии лота — отдельный шаблон с лотом
+            if _is_item_expiring_message(message.text):
+                await self._notify_item_expiring(message, chat)
+                return
+
             username = message.user.username if message.user else "Система"
             is_support = _is_support_message(message)
-            
+
             if is_support:
                 # Получаем контекст поддержки
                 support_ctx = _get_support_context(message, chat)
-                
+
                 # Если раздел не определился из контекста — пробуем через API
                 if support_ctx["section"] == "Не определено":
                     api_section = await self._resolve_section_via_chat_api(chat)
                     if api_section != "Не определено":
                         support_ctx["section"] = api_section
-                
+
                 if support_ctx["is_deal_chat"] or (support_ctx["section"] not in ("Не определено", "🛠 Служба поддержки")):
                     buyer = support_ctx["buyer"] or "?"
                     item_name = support_ctx["item_name"] or "?"
                     section = support_ctx["section"]
-                    
+
                     # Если всё ещё нет buyer/item — пробуем через API
                     if (buyer == "?" or item_name == "?") and chat:
                         try:
@@ -579,7 +876,7 @@ class Notifier:
                                         break
                         except Exception:
                             pass
-                    
+
                     await self._send_all(
                         l10n(
                             "notif_support_in_deal_chat",
@@ -605,13 +902,13 @@ class Notifier:
             else:
                 # Обычное сообщение от покупателя
                 section = _get_section_from_message(message, chat)
-                
+
                 # Если раздел не определился — пробуем через API
                 if section == "Не определено":
                     section = await self._resolve_section_via_chat_api(chat)
-                
+
                 text = message.text or ""
-                
+
                 await self._send_all(
                     l10n(
                         "notif_new_message",
@@ -627,7 +924,7 @@ class Notifier:
             rating = getattr(review, "rating", "?")
             author = review.creator.username if getattr(review, "creator", None) else "?"
             text = getattr(review, "text", "") or ""
-            
+
             await self._send_all(l10n(
                 "notif_new_review",
                 rating=_esc(rating),
@@ -637,9 +934,10 @@ class Notifier:
 
         elif event_type is EventTypes.DEAL_HAS_PROBLEM and self._toggles.deal_problem:
             deal = event.deal
+            account = self.cardinal.account
             section = _get_section_from_deal(deal)
             item_name = deal.item.name if deal and deal.item else "?"
-            
+
             # Если раздел или имя лота не определились — пробуем через API
             if section == "Не определено" or item_name == "?":
                 api_section = await self._resolve_section_via_deal_api(deal)
@@ -652,7 +950,7 @@ class Notifier:
                         item_name = getattr(full_deal.item, "name", item_name)
                 except Exception:
                     pass
-            
+
             await self._send_all(l10n(
                 "notif_deal_problem",
                 section=_esc(section),
@@ -663,11 +961,11 @@ class Notifier:
         elif event_type is EventTypes.DEAL_PROBLEM_RESOLVED and self._toggles.deal_problem:
             deal = event.deal
             section = _get_section_from_deal(deal)
-            
+
             # Если раздел не определился — пробуем через API
             if section == "Не определено":
                 section = await self._resolve_section_via_deal_api(deal)
-            
+
             await self._send_all(l10n(
                 "notif_deal_problem_resolved",
                 section=_esc(section),
@@ -677,10 +975,11 @@ class Notifier:
         elif event_type in (EventTypes.DEAL_CONFIRMED, EventTypes.DEAL_CONFIRMED_AUTOMATICALLY) \
                 and self._toggles.deal_confirmed:
             deal = event.deal
+            account = self.cardinal.account
             section = _get_section_from_deal(deal)
             item_name = deal.item.name if deal.item else "?"
             price = deal.item.price if deal.item and getattr(deal.item, "price", None) is not None else "?"
-            
+
             # Если раздел или имя лота не определились — пробуем через API
             if section == "Не определено" or item_name == "?":
                 api_section = await self._resolve_section_via_deal_api(deal)
@@ -693,19 +992,23 @@ class Notifier:
                         price = getattr(full_deal.item, "price", price) or price
                 except Exception:
                     pass
-            
+
+            # Обложка лота для уведомления (None, если достать не удалось)
+            photo = await self._resolve_item_image(deal.item if deal else None)
+
             await self._send_all(l10n(
                 "notif_deal_confirmed",
                 section=_esc(section),
                 item=_esc(item_name),
                 price=_esc(price),
-            ))
+            ), photo_url=photo)
 
         elif event_type is EventTypes.DEAL_ROLLED_BACK and self._toggles.deal_rolled_back:
             deal = event.deal
+            account = self.cardinal.account
             section = _get_section_from_deal(deal)
             item_name = deal.item.name if deal.item else "?"
-            
+
             # Если раздел или имя лота не определились — пробуем через API
             if section == "Не определено" or item_name == "?":
                 api_section = await self._resolve_section_via_deal_api(deal)
@@ -717,7 +1020,7 @@ class Notifier:
                         item_name = getattr(full_deal.item, "name", item_name)
                 except Exception:
                     pass
-            
+
             await self._send_all(l10n(
                 "notif_deal_rolled_back",
                 section=_esc(section),
@@ -728,7 +1031,7 @@ class Notifier:
             result = event.result
             item_name = getattr(result, "item_name", "?")
             spent = getattr(result, "spent", "?")
-            
+
             await self._send_all(l10n(
                 "notif_item_raised",
                 item=_esc(item_name),
@@ -741,7 +1044,7 @@ class Notifier:
             item_name = getattr(result, "item_name", "?")
             price = priority_status.price if priority_status else "?"
             available = getattr(result, "available", "?")
-            
+
             await self._send_all(l10n(
                 "notif_insufficient_balance",
                 item=_esc(item_name),
@@ -758,11 +1061,11 @@ class Notifier:
             if self.cardinal.is_blacklisted(buyer):
                 section = _get_section_from_deal(deal)
                 item_name = deal.item.name if deal and deal.item else "?"
-                
+
                 # Если раздел не определился — пробуем через API
                 if section == "Не определено":
                     section = await self._resolve_section_via_deal_api(deal)
-                
+
                 await self._send_all(l10n(
                     "notif_blacklist_deal",
                     section=_esc(section),

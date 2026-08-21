@@ -163,6 +163,37 @@ STRINGS = {
         "💬 <i>{text}</i>\n\n"
         "👆 <i>Reply to this message to write to Playerok chat</i>"
     ),
+        "notif_payout": (
+        "💳 <b>Balance payout</b>\n\n"
+        "💸 <b>Amount:</b> <code>-{amount} ₽</code>\n"
+        "🏦 <b>Method:</b> {method}\n"
+        "📋 <b>Status:</b> {status}\n"
+        "🕒 <b>Date:</b> {date}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Reply to this message to write to Playerok chat</i>"
+    ),
+    "notif_payout_plain": (
+        "💳 <b>Balance payout</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Reply to this message to write to Playerok chat</i>"
+    ),
+        "notif_item_expiring": (
+        "⏳ <b>Item will be delisted soon</b>\n\n"
+        "🎁 <b>Item:</b> {item}\n"
+        "📂 <b>Section:</b> {section}\n"
+        "💰 <b>Price:</b> {price}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Reply to this message to write to Playerok chat</i>"
+    ),
+    "notif_item_expiring_plain": (
+        "⏳ <b>Item will be delisted soon</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💬 {text}\n\n"
+        "<i>Reply to this message to write to Playerok chat</i>"
+    ),
     "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
     "notif_deal_problem_resolved": "✅ Problem in deal <code>{deal_id}</code> resolved.",
@@ -224,6 +255,9 @@ STRINGS = {
     "test_new_review": "⭐ New Review",
     "test_delivery_ok": "📦 Successful Delivery",
     "test_error": "🚨 Error",
+    "test_payout": "💳 Payout",
+    "test_item_expiring": "⏳ Item delisting",
+    "test_photo": "🖼 Item photo",
 
     # --- Plugins ---
     "pl_title": "🧩 <b>Plugins</b>\n\nLoaded from <code>plugins/</code>:",

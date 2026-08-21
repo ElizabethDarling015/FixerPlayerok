@@ -87,6 +87,9 @@ def build_tests_menu(cardinal) -> tuple[str, object]:
     builder.button(text=l10n("test_new_review"), callback_data="test:new_review")
     builder.button(text=l10n("test_delivery_ok"), callback_data="test:delivery_ok")
     builder.button(text=l10n("test_error"), callback_data="test:error")
+    builder.button(text=l10n("test_payout"), callback_data="test:payout")
+    builder.button(text=l10n("test_item_expiring"), callback_data="test:item_expiring")
+    builder.button(text=l10n("test_photo"), callback_data="test:photo")
 
     # Раскладываем кнопки в 2 колонки
     builder.adjust(2)
@@ -449,6 +452,86 @@ async def cb_test_error(query: CallbackQuery, cardinal) -> None:
     await safe_edit(query.message, text, builder.as_markup())
     await query.answer()
 
+@router.callback_query(F.data == "test:payout")
+async def cb_test_payout(query: CallbackQuery, cardinal) -> None:
+    """Тест: выплата с баланса (с суммой)."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_payout",
+        amount="5 100",
+        method="СБП",
+        status="✅ Успешно",
+        date="19.08.2026, 11:58",
+        text="Ваша выплата успешно проведена.\nСумма отправлена на указанные реквизиты",
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:item_expiring")
+async def cb_test_item_expiring(query: CallbackQuery, cardinal) -> None:
+    """Тест: лот скоро снимут с продажи."""
+    l10n = cardinal.l10n
+    text = l10n(
+        "notif_item_expiring",
+        item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия | Автовыдача",
+        section="Adobe → Софт",
+        price="299 ₽",
+        text="Ваш товар будет снят с продажи через 7 дней по истечении срока выставления.\n\nОбновите статус товара, чтобы продлить срок выставления",
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
+    builder.adjust(1)
+
+    await safe_edit(query.message, text, builder.as_markup())
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:photo")
+async def cb_test_photo(query: CallbackQuery, cardinal) -> None:
+    """Тест: уведомление с фото лота (берётся обложка первого лота аккаунта)."""
+    l10n = cardinal.l10n
+    account = getattr(cardinal, "account", None)
+    url = None
+    if account is not None:
+        try:
+            page = await asyncio.to_thread(account.get_my_items, 1)
+            for it in (page.items if page and page.items else []):
+                url = _get_test_item_url(it)
+                if url:
+                    break
+        except Exception:
+            url = None
+    if not url:
+        await query.answer("❌ Нет фото: Playerok не подключён или у лотов нет картинок", show_alert=True)
+        return
+
+    caption = l10n(
+        "notif_new_deal",
+        section="Adobe → Софт",
+        item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия | Автовыдача",
+        buyer="loner42",
+        status="PAID",
+        price="299",
+    )
+    await query.message.answer_photo(url, caption=caption)
+    await query.answer("📸 Отправлено отдельным сообщением")
+
+
+def _get_test_item_url(item) -> str | None:
+    att = getattr(item, "attachment", None)
+    if att and getattr(att, "url", None):
+        return att.url
+    for a in getattr(item, "attachments", None) or []:
+        if getattr(a, "url", None):
+            return a.url
+    return None
 
 # ------------------------------------------------------------------
 # Остальные обработчики раздела "Система"
