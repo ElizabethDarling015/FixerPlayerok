@@ -671,14 +671,39 @@ class Notifier:
                 logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
         return None
 
+    async def _find_my_item_by_name(self, name: str | None):
+        """Ищет свой лот по точному названию (у ItemProfile есть ID и обложка)."""
+        account = self.cardinal.account
+        if account is None or not name:
+            return None
+        try:
+            page = await asyncio.to_thread(account.get_my_items, None, 100)
+            for it in (page.items if page and page.items else []):
+                if (it.name or "") == name:
+                    return it
+        except Exception as exc:
+            logger.debug("Не удалось найти лот по названию: {}", exc)
+        return None
+
     async def _resolve_item_image(self, item) -> str | None:
-        """Обложка лота: из полезной нагрузки события, иначе — доп. запрос API."""
+        """Обложка лота: из полезной нагрузки события, иначе API (по ID или по имени)."""
         url = _get_item_image(item)
         if url:
             return url
         account = self.cardinal.account
-        item_id = getattr(item, "id", None) if item is not None else None
-        if account is None or not item_id:
+        if account is None or item is None:
+            return None
+
+        item_id = getattr(item, "id", None)
+        if not item_id:
+            # В WS-кадре часто нет ID лота — ищем среди своих лотов по имени
+            found = await self._find_my_item_by_name(getattr(item, "name", None))
+            if found is not None:
+                url = _get_item_image(found)
+                if url:
+                    return url
+                item_id = getattr(found, "id", None)
+        if not item_id:
             return None
         try:
             full_item = await asyncio.to_thread(account.get_item, item_id)
@@ -686,6 +711,64 @@ class Notifier:
         except Exception as exc:
             logger.debug("Не удалось получить обложку лота {}: {}", item_id, exc)
             return None
+
+    async def _resolve_message_item(self, message, chat):
+        """Лот, к которому относится сообщение: message.item → сделки чата."""
+        item = getattr(message, "item", None)
+        if item and (getattr(item, "id", None) or getattr(item, "name", None)):
+            return item
+        account = self.cardinal.account
+        if account is not None and chat is not None and getattr(chat, "id", None):
+            try:
+                full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+                for d in (getattr(full_chat, "deals", []) or []):
+                    di = getattr(d, "item", None)
+                    if di and (getattr(di, "id", None) or getattr(di, "name", None)):
+                        return di
+            except Exception as exc:
+                logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
+        return None
+
+    async def _resolve_item_context(self, item) -> tuple:
+        """
+        Возвращает (раздел, URL обложки) для лота из события.
+
+        Если в полезной нагрузке данных нет — дотягивает по ID
+        или через поиск своего лота по названию.
+        """
+        section = _get_section_from_item(item)
+        photo = _get_item_image(item)
+        if section != "Не определено" and photo:
+            return section, photo
+
+        account = self.cardinal.account
+        if account is None or item is None:
+            return section, photo
+
+        item_id = getattr(item, "id", None)
+        name = getattr(item, "name", None)
+
+        # Нет ID — ищем среди своих лотов по названию
+        if not item_id and name:
+            found = await self._find_my_item_by_name(name)
+            if found is not None:
+                item_id = getattr(found, "id", None)
+                if photo is None:
+                    photo = _get_item_image(found)
+
+        # Полный лот по ID: раздел + обложка
+        if item_id:
+            try:
+                full_item = await asyncio.to_thread(account.get_item, item_id)
+                if full_item is not None:
+                    if section == "Не определено":
+                        section = _get_section_from_item(full_item)
+                    if photo is None:
+                        photo = _get_item_image(full_item)
+            except Exception as exc:
+                logger.debug("Не удалось получить полный лот {}: {}", item_id, exc)
+
+        return section, photo
 
     async def _notify_item_expiring(self, message, chat) -> None:
         """Уведомление о скором снятии лота — с названием, разделом и ценой."""
@@ -907,6 +990,14 @@ class Notifier:
                 if section == "Не определено":
                     section = await self._resolve_section_via_chat_api(chat)
 
+                # Лот из сообщения/чата + раздел и обложка (поиск по названию)
+                photo = None
+                item = await self._resolve_message_item(message, chat)
+                if item is not None:
+                    item_section, photo = await self._resolve_item_context(item)
+                    if section == "Не определено":
+                        section = item_section
+
                 text = message.text or ""
 
                 await self._send_all(
@@ -917,6 +1008,7 @@ class Notifier:
                         text=_esc(text),
                     ),
                     remember_chat=event.chat.id,
+                    photo_url=photo,
                 )
 
         elif event_type is EventTypes.NEW_REVIEW and self._toggles.new_review:
