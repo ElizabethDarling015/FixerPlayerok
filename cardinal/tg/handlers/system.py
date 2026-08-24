@@ -35,6 +35,12 @@ def build_system_menu(cardinal) -> tuple[str, object]:
     l10n = cardinal.l10n
     builder = InlineKeyboardBuilder()
 
+    # Новые кнопки для перенесённых разделов
+    builder.button(text=l10n("menu_section_toggles"), callback_data="gl")
+    builder.button(text=l10n("menu_section_autodelivery"), callback_data="ad")
+    builder.button(text=l10n("menu_section_autoresponse"), callback_data="ar")
+    builder.button(text=l10n("menu_section_notifications"), callback_data="nt")
+
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
     builder.button(text=l10n("sys_btn_backup"), callback_data="sys:backup")
 
@@ -60,7 +66,11 @@ def build_system_menu(cardinal) -> tuple[str, object]:
 
     # Подсказки: что делает каждая кнопка раздела
     text = (
-        l10n("sys_title") + "\n\n"
+        l10n("settings_title") + "\n\n"
+        "• 🎛 Глобальные переключатели — включение/выключение модулей бота\n"
+        "• 📦 Авто-выдача — управление лотами и складами\n"
+        "• 💬 Автоответчик — настройка автоответов на команды\n"
+        "• 🔔 Уведомления — выбор типов уведомлений\n"
         "• 📄 Логи — последние 30 строк журнала бота\n"
         "• 💾 Бэкап — ZIP-архив с конфигами и данными (склады, журналы)\n"
         f"{conn_hint}\n"
@@ -501,7 +511,7 @@ async def cb_test_photo(query: CallbackQuery, cardinal) -> None:
     url = None
     if account is not None:
         try:
-            page = await asyncio.to_thread(account.get_my_items, 1)
+            page = await asyncio.to_thread(account.get_my_items, None, 1)
             for it in (page.items if page and page.items else []):
                 url = _get_test_item_url(it)
                 if url:

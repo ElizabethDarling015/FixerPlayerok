@@ -7,8 +7,13 @@ STRINGS = {
     "auth_wrong_code": "❌ Неверный код. Актуальный код напечатан в консоли Cardinal.",
     "btn_back": "◀️ Назад",
     "btn_home": "🏠 Главное меню",
+    "btn_chats": "💬 Чаты с покупателями",
+    "btn_auto_publish": "📤 Автовыставление",
+    "btn_last_deals": "🕒 Последние сделки",
+    "alert_in_development": "⏸ Раздел «{section}» в разработке — появится в следующих обновлениях.",
     "btn_close": "✖️ Закрыть",
     "cancelled": "Действие отменено.",
+    "stub_message": "⏸ Раздел перенесён в Настройки",
     "btn_cancel": "Отмена",
 
     # --- Главное меню ---
@@ -25,8 +30,9 @@ STRINGS = {
     "menu_section_autoresponse": "💬 Автоответчик",
     "menu_section_blacklist": "🚫 Чёрный список",
     "menu_section_notifications": "🔔 Уведомления",
+    "menu_section_stub": "⏸ В разработке",
     "menu_section_plugins": "🧩 Плагины",
-    "menu_section_system": "⚙️ Система",
+    "menu_section_settings": "⚙️ Настройки",
     "menu_btn_digest": "📊 Сводка сейчас",
     "btn_reply_menu": "Меню",
     "menu_keyboard_hint": "📋 Кнопка «Меню» — под полем ввода. Нажми на стрелку, чтобы свернуть её в компактный вид.",
@@ -184,23 +190,18 @@ STRINGS = {
         "━━━━━━━━━━━━━━━━━━━\n"
         "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
     ),
-        "notif_payout": (
+    "notif_payout": (
         "💳 <b>Выплата с баланса</b>\n\n"
         "💸 <b>Сумма:</b> <code>-{amount} ₽</code>\n"
         "🏦 <b>Способ:</b> {method}\n"
         "📋 <b>Статус:</b> {status}\n"
-        "🕒 <b>Дата:</b> {date}\n\n"
+        "🕒 <b>Дата:</b> {date}\n"
+        "💰 <b>Остаток:</b> {balance}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}\n\n"
         "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
     ),
-    "notif_payout_plain": (
-        "💳 <b>Выплата с баланса</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Ответьте на это сообщение, чтобы написать в чат Playerok</i>"
-    ),
-        "notif_item_expiring": (
+    "notif_item_expiring": (
         "⏳ <b>Лот скоро снимут с продажи</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -305,7 +306,7 @@ STRINGS = {
     "reply_unknown": "Не понимаю, куда отправить: ответьте на уведомление о сообщении.",
 
     # --- Система ---
-    "sys_title": "⚙️ <b>Система</b>",
+    "settings_title": "⚙️ <b>Настройки</b>",
     "sys_btn_logs": "📄 Логи",
     "sys_btn_backup": "💾 Бэкап",
     "sys_backup_caption": "💾 Бэкап конфигов и данных Cardinal.\n⚠️ Внутри cookies аккаунта — не пересылайте архив никому!",

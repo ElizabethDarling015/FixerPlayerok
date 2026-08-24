@@ -42,7 +42,7 @@ def build_commands_list(cardinal, page: int = 0) -> tuple[str, object]:
     if pager := pager_row("ar:p", page, total_pages):
         builder.row(*pager)
     builder.row(InlineKeyboardButton(text=l10n("ar_btn_add"), callback_data="ar:add"))
-    builder.row(*nav_row(l10n))
+    builder.row(*nav_row(l10n, "sys"))
     return text, builder.as_markup()
 
 

@@ -153,7 +153,7 @@ wget https://github.com/scwee/PlayerokCardinal/archive/refs/heads/main.tar.gz -O
 
 **Создатель** — [@Scwee_xz](https://t.me/Scwee_xz)
 
-Telegram-чат поддержки появится позже. Пока смотрите [FAQ](#faq), логи в `storage/logs/cardinal.log` и раздел «Система» в `/menu`.
+Telegram-чат поддержки появится позже. Пока смотрите [FAQ](#faq), логи в `storage/logs/cardinal.log` и раздел «Настройки» в `/menu`.
 
 ## FAQ
 

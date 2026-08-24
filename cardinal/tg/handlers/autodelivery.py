@@ -77,7 +77,7 @@ def build_lots_list(cardinal, page: int = 0) -> tuple[str, object]:
     if pager := pager_row("ad:p", page, total_pages):
         builder.row(*pager)
     builder.row(InlineKeyboardButton(text=l10n("ad_btn_add_lot"), callback_data="ad:addlot"))
-    builder.row(*nav_row(l10n))
+    builder.row(*nav_row(l10n, "sys"))
     return text, builder.as_markup()
 
 

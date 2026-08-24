@@ -116,16 +116,21 @@ def build_main_menu(cardinal) -> tuple[str, object]:
     text = text.replace("\n📩", "\n\n📩")
     
     builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("menu_section_toggles"), callback_data="gl")
-    builder.button(text=l10n("menu_section_autodelivery"), callback_data="ad")
-    builder.button(text=l10n("menu_section_autoresponse"), callback_data="ar")
+    # Ряд 1: Чаты с покупателями (во всю ширину)
+    builder.button(text=l10n("btn_chats"), callback_data="chats")
+    # Ряд 2: заготовки будущих разделов
+    builder.button(text=l10n("btn_auto_publish"), callback_data="auto_publish")
+    builder.button(text=l10n("btn_last_deals"), callback_data="last_deals")
+    # Ряд 3: ЧС + заглушка (чтобы пары остались ровными)
     builder.button(text=l10n("menu_section_blacklist"), callback_data="bl")
-    builder.button(text=l10n("menu_section_notifications"), callback_data="nt")
+    builder.button(text=l10n("menu_section_stub"), callback_data="noop")
+    # Ряд 4
     builder.button(text=l10n("menu_section_plugins"), callback_data="pl")
     builder.button(text=l10n("menu_section_stats"), callback_data="st")
-    builder.button(text=l10n("menu_section_system"), callback_data="sys")
+    # Ряд 5
+    builder.button(text=l10n("menu_section_settings"), callback_data="sys")
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
-    builder.adjust(1, 2, 2, 2, 2, 1)
+    builder.adjust(1, 2, 2, 2, 2)
     return text, builder.as_markup()
 
 
@@ -138,7 +143,7 @@ def build_toggles_menu(cardinal) -> tuple[str, object]:
         builder.button(text=f"{on_off(l10n, enabled)} {l10n('module_' + name)}", callback_data=f"mod:{name}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text=l10n("gl_btn_greeting_text"), callback_data="gl:greet"))
-    builder.row(*nav_row(l10n))
+    builder.row(*nav_row(l10n, "sys"))
     return l10n("gl_title"), builder.as_markup()
 
 
@@ -165,11 +170,18 @@ async def cb_menu(query: CallbackQuery, cardinal) -> None:
     await query.answer()
 
 
-@router.callback_query(F.data == "gl")
-async def cb_toggles_menu(query: CallbackQuery, cardinal) -> None:
-    text, markup = build_toggles_menu(cardinal)
-    await safe_edit(query.message, text, markup)
-    await query.answer()
+@router.callback_query(F.data.in_({"chats", "auto_publish", "last_deals"}))
+async def cb_in_development(query: CallbackQuery, cardinal) -> None:
+    """Заглушка для кнопок будущих разделов."""
+    l10n = cardinal.l10n
+    section_key = {
+        "chats": "btn_chats",
+        "auto_publish": "btn_auto_publish",
+        "last_deals": "btn_last_deals",
+    }[query.data]
+    # Берём текст кнопки без эмодзи для алерта
+    section = l10n(section_key).split(" ", 1)[-1]
+    await query.answer(l10n("alert_in_development", section=section), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("mod:"))
@@ -256,3 +268,8 @@ async def cb_fsm_cancel(query: CallbackQuery, state: FSMContext, cardinal) -> No
 async def cmd_cancel(message: Message, state: FSMContext, cardinal) -> None:
     await state.clear()
     await message.answer(cardinal.l10n("cancelled"))
+
+@router.callback_query(F.data == "stub")
+async def cb_stub(query: CallbackQuery, cardinal) -> None:
+    """Заглушка для отключенных разделов."""
+    await query.answer("⏸ Раздел перенесён в Настройки", show_alert=True)

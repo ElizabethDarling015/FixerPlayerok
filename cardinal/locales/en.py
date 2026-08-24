@@ -7,8 +7,13 @@ STRINGS = {
     "auth_wrong_code": "❌ Wrong code. The current code is printed in the Cardinal console.",
     "btn_back": "◀️ Back",
     "btn_home": "🏠 Main menu",
+    "btn_chats": "💬 Buyer chats",
+    "btn_auto_publish": "📤 Auto-publish",
+    "btn_last_deals": "🕒 Recent deals",
+    "alert_in_development": "⏸ The “{section}” section is under development — coming in future updates.",
     "btn_close": "✖️ Close",
     "cancelled": "Action cancelled.",
+    "stub_message": "⏸ Section has been moved to Settings",
     "btn_cancel": "Cancel",
 
     # --- Main menu ---
@@ -25,9 +30,9 @@ STRINGS = {
     "menu_section_autoresponse": "💬 Auto-response",
     "menu_section_blacklist": "🚫 Blacklist",
     "menu_section_notifications": "🔔 Notifications",
+    "menu_section_stub": "⏸ Under development",
     "menu_section_plugins": "🧩 Plugins",
-    "menu_section_system": "⚙️ System",
-    "menu_btn_digest": "📊 Digest now",
+    "menu_section_settings": "⚙️ Settings",
     "menu_btn_digest": "📊 Digest now",
     "btn_reply_menu": "Menu",
     "menu_keyboard_hint": "📋 The “Menu” button is under the input field. Tap the arrow to collapse it into a compact button.",
@@ -163,23 +168,18 @@ STRINGS = {
         "💬 <i>{text}</i>\n\n"
         "👆 <i>Reply to this message to write to Playerok chat</i>"
     ),
-        "notif_payout": (
-        "💳 <b>Balance payout</b>\n\n"
+    "notif_payout": (
+        "💳 <b>Withdrawal from balance</b>\n\n"
         "💸 <b>Amount:</b> <code>-{amount} ₽</code>\n"
         "🏦 <b>Method:</b> {method}\n"
         "📋 <b>Status:</b> {status}\n"
-        "🕒 <b>Date:</b> {date}\n\n"
+        "🕒 <b>Date:</b> {date}\n"
+        "💰 <b>Balance:</b> {balance}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}\n\n"
         "<i>Reply to this message to write to Playerok chat</i>"
     ),
-    "notif_payout_plain": (
-        "💳 <b>Balance payout</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Reply to this message to write to Playerok chat</i>"
-    ),
-        "notif_item_expiring": (
+    "notif_item_expiring": (
         "⏳ <b>Item will be delisted soon</b>\n\n"
         "🎁 <b>Item:</b> {item}\n"
         "📂 <b>Section:</b> {section}\n"
@@ -214,8 +214,8 @@ STRINGS = {
     "reply_failed": "❌ Failed to send: {error}",
     "reply_unknown": "Not sure where to send this: reply to a message notification.",
 
-    # --- System ---
-    "sys_title": "⚙️ <b>System</b>",
+    # --- Settings ---
+    "settings_title": "⚙️ <b>Settings</b>",
     "sys_btn_logs": "📄 Logs",
     "sys_btn_backup": "💾 Backup",
     "sys_backup_caption": "💾 Backup of Cardinal configs and data.\n⚠️ Contains account cookies — never share this archive!",

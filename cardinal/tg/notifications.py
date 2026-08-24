@@ -580,20 +580,19 @@ class Notifier:
     async def _fetch_latest_payout(self) -> dict:
         """
         Достаёт последнюю выплату из API Playerok (сумма/способ/статус/дата).
-
-        Основной источник — запрос `payouts`; если пусто/ошибка — фолбэк
-        по транзакциям вывода (`transactions`, operation=WITHDRAW).
+        Основной источник — запрос `payouts`; если пусто/ошибка — умный фолбэк по транзакциям.
         """
         result: dict = {"amount": None, "method": None, "status": None, "date": None}
         account = self.cardinal.account
         if account is None:
             return result
 
+        # 1. Пробуем получить через специализированный эндпоинт payouts
         try:
             page = await asyncio.to_thread(account.get_payouts, 5)
             payouts = list(page.payouts) if page and page.payouts else []
         except Exception as exc:
-            logger.debug("Не удалось получить payouts: {}", exc)
+            logger.warning("Не удалось получить payouts (выплаты): {}", exc)
             payouts = []
 
         if payouts:
@@ -604,33 +603,73 @@ class Notifier:
             result["date"] = latest.completed_at or latest.created_at
             return result
 
+        # 2. Фолбэк: ищем в общих транзакциях (более гибкая проверка)
         try:
             tx_page = await asyncio.to_thread(account.get_transactions, 10)
             txs = list(tx_page.transactions) if tx_page and tx_page.transactions else []
         except Exception as exc:
-            logger.debug("Не удалось получить transactions: {}", exc)
+            logger.warning("Не удалось получить transactions для фолбэка выплаты: {}", exc)
             return result
 
         for tx in txs:
-            if tx.operation is TransactionOperations.WITHDRAW:
+            op = getattr(tx, "operation", None)
+            direction = getattr(tx, "direction", None)
+            status = getattr(tx, "status", None)
+            
+            # Расширенная проверка: ищем не только строгий WITHDRAW, но и исходящие подтвержденные транзакции
+            is_withdraw = (op in (TransactionOperations.WITHDRAW, "WITHDRAW", 5))
+            is_confirmed_out = (direction in ("OUT", 1) and status in ("CONFIRMED", "COMPLETED", 2))
+            
+            if is_withdraw or is_confirmed_out:
                 result["amount"] = tx.value
-                result["method"] = tx.provider.name if tx.provider else tx.provider_id
-                result["status"] = tx.status.name if tx.status else None
+                result["method"] = tx.provider.name if getattr(tx, "provider", None) else getattr(tx, "provider_id", None)
+                result["status"] = status
                 result["date"] = tx.created_at
+                logger.info("✅ Выплата найдена через фолбэк транзакций: сумма={}, метод={}", result["amount"], result["method"])
                 break
+        
+        # 3. Если ничего не найдено, логируем последние транзакции для отладки
+        if result["amount"] is None:
+            logger.warning(
+                "⚠️ Выплата не найдена ни в payouts, ни в transactions. "
+                "Последние 3 транзакции: {}", 
+                [f"op={getattr(t, 'operation', '?')}, dir={getattr(t, 'direction', '?')}, val={getattr(t, 'value', '?')}" for t in (txs[:3] if txs else [])]
+            )
+            
         return result
 
     async def _notify_payout(self, message, chat) -> None:
-        """Красивое уведомление о выплате с суммой (reply сохраняется)."""
+        """Красивое уведомление о выплате с суммой и остатком баланса."""
         l10n = self.cardinal.l10n
         info = await self._fetch_latest_payout()
         text = _esc(_clean_payout_text(message.text or "")) or "…"
         remember = chat.id if chat is not None else None
 
-        if info["amount"] is None:
-            # API недоступно — новый вид, но без суммы
-            await self._send_all(l10n("notif_payout_plain", text=text), remember_chat=remember)
-            return
+        # Сумма выплаты: если API не вернул данные — показываем "—"
+        amount_str = f"-{_fmt_money(info['amount'])} ₽" if info["amount"] is not None else "—"
+
+        # Текущий остаток на балансе (доступный, иначе общий)
+        balance_str = "—"
+        account = self.cardinal.account
+        if account and account.profile and account.profile.balance:
+            bal = account.profile.balance
+            value = bal.available if bal.available is not None else bal.value
+            if value is not None:
+                balance_str = f"{_fmt_money(value)} ₽"
+
+        # Всегда полный формат — отдельный "plain" шаблон больше не нужен
+        await self._send_all(
+            l10n(
+                "notif_payout",
+                amount=amount_str,
+                method=_esc(_fmt_payout_method(info["method"])),
+                status=_esc(_fmt_payout_status(info["status"])),
+                date=_esc(_fmt_datetime(info["date"])),
+                balance=_esc(balance_str),
+                text=text,
+            ),
+            remember_chat=remember,
+        )
 
         await self._send_all(
             l10n(
@@ -639,6 +678,7 @@ class Notifier:
                 method=_esc(_fmt_payout_method(info["method"])),
                 status=_esc(_fmt_payout_status(info["status"])),
                 date=_esc(_fmt_datetime(info["date"])),
+                balance=_esc(balance_value),
                 text=text,
             ),
             remember_chat=remember,
@@ -685,6 +725,20 @@ class Notifier:
             logger.debug("Не удалось найти лот по названию: {}", exc)
         return None
 
+    async def _find_my_item_by_name(self, name: str | None):
+        """Ищет свой лот по точному названию (у ItemProfile есть ID и обложка)."""
+        account = self.cardinal.account
+        if account is None or not name:
+            return None
+        try:
+            page = await asyncio.to_thread(account.get_my_items, None, 100)
+            for it in (page.items if page and page.items else []):
+                if (it.name or "") == name:
+                    return it
+        except Exception as exc:
+            logger.debug("Не удалось найти лот по названию: {}", exc)
+        return None
+
     async def _resolve_item_image(self, item) -> str | None:
         """Обложка лота: из полезной нагрузки события, иначе API (по ID или по имени)."""
         url = _get_item_image(item)
@@ -711,6 +765,64 @@ class Notifier:
         except Exception as exc:
             logger.debug("Не удалось получить обложку лота {}: {}", item_id, exc)
             return None
+
+    async def _resolve_message_item(self, message, chat):
+        """Лот, к которому относится сообщение: message.item → сделки чата."""
+        item = getattr(message, "item", None)
+        if item and (getattr(item, "id", None) or getattr(item, "name", None)):
+            return item
+        account = self.cardinal.account
+        if account is not None and chat is not None and getattr(chat, "id", None):
+            try:
+                full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+                for d in (getattr(full_chat, "deals", []) or []):
+                    di = getattr(d, "item", None)
+                    if di and (getattr(di, "id", None) or getattr(di, "name", None)):
+                        return di
+            except Exception as exc:
+                logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
+        return None
+
+    async def _resolve_item_context(self, item) -> tuple:
+        """
+        Возвращает (раздел, URL обложки) для лота из события.
+
+        Если в полезной нагрузке данных нет — дотягивает по ID
+        или через поиск своего лота по названию.
+        """
+        section = _get_section_from_item(item)
+        photo = _get_item_image(item)
+        if section != "Не определено" and photo:
+            return section, photo
+
+        account = self.cardinal.account
+        if account is None or item is None:
+            return section, photo
+
+        item_id = getattr(item, "id", None)
+        name = getattr(item, "name", None)
+
+        # Нет ID — ищем среди своих лотов по названию
+        if not item_id and name:
+            found = await self._find_my_item_by_name(name)
+            if found is not None:
+                item_id = getattr(found, "id", None)
+                if photo is None:
+                    photo = _get_item_image(found)
+
+        # Полный лот по ID: раздел + обложка
+        if item_id:
+            try:
+                full_item = await asyncio.to_thread(account.get_item, item_id)
+                if full_item is not None:
+                    if section == "Не определено":
+                        section = _get_section_from_item(full_item)
+                    if photo is None:
+                        photo = _get_item_image(full_item)
+            except Exception as exc:
+                logger.debug("Не удалось получить полный лот {}: {}", item_id, exc)
+
+        return section, photo
 
     async def _resolve_message_item(self, message, chat):
         """Лот, к которому относится сообщение: message.item → сделки чата."""

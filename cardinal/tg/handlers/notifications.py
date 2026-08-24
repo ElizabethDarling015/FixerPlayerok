@@ -22,7 +22,7 @@ def build_notifications_menu(cardinal) -> tuple[str, object]:
         builder.button(text=f"{on_off(l10n, getattr(toggles, key))} {l10n('nt_' + key)}",
                        callback_data=f"nt:t:{key}")
     builder.adjust(2)
-    builder.row(*nav_row(l10n))
+    builder.row(*nav_row(l10n, "sys"))
     return l10n("nt_title"), builder.as_markup()
 
 
