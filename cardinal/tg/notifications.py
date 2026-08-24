@@ -6,6 +6,7 @@ import asyncio
 import time
 import json
 import os
+import re
 
 from datetime import datetime
 
@@ -340,6 +341,39 @@ def _get_item_image(item) -> str | None:
     att = getattr(item, "attachment", None)  # у ItemProfile — одиночная обложка
     return getattr(att, "url", None) if att else None
 
+def _get_item_image(item) -> str | None:
+    """URL первой картинки лота (та самая обложка из списков Playerok)."""
+    if not item:
+        return None
+    # Пробуем взять из списка attachments
+    for att in getattr(item, "attachments", None) or []:
+        url = getattr(att, "url", None)
+        if url:
+            return url
+    # Фолбэк: одиночная обложка (у ItemProfile)
+    single_att = getattr(item, "attachment", None)
+    return getattr(single_att, "url", None) if single_att else None
+
+# ▼▼▼ ВСТАВИТЬ СЮДА (без отступов, вне класса) ▼▼▼
+_PLAYEROK_URL_RE = re.compile(r"https?://(?:www\.)?playerok\.com/[^\s<>\"')\]]+", re.IGNORECASE)
+
+def _extract_item_slug(text: str | None, buttons=None) -> str | None:
+    """Достаёт slug лота (последний сегмент пути) из ссылки в тексте или кнопках сообщения."""
+    urls: list[str] = []
+    if text:
+        urls.extend(_PLAYEROK_URL_RE.findall(text))
+    for btn in (buttons or []):
+        url = getattr(btn, "url", None)
+        if url:
+            urls.append(url)
+
+    for url in urls:
+        path = url.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+        slug = path.rsplit("/", 1)[-1]
+        if slug and slug.lower() not in {"catalog", "app", "ru", "en", "profile", "chat", "support"}:
+            return slug
+    return None
+# ▲▲▲ конец вставки ▲▲▲
 
 class Notifier:
     """Отправляет уведомления о событиям всем администраторам."""
@@ -689,15 +723,21 @@ class Notifier:
     # ------------------------------------------------------------------
 
     async def _resolve_expiring_item(self, message, chat):
-        """
-        Ищет лот, о котором говорит системное сообщение.
-
-        1) `message.item` из WS-кадра; 2) API: `get_chat` → `last_message.item`
-        (системное сообщение в чате уведомлений привязано к лоту).
-        """
         item = getattr(message, "item", None)
         if item and getattr(item, "name", None):
             return item
+
+        slug = _extract_item_slug(getattr(message, "text", None), getattr(message, "buttons", None))
+        if slug:
+            account = self.cardinal.account
+            if account is not None:
+                try:
+                    linked = await asyncio.to_thread(account.get_item, slug=slug)
+                    if linked and getattr(linked, "name", None):
+                        logger.debug("Лот из ссылки: slug={} → {}", slug, linked.name)
+                        return linked
+                except Exception as exc:
+                    logger.debug("Не удалось достать лот по ссылке (slug={}): {}", slug, exc)
 
         account = self.cardinal.account
         if account is not None and chat is not None and getattr(chat, "id", None):
@@ -781,6 +821,16 @@ class Notifier:
                         return di
             except Exception as exc:
                 logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
+        slug = _extract_item_slug(getattr(message, "text", None), getattr(message, "buttons", None))
+        if slug:
+            account = self.cardinal.account
+            if account is not None:
+                try:
+                    linked = await asyncio.to_thread(account.get_item, slug=slug)
+                    if linked:
+                        return linked
+                except Exception as exc:
+                    logger.debug("Не удалось достать лот по ссылке (slug={}): {}", slug, exc)
         return None
 
     async def _resolve_item_context(self, item) -> tuple:

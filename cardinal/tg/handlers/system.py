@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
 import html
 import io
 import os
@@ -173,7 +172,7 @@ async def cb_logs(query: CallbackQuery, cardinal) -> None:
 async def cb_backup(query: CallbackQuery, cardinal) -> None:
     l10n = cardinal.l10n
     data = await asyncio.to_thread(build_backup_zip)
-    filename = f"cardinal_backup_{datetime.datetime.now():%Y%m%d_%H%M}.zip"
+    filename = f"cardinal_backup_{datetime.now():%Y%m%d_%H%M}.zip"
     await query.message.answer_document(
         BufferedInputFile(data, filename=filename),
         caption=l10n("sys_backup_caption"),
@@ -464,7 +463,7 @@ async def cb_test_error(query: CallbackQuery, cardinal) -> None:
 
 @router.callback_query(F.data == "test:payout")
 async def cb_test_payout(query: CallbackQuery, cardinal) -> None:
-    """Тест: выплата с баланса (с суммой)."""
+    """Тест: выплата с баланса (с суммой и остатком)."""
     l10n = cardinal.l10n
     text = l10n(
         "notif_payout",
@@ -472,6 +471,7 @@ async def cb_test_payout(query: CallbackQuery, cardinal) -> None:
         method="СБП",
         status="✅ Успешно",
         date="19.08.2026, 11:58",
+        balance="15 230",
         text="Ваша выплата успешно проведена.\nСумма отправлена на указанные реквизиты",
     )
 
