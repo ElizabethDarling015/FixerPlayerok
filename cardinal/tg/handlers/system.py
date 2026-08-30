@@ -6,7 +6,6 @@ import html
 import io
 import os
 import zipfile
-import time
 
 from datetime import datetime, timedelta, timezone
 
@@ -179,6 +178,7 @@ async def cb_backup(query: CallbackQuery, cardinal) -> None:
     )
     await query.answer()
 
+
 @router.callback_query(F.data == "sys:clear_confirm")
 async def cb_clear_confirm(query: CallbackQuery, cardinal) -> None:
     """Подменю выбора периода очистки."""
@@ -198,65 +198,17 @@ async def cb_clear_confirm(query: CallbackQuery, cardinal) -> None:
     await query.answer()
 
 
-async def _do_clear(query: CallbackQuery, cardinal, since_ts: float | None) -> None:
-    """Общая логика очистки + возврат в меню Система."""
-    result = await cardinal.notifier.clear_notifications(since_timestamp=since_ts)
-    await query.answer(
-        cardinal.l10n("clear_result", removed=result["removed"], failed=result["failed"]),
-        show_alert=True,
-    )
-    text, markup = build_system_menu(cardinal)
-    await safe_edit(query.message, text, markup)
-
-
 @router.callback_query(F.data == "sys:clear:today")
 async def cb_clear_today(query: CallbackQuery, cardinal) -> None:
-    await _do_clear(query, cardinal, time.time() - 24 * 3600)
-
-
-@router.callback_query(F.data == "sys:clear:week")
-async def cb_clear_week(query: CallbackQuery, cardinal) -> None:
-    await _do_clear(query, cardinal, time.time() - 7 * 24 * 3600)
-
-
-@router.callback_query(F.data == "sys:clear:all")
-async def cb_clear_all(query: CallbackQuery, cardinal) -> None:
-    await _do_clear(query, cardinal, None)
-
-
-@router.callback_query(F.data == "sys:clear24h")
-async def cb_clear_24h(query: CallbackQuery, cardinal) -> None:
-    """Единоразовое удаление за 24 часа (без подменю)."""
-    await _do_clear(query, cardinal, time.time() - 24 * 3600)
-    
-    text = (
-        l10n("clear_title") + "\n\n"
-        "⚠️ <b>Внимание:</b> сообщения удалятся только из Telegram.\n"
-        "Логи бота (<code>storage/logs/cardinal.log</code>) останутся нетронутыми.\n\n"
-        "Выберите период:"
-    )
-    await safe_edit(query.message, text, builder.as_markup())
-    await query.answer()
-
-
-@router.callback_query(F.data == "sys:clear:today")
-async def cb_clear_today(query: CallbackQuery, cardinal) -> None:
-    """Очистка уведомлений за сегодня."""
+    """Очистка уведомлений за сегодня (с 00:00 UTC)."""
     l10n = cardinal.l10n
-    
-    # Начало текущего дня (00:00) в UTC
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    since_ts = today_start.timestamp()
-    
-    result = await cardinal.notifier.clear_notifications(since_timestamp=since_ts)
-    
+    result = await cardinal.notifier.clear_notifications(since_timestamp=today_start.timestamp())
     await query.answer(
         l10n("clear_result", removed=result["removed"], failed=result["failed"]),
-        show_alert=True
+        show_alert=True,
     )
-    
-    # Возвращаемся в меню "Система"
     text, markup = build_system_menu(cardinal)
     await safe_edit(query.message, text, markup)
 
@@ -265,17 +217,12 @@ async def cb_clear_today(query: CallbackQuery, cardinal) -> None:
 async def cb_clear_week(query: CallbackQuery, cardinal) -> None:
     """Очистка уведомлений за последние 7 дней."""
     l10n = cardinal.l10n
-    
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    since_ts = week_ago.timestamp()
-    
-    result = await cardinal.notifier.clear_notifications(since_timestamp=since_ts)
-    
+    result = await cardinal.notifier.clear_notifications(since_timestamp=week_ago.timestamp())
     await query.answer(
         l10n("clear_result", removed=result["removed"], failed=result["failed"]),
-        show_alert=True
+        show_alert=True,
     )
-    
     text, markup = build_system_menu(cardinal)
     await safe_edit(query.message, text, markup)
 
@@ -284,14 +231,11 @@ async def cb_clear_week(query: CallbackQuery, cardinal) -> None:
 async def cb_clear_all(query: CallbackQuery, cardinal) -> None:
     """Очистка всех накопленных уведомлений."""
     l10n = cardinal.l10n
-    
     result = await cardinal.notifier.clear_notifications(since_timestamp=None)
-    
     await query.answer(
         l10n("clear_result", removed=result["removed"], failed=result["failed"]),
-        show_alert=True
+        show_alert=True,
     )
-    
     text, markup = build_system_menu(cardinal)
     await safe_edit(query.message, text, markup)
 
@@ -378,6 +322,7 @@ async def cb_test_new_deal(query: CallbackQuery, cardinal) -> None:
         buyer="loner42",
         status="PAID",
         price="1500",
+        chat_id="123e4567-e89b-42d3-a456-426614174000",
     )
     
     builder = InlineKeyboardBuilder()
@@ -461,6 +406,7 @@ async def cb_test_error(query: CallbackQuery, cardinal) -> None:
     await safe_edit(query.message, text, builder.as_markup())
     await query.answer()
 
+
 @router.callback_query(F.data == "test:payout")
 async def cb_test_payout(query: CallbackQuery, cardinal) -> None:
     """Тест: выплата с баланса (с суммой и остатком)."""
@@ -529,6 +475,7 @@ async def cb_test_photo(query: CallbackQuery, cardinal) -> None:
         buyer="loner42",
         status="PAID",
         price="299",
+        chat_id="123e4567-e89b-42d3-a456-426614174000",
     )
     await query.message.answer_photo(url, caption=caption)
     await query.answer("📸 Отправлено отдельным сообщением")

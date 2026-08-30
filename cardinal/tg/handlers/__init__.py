@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from . import autodelivery, autoresponse, blacklist_panel, menu, notifications, plugins_panel, replies, stats, system
-
+from . import autodelivery, autoresponse, blacklist_panel, chats, menu, notifications, plugins_panel, replies, stats, system
 
 def setup_routers(dispatcher: Dispatcher) -> None:
     """Подключает все роутеры панели. `replies` — последним (catch-all для reply-сообщений)."""
+    # Сторож режима «живой диалог» — должен видеть ВСЕ callback-кнопки панели.
+    chats.setup_chat_mode_guard(dispatcher)
+
     dispatcher.include_router(menu.router)
     dispatcher.include_router(autodelivery.router)
     dispatcher.include_router(autoresponse.router)
@@ -16,4 +18,5 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     dispatcher.include_router(stats.router)
     dispatcher.include_router(system.router)
     dispatcher.include_router(plugins_panel.router)
+    chats.setup_chat_mode_guard(dispatcher)
     dispatcher.include_router(replies.router)

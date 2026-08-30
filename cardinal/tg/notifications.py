@@ -330,16 +330,6 @@ def _get_section_from_item(item) -> str:
         return category_name
     return "Не определено"
 
-def _get_item_image(item) -> str | None:
-    """URL первой картинки лота (та самая обложка из списков Playerok)."""
-    if not item:
-        return None
-    for att in getattr(item, "attachments", None) or []:
-        url = getattr(att, "url", None)
-        if url:
-            return url
-    att = getattr(item, "attachment", None)  # у ItemProfile — одиночная обложка
-    return getattr(att, "url", None) if att else None
 
 def _get_item_image(item) -> str | None:
     """URL первой картинки лота (та самая обложка из списков Playerok)."""
@@ -354,8 +344,12 @@ def _get_item_image(item) -> str | None:
     single_att = getattr(item, "attachment", None)
     return getattr(single_att, "url", None) if single_att else None
 
-# ▼▼▼ ВСТАВИТЬ СЮДА (без отступов, вне класса) ▼▼▼
+
+# ---------------------------------------------------------------------------
+# Извлечение slug лота из ссылок в тексте/кнопках системных сообщений
+# ---------------------------------------------------------------------------
 _PLAYEROK_URL_RE = re.compile(r"https?://(?:www\.)?playerok\.com/[^\s<>\"')\]]+", re.IGNORECASE)
+
 
 def _extract_item_slug(text: str | None, buttons=None) -> str | None:
     """Достаёт slug лота (последний сегмент пути) из ссылки в тексте или кнопках сообщения."""
@@ -373,7 +367,7 @@ def _extract_item_slug(text: str | None, buttons=None) -> str | None:
         if slug and slug.lower() not in {"catalog", "app", "ru", "en", "profile", "chat", "support"}:
             return slug
     return None
-# ▲▲▲ конец вставки ▲▲▲
+
 
 class Notifier:
     """Отправляет уведомления о событиям всем администраторам."""
@@ -521,6 +515,35 @@ class Notifier:
         
         logger.info("Очистка уведомлений: удалено={}, ошибок={}", removed, failed)
         return {"removed": removed, "failed": failed}
+
+    # ------------------------------------------------------------------
+    # Чат сделки: чтобы на уведомление «Новая сделка» можно было ответить reply'ем
+    # ------------------------------------------------------------------
+
+    async def _resolve_deal_chat_id(self, deal) -> str | None:
+        """
+        Возвращает ID чата Playerok, привязанного к сделке.
+
+        Основной источник — `deal.chat.id` из полезной нагрузки события;
+        если WS-кадр пришёл без чата — дотягиваем полную сделку через API
+        (`get_deal`). Нужно, чтобы reply на уведомление «Новая сделка»
+        уходил в чат покупателя сразу в начале сделки.
+        """
+        chat = getattr(deal, "chat", None)
+        chat_id = getattr(chat, "id", None) if chat is not None else None
+        if chat_id:
+            return chat_id
+
+        account = self.cardinal.account
+        if account is None or deal is None or not getattr(deal, "id", None):
+            return None
+        try:
+            full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+        except Exception as exc:
+            logger.debug("Не удалось получить сделку {} для чата: {}", deal.id, exc)
+            return None
+        chat = getattr(full_deal, "chat", None) if full_deal is not None else None
+        return getattr(chat, "id", None) if chat is not None else None
 
     async def _resolve_section_via_chat_api(self, chat) -> str:
         """
@@ -691,7 +714,6 @@ class Notifier:
             if value is not None:
                 balance_str = f"{_fmt_money(value)} ₽"
 
-        # Всегда полный формат — отдельный "plain" шаблон больше не нужен
         await self._send_all(
             l10n(
                 "notif_payout",
@@ -700,19 +722,6 @@ class Notifier:
                 status=_esc(_fmt_payout_status(info["status"])),
                 date=_esc(_fmt_datetime(info["date"])),
                 balance=_esc(balance_str),
-                text=text,
-            ),
-            remember_chat=remember,
-        )
-
-        await self._send_all(
-            l10n(
-                "notif_payout",
-                amount=_fmt_money(info["amount"]),
-                method=_esc(_fmt_payout_method(info["method"])),
-                status=_esc(_fmt_payout_status(info["status"])),
-                date=_esc(_fmt_datetime(info["date"])),
-                balance=_esc(balance_value),
                 text=text,
             ),
             remember_chat=remember,
@@ -765,20 +774,6 @@ class Notifier:
             logger.debug("Не удалось найти лот по названию: {}", exc)
         return None
 
-    async def _find_my_item_by_name(self, name: str | None):
-        """Ищет свой лот по точному названию (у ItemProfile есть ID и обложка)."""
-        account = self.cardinal.account
-        if account is None or not name:
-            return None
-        try:
-            page = await asyncio.to_thread(account.get_my_items, None, 100)
-            for it in (page.items if page and page.items else []):
-                if (it.name or "") == name:
-                    return it
-        except Exception as exc:
-            logger.debug("Не удалось найти лот по названию: {}", exc)
-        return None
-
     async def _resolve_item_image(self, item) -> str | None:
         """Обложка лота: из полезной нагрузки события, иначе API (по ID или по имени)."""
         url = _get_item_image(item)
@@ -807,7 +802,7 @@ class Notifier:
             return None
 
     async def _resolve_message_item(self, message, chat):
-        """Лот, к которому относится сообщение: message.item → сделки чата."""
+        """Лот, к которому относится сообщение: message.item → сделки чата → slug из ссылки."""
         item = getattr(message, "item", None)
         if item and (getattr(item, "id", None) or getattr(item, "name", None)):
             return item
@@ -831,64 +826,6 @@ class Notifier:
                         return linked
                 except Exception as exc:
                     logger.debug("Не удалось достать лот по ссылке (slug={}): {}", slug, exc)
-        return None
-
-    async def _resolve_item_context(self, item) -> tuple:
-        """
-        Возвращает (раздел, URL обложки) для лота из события.
-
-        Если в полезной нагрузке данных нет — дотягивает по ID
-        или через поиск своего лота по названию.
-        """
-        section = _get_section_from_item(item)
-        photo = _get_item_image(item)
-        if section != "Не определено" and photo:
-            return section, photo
-
-        account = self.cardinal.account
-        if account is None or item is None:
-            return section, photo
-
-        item_id = getattr(item, "id", None)
-        name = getattr(item, "name", None)
-
-        # Нет ID — ищем среди своих лотов по названию
-        if not item_id and name:
-            found = await self._find_my_item_by_name(name)
-            if found is not None:
-                item_id = getattr(found, "id", None)
-                if photo is None:
-                    photo = _get_item_image(found)
-
-        # Полный лот по ID: раздел + обложка
-        if item_id:
-            try:
-                full_item = await asyncio.to_thread(account.get_item, item_id)
-                if full_item is not None:
-                    if section == "Не определено":
-                        section = _get_section_from_item(full_item)
-                    if photo is None:
-                        photo = _get_item_image(full_item)
-            except Exception as exc:
-                logger.debug("Не удалось получить полный лот {}: {}", item_id, exc)
-
-        return section, photo
-
-    async def _resolve_message_item(self, message, chat):
-        """Лот, к которому относится сообщение: message.item → сделки чата."""
-        item = getattr(message, "item", None)
-        if item and (getattr(item, "id", None) or getattr(item, "name", None)):
-            return item
-        account = self.cardinal.account
-        if account is not None and chat is not None and getattr(chat, "id", None):
-            try:
-                full_chat = await asyncio.to_thread(account.get_chat, chat.id)
-                for d in (getattr(full_chat, "deals", []) or []):
-                    di = getattr(d, "item", None)
-                    if di and (getattr(di, "id", None) or getattr(di, "name", None)):
-                        return di
-            except Exception as exc:
-                logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
         return None
 
     async def _resolve_item_context(self, item) -> tuple:
@@ -1025,6 +962,8 @@ class Notifier:
             deal = event.deal
             # Обложка лота для уведомлений (None, если достать не удалось)
             photo = await self._resolve_item_image(getattr(deal, "item", None))
+            # Чат покупателя: reply на это уведомление уйдёт в чат Playerok
+            deal_chat_id = await self._resolve_deal_chat_id(deal)
 
             # Проверяем переключатели: достаточно одного включённого
             if self._toggles.new_deal or self._toggles.item_paid:
@@ -1045,7 +984,8 @@ class Notifier:
                     buyer=_esc(buyer),
                     status=_esc(status),
                     price=_esc(price),
-                ), photo_url=photo)
+                    chat_id=_esc(deal_chat_id or "—"),
+                ), photo_url=photo, remember_chat=deal_chat_id)
 
             # Авто-выдача выполняется Runner'ом до того, как событие дошло сюда: если журнал
             # говорит «sent» — товар выдан, шлём отдельное уведомление с остатком склада.

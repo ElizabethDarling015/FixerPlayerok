@@ -8,6 +8,11 @@ STRINGS = {
     "btn_back": "◀️ Back",
     "btn_home": "🏠 Main menu",
     "btn_chats": "💬 Buyer chats",
+    "chats_title": "💬 <b>Buyer chats</b>\n\nLast 6 chats (refreshed on click):",
+    "chats_empty": "No active chats.",
+    "chats_view_title": "💬 <b>Chat with {username}</b>\n\n",
+    "chats_btn_reply": "✏️ Reply to chat",
+    "chats_reply_sent": "✅ Message successfully sent to the buyer!",
     "btn_auto_publish": "📤 Auto-publish",
     "btn_last_deals": "🕒 Recent deals",
     "alert_in_development": "⏸ The “{section}” section is under development — coming in future updates.",
@@ -159,7 +164,17 @@ STRINGS = {
         "📩 New messages: <b>{unread_messages}</b>\n"
         "🧩 Modules: {modules}"
     ),
-    "notif_new_deal": "🛒 <b>New deal</b>\nItem: {item}\nBuyer: {buyer}\nStatus: {status}",
+    "reply_unknown": "Not sure where to send this: reply to a deal or message notification.",
+    "notif_new_deal": (
+        "🛒 <b>New deal</b>\n"
+        "📂 <b>Section:</b> {section}\n"
+        "🎁 <b>Item:</b> {item}\n"
+        "👤 <b>Buyer:</b> {buyer}\n"
+        "📋 <b>Status:</b> {status}\n"
+        "💰 <b>Price:</b> {price} ₽\n\n"
+        "💬 <i>Reply to this message to write to the Playerok chat</i>\n"
+        "🆔 <code>{chat_id}</code>"
+    ),
     "notif_item_paid": "💸 <b>Item paid</b>\nItem: {item}\nBuyer: {buyer}",
     "notif_delivery_ok": "📦 <b>Item delivered</b>\nItem: {item}\nStock left: {stock} pcs.",
     "notif_new_message": (
