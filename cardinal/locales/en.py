@@ -164,7 +164,6 @@ STRINGS = {
         "📩 New messages: <b>{unread_messages}</b>\n"
         "🧩 Modules: {modules}"
     ),
-    "reply_unknown": "Not sure where to send this: reply to a deal or message notification.",
     "notif_new_deal": (
         "🛒 <b>New deal</b>\n"
         "📂 <b>Section:</b> {section}\n"

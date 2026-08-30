@@ -547,8 +547,10 @@ class Notifier:
 
     async def _resolve_section_via_chat_api(self, chat) -> str:
         """
-        Для чатов, где WS не прислал привязку к лоту, делаем доп. запрос API,
-        чтобы получить полную информацию о чате и его сделках.
+        Раздел для чатов, где WS не прислал привязку к лоту.
+
+        Запрос `chat` возвращает лоты БЕЗ game/category, поэтому сначала
+        пробуем напрямую, а затем дотягиваем лот по ID или по имени.
         """
         account = self.cardinal.account
         if account is None or chat is None or not getattr(chat, "id", None):
@@ -560,74 +562,55 @@ class Notifier:
             return "Не определено"
         if not full_chat:
             return "Не определено"
-        
-        # Берём раздел из сделок чата
+
         deals = getattr(full_chat, "deals", []) or []
+        # 1) Вдруг game/category пришли напрямую
         for deal in deals:
             section = _get_section_from_deal(deal)
+            if section != "Не определено":
+                return section
+        # 2) Дотягиваем лот по ID или поиском среди своих по имени
+        for deal in deals:
+            item = getattr(deal, "item", None)
+            if item is None:
+                continue
+            section, _ = await self._resolve_item_context(item)
             if section != "Не определено":
                 return section
         return "Не определено"
 
     async def _resolve_section_via_deal_api(self, deal) -> str:
         """
-        Для событий сделок без полного item, делаем доп. запросы API.
+        Дотягивает раздел по сделке, когда в событии его нет.
+
+        Стратегия 1: полная сделка по ID (`get_deal`) — запрос `deal`
+        возвращает лот вместе с game и category.
+        Стратегия 2: лот из сделки — по ID или поиском среди своих
+        по имени (запросы `item`/`items` содержат game и category).
         """
         account = self.cardinal.account
         if account is None or deal is None:
             return "Не определено"
 
-        # --- Стратегия 1: через чат сделки ---
-        deal_chat = getattr(deal, "chat", None)
-        if deal_chat and getattr(deal_chat, "id", None):
+        # --- Стратегия 1: полная сделка по ID ---
+        if getattr(deal, "id", None):
             try:
-                full_chat = await asyncio.to_thread(account.get_chat, deal_chat.id)
-                if full_chat:
-                    chat_deals = getattr(full_chat, "deals", []) or []
-                    for d in chat_deals:
-                        if d and getattr(d, "id", None) == deal.id:
-                            section = _get_section_from_deal(d)
-                            if section != "Не определено":
-                                return section
-                    for d in chat_deals:
-                        section = _get_section_from_deal(d)
-                        if section != "Не определено":
-                            return section
+                full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+                section = _get_section_from_deal(full_deal)
+                if section != "Не определено":
+                    return section
             except Exception as exc:
-                logger.debug("Стратегия 1 (чат) не удалась: {}", exc)
+                logger.debug("Стратегия 1 (get_deal) не удалась: {}", exc)
 
-        # --- Стратегия 2: через лот сделки (упрощённая) ---
-        deal_item = getattr(deal, "item", None)
-        if deal_item and getattr(deal_item, "id", None):
-            try:
-                full_item = await asyncio.to_thread(account.get_item, deal_item.id)
-                if full_item:
-                    game = getattr(full_item, "game", None)
-                    category = getattr(full_item, "category", None)
-                    game_name = getattr(game, "name", None) if game else None
-                    category_name = getattr(category, "name", None) if category else None
-                    
-                    if game_name and category_name:
-                        return f"{game_name} → {category_name}"
-                    elif game_name:
-                        return game_name
-                    elif category_name:
-                        return category_name
-            except Exception as exc:
-                logger.debug("Стратегия 2 (item) не удалась: {}", exc)
+        # --- Стратегия 2: лот по ID / по имени ---
+        item = getattr(deal, "item", None)
+        if item is not None:
+            section, _ = await self._resolve_item_context(item)
+            if section != "Не определено":
+                return section
 
-        # --- Стратегия 3: через список всех сделок ---
-        try:
-            page = await asyncio.to_thread(account.get_deals, count=50)
-            if page and getattr(page, "deals", None):
-                for d in page.deals:
-                    if d and getattr(d, "id", None) == getattr(deal, "id", None):
-                        section = _get_section_from_deal(d)
-                        if section != "Не определено":
-                            return section
-        except Exception as exc:
-            logger.debug("Стратегия 3 (get_deals) не удалась: {}", exc)
-
+        logger.warning("Раздел не определён для сделки {}: все стратегии не дали результата",
+                       getattr(deal, "id", "?"))
         return "Не определено"
 
     # ------------------------------------------------------------------
@@ -960,20 +943,22 @@ class Notifier:
         # Объединяем NEW_DEAL и ITEM_PAID в одно уведомление
         if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID):
             deal = event.deal
-            # Обложка лота для уведомлений (None, если достать не удалось)
-            photo = await self._resolve_item_image(getattr(deal, "item", None))
+            item = getattr(deal, "item", None)
+            # Раздел и обложка: из полезной нагрузки события, иначе дотягиваем по API
+            section, photo = await self._resolve_item_context(item)
             # Чат покупателя: reply на это уведомление уйдёт в чат Playerok
             deal_chat_id = await self._resolve_deal_chat_id(deal)
 
             # Проверяем переключатели: достаточно одного включённого
             if self._toggles.new_deal or self._toggles.item_paid:
-                section = _get_section_from_deal(deal)
-                item_name = deal.item.name if deal and deal.item else "?"
+                item_name = item.name if item is not None else "?"
                 buyer = deal.user.username if deal and deal.user else "?"
                 status = deal.raw_status.name if deal and deal.raw_status else "?"
-                price = deal.item.price if deal and deal.item and getattr(deal.item, "price", None) is not None else "?"
+                price = getattr(item, "price", None) if item is not None else None
+                if price is None:
+                    price = "?"
 
-                # Если раздел не определился — пробуем через API
+                # Если раздел не определился по лоту — пробуем через сделку
                 if section == "Не определено":
                     section = await self._resolve_section_via_deal_api(deal)
 
@@ -996,6 +981,8 @@ class Notifier:
                         and manager.ledger.get_state(deal.id) == "sent"):
                     section = _get_section_from_deal(deal)
                     item_name = deal.item.name if deal and deal.item else "?"
+                if section == "Не определено":
+                    logger.warning("Раздел не определён для сообщения в чате {}", getattr(chat, "id", "?"))
                     await self._send_all(l10n(
                         "notif_delivery_ok",
                         section=_esc(section),
