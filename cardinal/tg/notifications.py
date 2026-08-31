@@ -535,15 +535,24 @@ class Notifier:
             return chat_id
 
         account = self.cardinal.account
-        if account is None or deal is None or not getattr(deal, "id", None):
+        deal_id = getattr(deal, "id", None)
+        if account is None or deal is None or not deal_id:
+            logger.warning("[chat_id] нет account/deal_id (account={}, deal_id={}) — не могу дотянуть чат",
+                           account is not None, deal_id)
             return None
-        try:
-            full_deal = await asyncio.to_thread(account.get_deal, deal.id)
-        except Exception as exc:
-            logger.debug("Не удалось получить сделку {} для чата: {}", deal.id, exc)
-            return None
-        chat = getattr(full_deal, "chat", None) if full_deal is not None else None
-        return getattr(chat, "id", None) if chat is not None else None
+
+        for attempt in range(3):
+            try:
+                full_deal = await asyncio.to_thread(account.get_deal, deal_id)
+                chat = getattr(full_deal, "chat", None) if full_deal is not None else None
+                chat_id = getattr(chat, "id", None) if chat is not None else None
+                if chat_id:
+                    return chat_id
+                logger.warning("[chat_id] get_deal({}) вернул сделку без chat (попытка {})", deal_id, attempt + 1)
+            except Exception as exc:
+                logger.warning("[chat_id] get_deal({}) упал (попытка {}): {}", deal_id, attempt + 1, exc)
+            await asyncio.sleep(1)
+        return None
 
     async def _resolve_section_via_chat_api(self, chat) -> str:
         """
@@ -581,25 +590,25 @@ class Notifier:
 
     async def _resolve_section_via_deal_api(self, deal) -> str:
         """
-        Дотягивает раздел по сделке, когда в событии его нет.
-
-        Стратегия 0: полная сделка по ID (`get_deal`) — запрос `deal`
-        возвращает лот вместе с game и category.
+        Дотягивает раздел (игра → категория) по сделке через `get_deal`,
+        потому что WS-кадр и список `get_deals` не содержат game/category.
         """
         account = self.cardinal.account
-        if account is None or deal is None:
+        deal_id = getattr(deal, "id", None)
+        if account is None or deal is None or not deal_id:
             return "Не определено"
 
-        # --- Стратегия 0: полная сделка по ID ---
-        if getattr(deal, "id", None):
+        for attempt in range(3):
             try:
-                full_deal = await asyncio.to_thread(account.get_deal, deal.id)
+                full_deal = await asyncio.to_thread(account.get_deal, deal_id)
                 section = _get_section_from_deal(full_deal)
                 if section != "Не определено":
                     return section
+                logger.warning("[section] get_deal({}) вернул сделку без game/category (попытка {})",
+                               deal_id, attempt + 1)
             except Exception as exc:
-                logger.debug("Стратегия 0 (get_deal) не удалась: {}", exc)
-
+                logger.warning("[section] get_deal({}) упал (попытка {}): {}", deal_id, attempt + 1, exc)
+            await asyncio.sleep(1)
         return "Не определено"
 
     # ------------------------------------------------------------------
@@ -935,8 +944,8 @@ class Notifier:
             # Обложка лота для уведомлений (None, если достать не удалось)
             photo = await self._resolve_item_image(getattr(deal, "item", None))
             # Раздел: WS-кадр сделок не содержит game/category — тянем через get_deal
+            # Раздел и чат дотягиваем через get_deal (в WS-кадре их нет)
             section = await self._resolve_section_via_deal_api(deal)
-            # Чат покупателя: reply на это уведомление уйдёт в чат Playerok
             deal_chat_id = await self._resolve_deal_chat_id(deal)
 
             # Проверяем переключатели: достаточно одного включённого
