@@ -583,16 +583,14 @@ class Notifier:
         """
         Дотягивает раздел по сделке, когда в событии его нет.
 
-        Стратегия 1: полная сделка по ID (`get_deal`) — запрос `deal`
+        Стратегия 0: полная сделка по ID (`get_deal`) — запрос `deal`
         возвращает лот вместе с game и category.
-        Стратегия 2: лот из сделки — по ID или поиском среди своих
-        по имени (запросы `item`/`items` содержат game и category).
         """
         account = self.cardinal.account
         if account is None or deal is None:
             return "Не определено"
 
-        # --- Стратегия 1: полная сделка по ID ---
+        # --- Стратегия 0: полная сделка по ID ---
         if getattr(deal, "id", None):
             try:
                 full_deal = await asyncio.to_thread(account.get_deal, deal.id)
@@ -600,17 +598,8 @@ class Notifier:
                 if section != "Не определено":
                     return section
             except Exception as exc:
-                logger.debug("Стратегия 1 (get_deal) не удалась: {}", exc)
+                logger.debug("Стратегия 0 (get_deal) не удалась: {}", exc)
 
-        # --- Стратегия 2: лот по ID / по имени ---
-        item = getattr(deal, "item", None)
-        if item is not None:
-            section, _ = await self._resolve_item_context(item)
-            if section != "Не определено":
-                return section
-
-        logger.warning("Раздел не определён для сделки {}: все стратегии не дали результата",
-                       getattr(deal, "id", "?"))
         return "Не определено"
 
     # ------------------------------------------------------------------
@@ -943,24 +932,19 @@ class Notifier:
         # Объединяем NEW_DEAL и ITEM_PAID в одно уведомление
         if event_type in (EventTypes.NEW_DEAL, EventTypes.ITEM_PAID):
             deal = event.deal
-            item = getattr(deal, "item", None)
-            # Раздел и обложка: из полезной нагрузки события, иначе дотягиваем по API
-            section, photo = await self._resolve_item_context(item)
+            # Обложка лота для уведомлений (None, если достать не удалось)
+            photo = await self._resolve_item_image(getattr(deal, "item", None))
+            # Раздел: WS-кадр сделок не содержит game/category — тянем через get_deal
+            section = await self._resolve_section_via_deal_api(deal)
             # Чат покупателя: reply на это уведомление уйдёт в чат Playerok
             deal_chat_id = await self._resolve_deal_chat_id(deal)
 
             # Проверяем переключатели: достаточно одного включённого
             if self._toggles.new_deal or self._toggles.item_paid:
-                item_name = item.name if item is not None else "?"
+                item_name = deal.item.name if deal and deal.item else "?"
                 buyer = deal.user.username if deal and deal.user else "?"
                 status = deal.raw_status.name if deal and deal.raw_status else "?"
-                price = getattr(item, "price", None) if item is not None else None
-                if price is None:
-                    price = "?"
-
-                # Если раздел не определился по лоту — пробуем через сделку
-                if section == "Не определено":
-                    section = await self._resolve_section_via_deal_api(deal)
+                price = deal.item.price if deal and deal.item and getattr(deal.item, "price", None) is not None else "?"
 
                 await self._send_all(l10n(
                     "notif_new_deal",
@@ -1072,20 +1056,20 @@ class Notifier:
                         remember_chat=event.chat.id,
                     )
             else:
-                # Обычное сообщение от покупателя
-                section = _get_section_from_message(message, chat)
+                # Обычное сообщение от покупателя — показываем лот, а не раздел
+                # Имя лота берём из сделки чата
+                item_name = "?"
+                for deal in (getattr(chat, "deals", []) or []):
+                    nm = getattr(getattr(deal, "item", None), "name", None)
+                    if nm:
+                        item_name = nm
+                        break
 
-                # Если раздел не определился — пробуем через API
-                if section == "Не определено":
-                    section = await self._resolve_section_via_chat_api(chat)
-
-                # Лот из сообщения/чата + раздел и обложка (поиск по названию)
+                # Обложка
                 photo = None
                 item = await self._resolve_message_item(message, chat)
                 if item is not None:
-                    item_section, photo = await self._resolve_item_context(item)
-                    if section == "Не определено":
-                        section = item_section
+                    _, photo = await self._resolve_item_context(item)
 
                 text = message.text or ""
 
@@ -1093,7 +1077,7 @@ class Notifier:
                     l10n(
                         "notif_new_message",
                         username=_esc(username),
-                        section=_esc(section),
+                        item=_esc(item_name),
                         text=_esc(text),
                     ),
                     remember_chat=event.chat.id,

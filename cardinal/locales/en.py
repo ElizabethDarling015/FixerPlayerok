@@ -171,16 +171,17 @@ STRINGS = {
         "👤 <b>Buyer:</b> {buyer}\n"
         "📋 <b>Status:</b> {status}\n"
         "💰 <b>Price:</b> {price} ₽\n\n"
-        "💬 <i>Reply to this message to write to the Playerok chat</i>\n"
+        "💬 <i>Reply to message, sends to chat</i>\n"
         "🆔 <code>{chat_id}</code>"
     ),
     "notif_item_paid": "💸 <b>Item paid</b>\nItem: {item}\nBuyer: {buyer}",
     "notif_delivery_ok": "📦 <b>Item delivered</b>\nItem: {item}\nStock left: {stock} pcs.",
     "notif_new_message": (
-        "💌 <b>{username}</b>\n"
-        "📂 Section: <b>{section}</b>\n\n"
-        "💬 <i>{text}</i>\n\n"
-        "👆 <i>Reply to this message to write to Playerok chat</i>"
+        "💌 <b>{username}</b>\n\n"
+        "🎁 <b>Item:</b> {item}\n\n"
+        "💬 {text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "<i>Reply to message, sends to chat</i>"
     ),
     "notif_payout": (
         "💳 <b>Withdrawal from balance</b>\n\n"
@@ -191,7 +192,7 @@ STRINGS = {
         "💰 <b>Balance:</b> {balance}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}\n\n"
-        "<i>Reply to this message to write to Playerok chat</i>"
+        "<i>Reply to message, sends to chat</i>"
     ),
     "notif_item_expiring": (
         "⏳ <b>Item will be delisted soon</b>\n\n"
@@ -200,13 +201,13 @@ STRINGS = {
         "💰 <b>Price:</b> {price}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}\n\n"
-        "<i>Reply to this message to write to Playerok chat</i>"
+        "<i>Reply to message, sends to chat</i>"
     ),
     "notif_item_expiring_plain": (
         "⏳ <b>Item will be delisted soon</b>\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}\n\n"
-        "<i>Reply to this message to write to Playerok chat</i>"
+        "<i>Reply to message, sends to chat</i>"
     ),
     "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
