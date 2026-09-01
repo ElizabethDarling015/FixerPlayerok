@@ -14,6 +14,8 @@ import os
 import sqlite3
 import threading
 from zoneinfo import ZoneInfo
+from aiogram.types import InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from loguru import logger
 
@@ -156,12 +158,21 @@ class DigestModule(BaseModule):
             return
         try:
             text = await asyncio.to_thread(self.build_digest)
-            await self.cardinal.notifier.send_text(text)
+            
+            # Создаём клавиатуру с кнопкой "Закрыть" для сводки
+            builder = InlineKeyboardBuilder()
+            builder.button(
+                text=self.cardinal.l10n("btn_close"),
+                callback_data="close"
+            )
+            markup = builder.as_markup()
+            
+            await self.cardinal.notifier.send_text(text, reply_markup=markup)
             logger.info("Ежедневная сводка отправлена администраторам")
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Не удалось отправить ежедневную сводку")
+            logger.exception("Не удалось отправить ежедневую сводку")
 
     async def on_stop(self) -> None:
         with self._lock:

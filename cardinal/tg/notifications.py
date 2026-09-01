@@ -422,9 +422,9 @@ class Notifier:
             self._sent_messages.setdefault(sent.chat.id, []).append((sent.message_id, time.time()))
             self._save_history()
             
-    async def send_text(self, text: str) -> None:
+    async def send_text(self, text: str, reply_markup=None) -> None:
         """Отправляет произвольный текст всем админам (используется модулями, например сводкой)."""
-        await self._send_all(text)
+        await self._send_all(text, reply_markup=reply_markup)
 
     # ------------------------------------------------------------------
     # Очистка истории уведомлений в Telegram (логи не трогаются)

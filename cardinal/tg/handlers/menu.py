@@ -204,6 +204,15 @@ async def cb_toggle_module(query: CallbackQuery, cardinal) -> None:
 # Текст приветствия (FSM)
 # ----------------------------------------------------------------------
 
+
+@router.callback_query(F.data == "gl")
+async def cb_toggles_menu(query: CallbackQuery, cardinal) -> None:
+    """Открывает подменю «Глобальные переключатели»."""
+    text, markup = build_toggles_menu(cardinal)
+    await safe_edit(query.message, text, markup)
+    await query.answer()
+
+    
 @router.callback_query(F.data == "gl:greet")
 async def cb_edit_greeting(query: CallbackQuery, state: FSMContext, cardinal) -> None:
     l10n = cardinal.l10n
