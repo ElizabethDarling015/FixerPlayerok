@@ -40,6 +40,8 @@ from .. import parser
 from ..common.enums import EventTypes, Hooks, ItemDealDirections
 from ..graphql_queries import QUERIES
 from . import events
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 logger = logging.getLogger("playerokapi.runner")
 
@@ -133,6 +135,10 @@ class Runner:
         # In-memory дедуп `ItemPaidEvent` по deal_id (плюс SQLite-журнал, если настроен).
         self._paid_deal_ids: set[str] = set()
         self._ws = None
+        self._executor = ThreadPoolExecutor(
+            max_workers=5, 
+            thread_name_prefix="runner-worker"
+        )
         self._ignore_exceptions = True
 
     # ------------------------------------------------------------------
@@ -174,7 +180,9 @@ class Runner:
                     # Исключение фонового потока (при ignore_exceptions=False) — перевыбрасываем
                     # в вызывающий код, вместо того чтобы молча уронить поток.
                     raise event
-                self._handle_autodelivery(event)
+                if isinstance(event, events.ItemPaidEvent):
+                    self._handle_autodelivery(event)
+
                 self._dispatch_event_hook(event)
                 yield event
         finally:
@@ -726,3 +734,49 @@ class Runner:
         self._event_queue.put(events.NewMessageEvent(self, chat_obj, message))
         if message.text and "{{ITEM_PAID}}" in message.text:
             self._emit_item_paid(chat_obj, message, message.deal)
+        # <--- ДОБАВИТЬ ЭТОТ БЛОК НИЖЕ ---
+        elif chat_obj.unread_messages_counter > 0:
+            # Если есть непрочитанные, но маркера в последнем нет - 
+            # запускаем фоновый поиск в истории через пул воркеров.
+            self._executor.submit(self._search_paid_marker_in_history, chat_obj)
+    
+    @staticmethod
+    def _parse_iso(iso_dt: str | None):
+        """Парсит ISO-дату из API Playerok в datetime (UTC-aware)."""
+        if not iso_dt:
+            return None
+        try:
+            if iso_dt.endswith("Z"):
+                iso_dt = iso_dt[:-1] + "+00:00"
+            return datetime.fromisoformat(iso_dt)
+        except ValueError:
+            return None
+
+    def _search_paid_marker_in_history(self, chat_obj) -> None:
+        """Фоновый поиск маркера оплаты в истории чата (Fallback из PlayerokAPI)."""
+        try:
+            history = self.account.get_chat_messages(chat_obj.id, count=12)
+            if not history or not history.messages:
+                return
+
+            known_id = self._known_last_message_ids.get(chat_obj.id)
+            now = datetime.now(timezone.utc)
+
+            # Идем от новых сообщений к старым
+            for msg in reversed(history.messages):
+                # Пропускаем уже обработанное последнее сообщение
+                if msg.id == known_id:
+                    continue
+
+                if msg.text and "{{ITEM_PAID}}" in msg.text:
+                    created = self._parse_iso(getattr(msg, "created_at", None))
+                    if created is not None:
+                        age_sec = (now - created.astimezone(timezone.utc)).total_seconds()
+                        if age_sec > 120:
+                            # Маркер старше 2 минут — это старая оплата, а не новая.
+                            # Защита от автовыдачи по старым сделкам (стандарт PlayerokAPI).
+                            break
+                    self._emit_item_paid(chat_obj, msg, msg.deal)
+                    break
+        except Exception as e:
+            logger.warning("Fallback search error for chat %s: %s", chat_obj.id, e)

@@ -107,6 +107,7 @@ class Account:
         self._unread_counters: dict[str, int] = {}  # chat_id -> unreadMessagesCounter (см. _note_chat)
         # Операция testimonials на Playerok часто закрыта для seller (только support/admin) —
         # после первого FORBIDDEN больше не дёргаем API, чтобы не спамить 403 в лог.
+        self._send_lock = threading.Lock()  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
         self._testimonials_forbidden: bool = False
 
     # ------------------------------------------------------------------
@@ -567,13 +568,15 @@ class Account:
         return parser.temporary_attachment_upload_output(data.get("uploadChatImageIntoTemporaryStore"))
 
     def send_message(self, chat_id: str, text: str | None = None, image: str | bytes | None = None,
-                      mark_as_read: bool = True) -> types.ChatMessage | None:
+                     images: list[str | bytes] | None = None,
+                     mark_as_read: bool = True) -> types.ChatMessage | None:
         """
         Отправляет сообщение в чат.
 
         :param chat_id: ID чата.
         :param text: Текст сообщения (может отсутствовать, если отправляется только изображение).
         :param image: Путь к файлу изображения на диске либо готовые байты изображения, опционально.
+        :param images: Список изображений (пути или байты) для отправки нескольких картинок, опционально.
         :param mark_as_read: Отметить ли чат прочитанным после отправки сообщения. Реальный запрос
             `mark_chat_as_read` отправляется только если это необходимо — см. `mark_chat_as_read_if_needed`.
         :return: Отправленное сообщение.
@@ -582,23 +585,45 @@ class Account:
         if text:
             input_data["text"] = text
 
+        # Собираем все изображения в один список (поддержка старого аргумента и нового списка)
+        files_to_upload = []
         if image is not None:
-            filename, file_obj, content_type = resolve_image_file(image)
-            payload = {
-                "operationName": "createChatMessage",
-                "variables": {"input": input_data, "file": None, "showForbiddenImage": True},
-                "query": QUERIES["createChatMessage"],
-            }
-            multipart_payload = {
-                "operations": json.dumps(payload, separators=(",", ":")),
-                "map": json.dumps({"0": ["variables.file"]}, separators=(",", ":")),
-            }
-            files = {"0": (filename, file_obj, content_type)}
-            try:
-                response = self.request("post", payload=multipart_payload, files=files, idempotent=False)
-            finally:
-                _close_file_objects([file_obj])
-            data = response.json()["data"]
+            files_to_upload.append(image)
+        if images:
+            files_to_upload.extend(images)
+
+        if files_to_upload:
+            # Если картинок несколько, используем логику из PlayerokAPI: 
+            # загрузка во временное хранилище и передача imagesIds
+            if len(files_to_upload) > 1:
+                images_ids = []
+                for img in files_to_upload:
+                    uploaded = self.upload_chat_image(img, chat_id)
+                    if uploaded:
+                        images_ids.append(uploaded.id)
+                
+                if images_ids:
+                    input_data["imagesIds"] = images_ids
+                
+                data = self._query("createChatMessage", {"input": input_data, "file": None, "showForbiddenImage": True})
+            else:
+                # Оптимизированный путь для одной картинки (текущая логика)
+                filename, file_obj, content_type = resolve_image_file(files_to_upload[0])
+                payload = {
+                    "operationName": "createChatMessage",
+                    "variables": {"input": input_data, "file": None, "showForbiddenImage": True},
+                    "query": QUERIES["createChatMessage"],
+                }
+                multipart_payload = {
+                    "operations": json.dumps(payload, separators=(",", ":")),
+                    "map": json.dumps({"0": ["variables.file"]}, separators=(",", ":")),
+                }
+                files = {"0": (filename, file_obj, content_type)}
+                try:
+                    response = self.request("post", payload=multipart_payload, files=files, idempotent=False)
+                finally:
+                    _close_file_objects([file_obj])
+                data = response.json()["data"]
         else:
             data = self._query("createChatMessage", {"input": input_data, "file": None, "showForbiddenImage": True})
 

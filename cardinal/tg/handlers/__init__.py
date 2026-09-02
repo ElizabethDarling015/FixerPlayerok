@@ -10,6 +10,8 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     # Сторож режима «живой диалог» — должен видеть ВСЕ callback-кнопки панели.
     chats.setup_chat_mode_guard(dispatcher)
 
+    # Чаты — ДО menu: callback "chats" обязан обрабатывать раздел, а не заглушка.
+    dispatcher.include_router(chats.router)
     dispatcher.include_router(menu.router)
     dispatcher.include_router(autodelivery.router)
     dispatcher.include_router(autoresponse.router)
@@ -18,5 +20,4 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     dispatcher.include_router(stats.router)
     dispatcher.include_router(system.router)
     dispatcher.include_router(plugins_panel.router)
-    chats.setup_chat_mode_guard(dispatcher)
     dispatcher.include_router(replies.router)

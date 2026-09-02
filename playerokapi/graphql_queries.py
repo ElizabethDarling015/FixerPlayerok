@@ -25,7 +25,7 @@ PERSISTED_QUERIES: dict[str, str] = {
     'gameCategoryObtainingTypes': '15b0991414821528251930b4c8161c299eb39882fd635dd5adb1a81fb0570aea',
     'gameCategoryDataFields': '6fdadfb9b05880ce2d307a1412bc4f2e383683061c281e2b65a93f7266ea4a49',
     'chat': 'bb024dc0652fc7c1302a64a117d56d99fb0d726eb4b896ca803dca55f611d933',
-    'chatMessages': '1cabd4aee7c22353f49eaaff78ca82355e182f33a723d0fd92ccd36092917784',
+    'chatMessages': '9b4e264ff1b20e0fd3929afe023dee8f50affc02b85f80cb4b3dc1516ecfbaa0',
     'items': 'bacca5d020eef37b4ff7a2253ad33ecd8b7e144b9ef854c20051f42ebcd04d82',
     'item': '014b7824712618664cdfd3223504f52f785a46b06561dd9e9c0e9d2e4d8262c6',
     'itemPriorityStatuses': 'b922220c6f979537e1b99de6af8f5c13727daeff66727f679f07f986ce1c025a',
