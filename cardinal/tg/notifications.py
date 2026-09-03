@@ -1153,17 +1153,23 @@ class Notifier:
             section = _get_section_from_deal(deal)
             item_name = deal.item.name if deal.item else "?"
             price = deal.item.price if deal.item and getattr(deal.item, "price", None) is not None else "?"
+            buyer = deal.user.username if deal and deal.user else "?"
+            # ID чата сделки — тот же, что показывается в «Новая сделка»
+            deal_chat_id = await self._resolve_deal_chat_id(deal)
 
-            # Если раздел или имя лота не определились — пробуем через API
-            if section == "Не определено" or item_name == "?":
+            # Если раздел, имя лота или покупатель не определились — пробуем через API
+            if section == "Не определено" or item_name == "?" or buyer == "?":
                 api_section = await self._resolve_section_via_deal_api(deal)
                 if api_section != "Не определено":
                     section = api_section
                 try:
                     full_deal = await asyncio.to_thread(account.get_deal, deal.id)
-                    if full_deal and getattr(full_deal, "item", None):
-                        item_name = getattr(full_deal.item, "name", item_name)
-                        price = getattr(full_deal.item, "price", price) or price
+                    if full_deal:
+                        if getattr(full_deal, "item", None):
+                            item_name = getattr(full_deal.item, "name", item_name)
+                            price = getattr(full_deal.item, "price", price) or price
+                        if getattr(full_deal, "user", None):
+                            buyer = getattr(full_deal.user, "username", None) or buyer
                 except Exception:
                     pass
 
@@ -1174,7 +1180,9 @@ class Notifier:
                 "notif_deal_confirmed",
                 section=_esc(section),
                 item=_esc(item_name),
+                buyer=_esc(buyer),
                 price=_esc(price),
+                chat_id=_esc(deal_chat_id or "—"),
             ), photo_url=photo)
 
         elif event_type is EventTypes.DEAL_ROLLED_BACK and self._toggles.deal_rolled_back:

@@ -221,7 +221,15 @@ STRINGS = {
     "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
     "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
     "notif_deal_problem_resolved": "✅ Problem in deal <code>{deal_id}</code> resolved.",
-    "notif_deal_confirmed": "🤝 <b>Deal confirmed</b>\nItem: {item}",
+    "notif_deal_confirmed": (
+        "🤝 <b>Deal confirmed</b>\n\n"
+        "📂 <b>Section:</b> {section}\n"
+        "🎁 <b>Item:</b> {item}\n"
+        "👤 <b>Buyer:</b> {buyer}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💰 <b>Price:</b> {price} ₽\n\n"
+        "🆔 <code>{chat_id}</code>"
+    ),
     "notif_deal_rolled_back": "↩️ <b>Deal rolled back</b>\nItem: {item}",
     "notif_item_raised": "📈 Item \"{item}\" raised (spent {spent}).",
     "notif_insufficient_balance": "💸 Not enough balance to raise \"{item}\": need {price}, available {available}.",

@@ -341,7 +341,9 @@ async def cb_test_deal_confirmed(query: CallbackQuery, cardinal) -> None:
         "notif_deal_confirmed",
         section="World of Tanks → Валюта",
         item="Гем-пакет 1000 гемов",
+        buyer="loner42",
         price="1500",
+        chat_id="123e4567-e89b-42d3-a456-426614174000",
     )
     
     builder = InlineKeyboardBuilder()

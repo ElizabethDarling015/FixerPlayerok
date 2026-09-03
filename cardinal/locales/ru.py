@@ -263,9 +263,11 @@ STRINGS = {
     "notif_deal_confirmed": (
         "🤝 <b>Сделка подтверждена</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
+        "🎁 <b>Лот:</b> {item}\n"
+        "👤 <b>Покупатель:</b> {buyer}\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>Цена:</b> {price} ₽"
+        "💰 <b>Цена:</b> {price} ₽\n\n"
+        "🆔 <code>{chat_id}</code>"
     ),
     "notif_deal_rolled_back": (
         "↩️ <b>Сделка возвращена</b>\n\n"
