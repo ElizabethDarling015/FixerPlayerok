@@ -145,9 +145,19 @@ def build_toggles_menu(cardinal) -> tuple[str, object]:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, cardinal, state: FSMContext) -> None:
-    """/start — главное меню; заодно завершает режим «живой диалог»."""
+    """/start — удаляет сообщение с командой и открывает главное меню; заодно завершает режим «живой диалог»."""
     await state.clear()
     await clear_reply_keyboard(message)
+    
+    # 1. Удаляем твое сообщение с командой /start
+    try:
+        await message.delete()
+    except Exception:
+        # Если удалить не удалось (например, в групповом чате не хватает прав) —
+        # просто игнорируем ошибку, чтобы бот продолжил работу.
+        pass
+        
+    # 2. Отправляем главное меню (как обычно)
     text, markup = build_main_menu(cardinal)
     await message.answer(text, reply_markup=markup)
 

@@ -1066,7 +1066,6 @@ class Notifier:
                     )
             else:
                 # Обычное сообщение от покупателя — показываем лот, а не раздел
-                # Имя лота берём из сделки чата
                 item_name = "?"
                 for deal in (getattr(chat, "deals", []) or []):
                     nm = getattr(getattr(deal, "item", None), "name", None)
@@ -1074,11 +1073,43 @@ class Notifier:
                         item_name = nm
                         break
 
-                # Обложка
+                # Обложка + имя лота: дотягиваем через API, если в WS-кадре их нет
                 photo = None
                 item = await self._resolve_message_item(message, chat)
                 if item is not None:
+                    # Имя из дотянутого лота (раньше результат шёл только на фото)
+                    item_name = getattr(item, "name", None) or item_name
+                    # У лота может быть только ID — дотягиваем полный лот по ID
+                    if item_name == "?" and getattr(item, "id", None) and account is not None:
+                        try:
+                            full_item = await asyncio.to_thread(account.get_item, item.id)
+                            if full_item is not None:
+                                item_name = getattr(full_item, "name", None) or item_name
+                        except Exception as exc:
+                            logger.debug("Не удалось получить полный лот {}: {}", item.id, exc)
                     _, photo = await self._resolve_item_context(item)
+
+                # Последний шанс: сделки чата пришли без item — дотягиваем сделку целиком
+                if item_name == "?" and account is not None and chat is not None \
+                        and getattr(chat, "id", None):
+                    try:
+                        full_chat = await asyncio.to_thread(account.get_chat, chat.id)
+                        for d in (getattr(full_chat, "deals", []) or []):
+                            if not getattr(d, "id", None):
+                                continue
+                            try:
+                                full_deal = await asyncio.to_thread(account.get_deal, d.id)
+                            except Exception:
+                                continue
+                            nm = getattr(getattr(full_deal, "item", None), "name", None)
+                            if nm:
+                                item_name = nm
+                                if photo is None:
+                                    photo = await self._resolve_item_image(
+                                        getattr(full_deal, "item", None))
+                                break
+                    except Exception as exc:
+                        logger.debug("Не удалось достать сделки чата {}: {}", chat.id, exc)
 
                 text = message.text or ""
 
@@ -1154,7 +1185,6 @@ class Notifier:
             item_name = deal.item.name if deal.item else "?"
             price = deal.item.price if deal.item and getattr(deal.item, "price", None) is not None else "?"
             buyer = deal.user.username if deal and deal.user else "?"
-            # ID чата сделки — тот же, что показывается в «Новая сделка»
             deal_chat_id = await self._resolve_deal_chat_id(deal)
 
             # Если раздел, имя лота или покупатель не определились — пробуем через API
