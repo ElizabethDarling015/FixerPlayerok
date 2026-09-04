@@ -13,6 +13,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReactionTypeEmoji
 from loguru import logger
+from .chats import _format_quick_response, _match_quick_command, _other_user
 
 router = Router(name="replies")
 
@@ -58,8 +59,22 @@ async def on_reply(message: Message, state: FSMContext, cardinal, notifier) -> N
     if chat_id is None:
         await message.answer(l10n("reply_unknown"))
         return
+    # Быстрые команды продавца: !!команда → шаблонный текст автоответчика
+    text_to_send = message.text
+    quick = _match_quick_command(cardinal, message.text)
+    if quick is not None:
+        command, template = quick
+        try:
+            chat = await asyncio.to_thread(cardinal.account.get_chat, chat_id)
+            other = _other_user(cardinal, chat)
+            username = other.username if other and other.username else "?"
+        except Exception:
+            username = "?"
+        text_to_send = _format_quick_response(template, username=username, chat_id=chat_id)
+        logger.info("[replies] Быстрая команда продавца {!r} → чат {}", command, chat_id)
+
     try:
-        await asyncio.to_thread(cardinal.account.send_message, chat_id, message.text)
+        await asyncio.to_thread(cardinal.account.send_message, chat_id, text_to_send)
     except Exception as exc:
         logger.exception("Не удалось отправить ответ из TG в чат Playerok {}", chat_id)
         await message.answer(l10n("reply_failed", error=str(exc)))
