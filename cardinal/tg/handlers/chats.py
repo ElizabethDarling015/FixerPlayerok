@@ -18,6 +18,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReactionTypeEmoji
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
+from string import Template
 
 from playerokapi import parser
 from playerokapi.common.exceptions import PersistedQueryNotFoundError, RequestPlayerokError
@@ -30,7 +31,7 @@ router = Router(name="chats")
 CHATS_PER_PAGE = 6
 MESSAGES_LIMIT = 24      # серверный лимит chatMessages — не более 24 за запрос
 MESSAGES_PER_PAGE = 8
-
+QUICK_PREFIX = "!!"
 #: Курсоры страниц списка чатов (tg_user_id -> список курсоров): курсоры длинные,
 #: в callback_data (лимит 64 байта) их не положить — держим в кэше.
 _list_cursors: dict[int, list[str | None]] = {}
@@ -162,6 +163,31 @@ async def _react(message: Message) -> None:
             break
         except Exception:
             continue
+
+def _match_quick_command(cardinal, text: str) -> tuple[str, str] | None:
+    """Распознаёт быструю команду продавца: текст начинается с ``!!``, а после
+    маркера идёт имя команды автоответчика (без ведущих ``!``, регистр не важен).
+    Возвращает ``(команда, шаблон_ответа)`` или ``None``."""
+    stripped = text.strip()
+    if not stripped.startswith(QUICK_PREFIX):
+        return None
+    rest = stripped[len(QUICK_PREFIX):].lower()
+    for command, response in cardinal.autoresponse_config.commands.items():
+        name = command.lstrip("!").strip().lower()
+        if name and rest.startswith(name):
+            return command, response
+    return None
+
+
+def _format_quick_response(template: str, username: str, chat_id: str) -> str:
+    """Подставляет $username/$chat_id/$date/$time в текст быстрой команды."""
+    now = datetime.now()
+    return Template(template).safe_substitute(
+        username=username,
+        chat_id=chat_id,
+        date=now.strftime("%d.%m.%Y"),
+        time=now.strftime("%H:%M"),
+    )
 
 def _fmt_time(iso_dt: str | None) -> str:
     """ISO-время Playerok (UTC) → локальное: сегодня — ЧЧ:ММ, старше — ДД.ММ ЧЧ:ММ."""
@@ -440,15 +466,33 @@ async def on_chat_mode_photo(message: Message, state: FSMContext, cardinal) -> N
 
 @router.message(ChatReply.message, F.text & ~F.text.startswith("/"))
 async def on_chat_mode_message(message: Message, state: FSMContext, cardinal) -> None:
-    """Текст в режиме живого диалога отправляется покупателю (команды бота — нет)."""
+    """Текст в режиме живого диалога отправляется покупателю (команды бота — нет).
+
+    Быстрые команды: сообщение вида ``!!команда`` отправляет покупателю шаблонный
+    текст автоответчика (с подстановкой переменных) вместо дословного."""
     chat_id = (await state.get_data()).get("chat_id")
     if not chat_id:
         await state.clear()
         return
+
+    text_to_send = message.text
+    quick = _match_quick_command(cardinal, message.text)
+    if quick is not None:
+        command, template = quick
+        try:
+            chat = await _get_chat(cardinal, chat_id)
+            other = _other_user(cardinal, chat)
+            username = other.username if other and other.username else "?"
+        except Exception:
+            username = "?"
+        text_to_send = _format_quick_response(template, username=username, chat_id=chat_id)
+        logger.info("[chats] Быстрая команда продавца {!r} → чат {}", command, chat_id)
+
     try:
-        await asyncio.to_thread(cardinal.account.send_message, chat_id, message.text)
+        await asyncio.to_thread(cardinal.account.send_message, chat_id, text_to_send)
     except Exception:
         logger.exception("Ошибка при отправке сообщения в чат {}", chat_id)
         await message.answer(cardinal.l10n("reply_failed", error="не удалось отправить, см. лог"))
         return
+
     await _react(message)

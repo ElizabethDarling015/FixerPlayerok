@@ -118,7 +118,7 @@ STRINGS = {
     "ar_btn_edit": "✏️ Изменить ответ",
     "ar_enter_new_response": "Пришлите новый текст ответа для команды <code>{command}</code>.",
     "ar_edited": "✅ Ответ для <code>{command}</code> обновлён.",
-    "ar_enter_command": "Отправьте команду (например <code>!привет</code>):",
+    "ar_enter_command": "Отправьте команду (например <code>!!привет</code>):",
     "ar_enter_response": "Отправьте текст ответа. Переменные: <code>$username</code>, <code>$chat_id</code>, <code>$date</code>, <code>$time</code>.",
     "ar_added": "✅ Команда <code>{command}</code> добавлена.",
     "ar_deleted": "🗑 Команда <code>{command}</code> удалена.",

@@ -55,22 +55,10 @@ class AutoResponseModule(BaseModule):
         return self.format_response(commands[command], username=username, chat_id=chat_id)
 
     async def on_event(self, event) -> None:
-        if not self.enabled or event.type is not EventTypes.NEW_MESSAGE:
-            return
-        message = event.message
-        account = self.cardinal.account
-        if not message or not message.text:
-            return
-        if message.user is None or message.user.id == account.id:
-            return  # своё сообщение или системное — не отвечаем
-        if self.cardinal.is_blacklisted(message.user.username):
-            return  # покупатель в чёрном списке — игнорируем
+        """Автоответчик больше не реагирует на сообщения покупателей.
 
-        command = self.match_command(message.text)
-        if command is None:
-            return
-
-        username = message.user.username or "?"
-        reply = self.build_reply(command, username=username, chat_id=event.chat.id)
-        logger.info("Автоответчик: команда {!r} от {} в чате {}", command, username, event.chat.id)
-        await asyncio.to_thread(account.send_message, event.chat.id, reply)
+        Теперь это личная библиотека шаблонов продавца: команды срабатывают
+        только когда продавец пишет ``!!команда`` в живом диалоге
+        (см. cardinal/tg/handlers/chats.py).
+        """
+        return
