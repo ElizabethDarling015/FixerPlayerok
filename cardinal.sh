@@ -11,6 +11,8 @@
 #   ./cardinal.sh --update_fixer обновить код с репозитория FixerPlayerok
 #   ./cardinal.sh --service    установить systemd-сервис автозапуска (Linux)
 #   ./cardinal.sh --offline    запуск в оффлайн-режиме (без подключения к Playerok API)
+#   ./cardinal.sh --proxy1     запуск через 1-й сохранённый прокси (Настройки -> Прокси в TG),
+#                              разово на этот запуск; --proxy2, --proxy3 и т.д. — по номеру
 #   ./cardinal.sh --help       справка
 #
 # Идемпотентный: повторный запуск ничего не ломает и не трогает конфиги.
@@ -169,7 +171,7 @@ usage() {
     exit 0
 }
 
-MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0; UPDATE_FIXER=0
+MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0; UPDATE_FIXER=0; PROXY_FLAG=""
 case "${1:-}" in
     --help|-h)  usage ;;
     --setup)    FORCE_SETUP=1 ;;
@@ -178,6 +180,7 @@ case "${1:-}" in
     --update_fixer) UPDATE_FIXER=1 ;;
     --service)  MODE="service" ;;
     --offline|-o) OFFLINE_MODE=1 ;;
+    --proxy[0-9]*) PROXY_FLAG="$1" ;;
     "")         ;;
     *)          die "Неизвестный аргумент: $1 (см. ./cardinal.sh --help)" ;;
 esac
@@ -756,6 +759,8 @@ echo
 if [ "$OFFLINE_MODE" = "1" ]; then
     echo "🔧 OFFLINE MODE: запуск без подключения к Playerok API"
     exec "$VENV_PY" -m cardinal --offline
+elif [ -n "$PROXY_FLAG" ]; then
+    exec "$VENV_PY" -m cardinal "$PROXY_FLAG"
 else
     exec "$VENV_PY" -m cardinal
 fi

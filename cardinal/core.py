@@ -78,10 +78,15 @@ class _ToggleableAutoRaise(AutoRaiseManager):
 class Cardinal:
     """Собирает и запускает все части бота: Account, Runner, модули, Telegram."""
 
-    def __init__(self, settings: MainSettings):
+    def __init__(self, settings: MainSettings, cli_proxy: str | None = None):
         self.settings = settings
         self.l10n = L10n(settings.language)
         self.started_at = time.time()
+
+        # Прокси, выбранный флагом --proxyN при запуске (см. main.py) — разовый оверрайд
+        # только на этот процесс, НЕ трогает "активный" прокси в БД (Telegram-меню
+        # Настройки -> Прокси продолжает управлять постоянным состоянием отдельно).
+        self._cli_proxy = cli_proxy
 
         self.account: Account | None = None
         self.runner: Runner | None = None
@@ -177,6 +182,27 @@ class Cardinal:
             }
 
     # ------------------------------------------------------------------
+    # Выбор прокси
+    # ------------------------------------------------------------------
+
+    def _resolve_proxy_url(self) -> str | None:
+        """
+        Порядок приоритета:
+        1. Флаг --proxyN командной строки (разово, только этот процесс);
+        2. Прокси, отмеченный «активным» через Telegram-меню Настройки -> Прокси;
+        3. Статический `proxy` из config.toml (обратная совместимость со старым
+           способом настройки, если новую систему ещё не трогали).
+        """
+        if self._cli_proxy is not None:
+            return self._cli_proxy
+        from . import proxy_store
+        from .proxy_tools import build_proxy_url
+        active = proxy_store.get_active_proxy()
+        if active:
+            return build_proxy_url(active)
+        return self.settings.playerok.proxy
+
+    # ------------------------------------------------------------------
     # Управление подключением к Playerok API
     # ------------------------------------------------------------------
 
@@ -196,7 +222,7 @@ class Cardinal:
                 self.account = Account(
                     cookies=self.settings.playerok.cookies,
                     user_agent=self.settings.playerok.user_agent,
-                    proxy=self.settings.playerok.proxy,
+                    proxy=self._resolve_proxy_url(),
                     requests_timeout=int(self.settings.playerok.requests_timeout),
                 )
 
@@ -337,7 +363,7 @@ class Cardinal:
             self.account = Account(
                 cookies=self.settings.playerok.cookies,
                 user_agent=self.settings.playerok.user_agent,
-                proxy=self.settings.playerok.proxy,
+                proxy=self._resolve_proxy_url(),
                 requests_timeout=int(self.settings.playerok.requests_timeout),
             )
             logger.info("Авторизуемся на Playerok…")

@@ -56,8 +56,8 @@ def build_system_menu(cardinal) -> tuple[str, object]:
 
     # Кнопка очистки уведомлений (открывает подменю с выбором периода)
     builder.button(text=l10n("sys_btn_clear"), callback_data="sys:clear_confirm")
-    # Заглушка для чётной сетки 2x4
-    builder.button(text="➖", callback_data="noop")
+    # Было: заглушка для чётной сетки 2x4 ("➖", callback_data="noop") — теперь на её месте прокси.
+    builder.button(text="🌐 Прокси", callback_data="px:menu")
 
     builder.adjust(2)
     builder.row(*nav_row(l10n))
@@ -75,7 +75,8 @@ def build_system_menu(cardinal) -> tuple[str, object]:
         "• 🧪 Тесты — отправить тестовые уведомления для настройки UI\n"
         "• 🔁 Перезапуск — полностью перезапустить бота\n"
         "• ❌ Закрыть — закрыть это меню\n"
-        "• 🗑 Очистить — удалить уведомления из Telegram (логи сохранятся)"
+        "• 🗑 Очистить — удалить уведомления из Telegram (логи сохранятся)\n"
+        "• 🌐 Прокси — подключение Cardinal к Playerok через прокси (REST + WebSocket)"
     )
 
     return text, builder.as_markup()

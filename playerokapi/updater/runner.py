@@ -560,12 +560,20 @@ class Runner:
             f"Cookie: {self.account._cookie_header()}",
             f"User-Agent: {self.account.user_agent}",
         ]
+        # ВАЖНО: читаем self.account.proxy заново при КАЖДОЙ попытке подключения (а не один раз
+        # при создании Runner), иначе переключение прокси через Telegram-меню/CLI-флаг не будет
+        # подхватываться до перезапуска процесса. Раньше тут прокси не использовался вовсе — WS
+        # всегда шёл в обход self.account.proxy, из-за чего REST и WS одного аккаунта светили
+        # разными IP одновременно (см. проверку proxy-параметра при вызове Account()).
+        from ..common.utils import parse_proxy_for_ws
+        proxy_kwargs = parse_proxy_for_ws(getattr(self.account, "proxy", None))
         ws = websocket.create_connection(
             _WS_URL,
             header=headers,
             origin=_WS_ORIGIN,
             subprotocols=[_WS_SUBPROTOCOL],
             timeout=10,
+            **proxy_kwargs,
         )
         self._ws = ws
         try:
