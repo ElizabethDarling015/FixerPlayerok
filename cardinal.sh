@@ -11,8 +11,16 @@
 #   ./cardinal.sh --update_fixer обновить код с репозитория FixerPlayerok
 #   ./cardinal.sh --service    установить systemd-сервис автозапуска (Linux)
 #   ./cardinal.sh --offline    запуск в оффлайн-режиме (без подключения к Playerok API)
-#   ./cardinal.sh --proxy1     запуск через 1-й сохранённый прокси (Настройки -> Прокси в TG),
-#                              разово на этот запуск; --proxy2, --proxy3 и т.д. — по номеру
+#   ./cardinal.sh --proxy1     запуск Telegram-сессии через 1-й сохранённый прокси
+#                              (Настройки -> Прокси в TG), разово на этот запуск;
+#                              --proxy2, --proxy3 и т.д. — по номеру. Playerok этот
+#                              флаг не затрагивает — идёт напрямую/как настроен отдельно
+#                              (можно сочетать с --offline: ./cardinal.sh --offline --proxy1)
+#   ./cardinal.sh --add-proxy=socks5://user:pass@host:port
+#                              добавить прокси в БД БЕЗ запуска бота (протокол — из схемы
+#                              URL: socks5/socks5h/socks4/http/https; без схемы — HTTP).
+#                              На случай "нет VPN и панель без прокси не поднять" — сначала
+#                              кладём прокси этой командой, потом запускаем с --proxyN
 #   ./cardinal.sh --help       справка
 #
 # Идемпотентный: повторный запуск ничего не ломает и не трогает конфиги.
@@ -171,19 +179,21 @@ usage() {
     exit 0
 }
 
-MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0; UPDATE_FIXER=0; PROXY_FLAG=""
-case "${1:-}" in
-    --help|-h)  usage ;;
-    --setup)    FORCE_SETUP=1 ;;
-    --check)    MODE="check" ;;
-    --update)   MODE="update" ;;
-    --update_fixer) UPDATE_FIXER=1 ;;
-    --service)  MODE="service" ;;
-    --offline|-o) OFFLINE_MODE=1 ;;
-    --proxy[0-9]*) PROXY_FLAG="$1" ;;
-    "")         ;;
-    *)          die "Неизвестный аргумент: $1 (см. ./cardinal.sh --help)" ;;
-esac
+MODE="run"; FORCE_SETUP=0; OFFLINE_MODE=0; UPDATE_FIXER=0; PROXY_FLAG=""; ADD_PROXY_ARG=""
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)  usage ;;
+        --setup)    FORCE_SETUP=1 ;;
+        --check)    MODE="check" ;;
+        --update)   MODE="update" ;;
+        --update_fixer) UPDATE_FIXER=1 ;;
+        --service)  MODE="service" ;;
+        --offline|-o) OFFLINE_MODE=1 ;;
+        --proxy[0-9]*) PROXY_FLAG="$arg" ;;
+        --add-proxy=*) ADD_PROXY_ARG="$arg" ;;
+        *)          die "Неизвестный аргумент: $arg (см. ./cardinal.sh --help)" ;;
+    esac
+done
 
 # Как в FunPayCardinal: чистый экран → логотип → ссылки.
 [ -t 1 ] && clear
@@ -681,6 +691,14 @@ else
     ok "Зависимости на месте ${GREY}(обновить: ./cardinal.sh --update)${NC}."
 fi
 
+# ----------------------------------------------------------------------
+# Режим --add-proxy=...: добавить прокси в БД без запуска бота и без конфига
+# ----------------------------------------------------------------------
+if [ -n "$ADD_PROXY_ARG" ]; then
+    step "Добавляю прокси…"
+    exec "$VENV_PY" -m cardinal "$ADD_PROXY_ARG"
+fi
+
 # Проверяем конфиг тем же валидатором, что использует бот (русские ошибки pydantic).
 if "$VENV_PY" - <<'PYEOF'
 import sys
@@ -756,7 +774,10 @@ echo "  ${GREY}Обновление:${NC}  ./cardinal.sh --update_fixer"
 echo "  ${GREY}Автозапуск:${NC}  ./cardinal.sh --service"
 echo "  ${GREY}Создатель:${NC}   ${CYAN}https://t.me/Scwee_xz${NC}"
 echo
-if [ "$OFFLINE_MODE" = "1" ]; then
+if [ "$OFFLINE_MODE" = "1" ] && [ -n "$PROXY_FLAG" ]; then
+    echo "🔧 OFFLINE MODE: запуск без подключения к Playerok API"
+    exec "$VENV_PY" -m cardinal --offline "$PROXY_FLAG"
+elif [ "$OFFLINE_MODE" = "1" ]; then
     echo "🔧 OFFLINE MODE: запуск без подключения к Playerok API"
     exec "$VENV_PY" -m cardinal --offline
 elif [ -n "$PROXY_FLAG" ]; then

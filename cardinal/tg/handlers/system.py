@@ -10,6 +10,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
@@ -581,8 +582,27 @@ async def cb_connect_playerok(query: CallbackQuery, cardinal) -> None:
         text, markup = build_main_menu(cardinal)
         await safe_edit(query.message, text, markup)
     else:
-        await query.answer(f"❌ Ошибка подключения: {result['message']}", show_alert=True)
+        error_text = str(result["message"])
+        # Для всплывающего алерта достаточно первого предложения — оно обычно и есть
+        # суть ошибки ("Бот-проверка заметила..."), а инструкции после первой точки
+        # ("Чтобы продолжить работу...") только загромождают маленькое окно алерта.
+        # Полный текст без сокращений всё равно уходит в тело сообщения ниже.
+        first_sentence = error_text.split(". ", 1)[0].rstrip(".") + "."
+        alert_text = f"❌ Ошибка подключения: {first_sentence}"
+        # answerCallbackQuery ограничен Telegram ~200 символами — на случай, если даже
+        # одно предложение окажется длиннее, подстраховываемся обрезкой по символам.
+        # Раньше это ограничение никак не проверялось, из-за чего запрос падал с
+        # MESSAGE_TOO_LONG ДО восстановления меню ниже, и сообщение "🔌 Подключаюсь…"
+        # оставалось висеть в чате навсегда.
+        if len(alert_text) > 200:
+            alert_text = alert_text[:197] + "…"
+        try:
+            await query.answer(alert_text, show_alert=True)
+        except TelegramBadRequest as e:
+            logger.warning("Не удалось показать алерт с ошибкой подключения: {}", e)
         text, markup = build_system_menu(cardinal)
+        # Полный (не обрезанный) текст ошибки — в тело сообщения, лимит там намного больше.
+        text = f"❌ <b>Ошибка подключения к Playerok:</b>\n{html.escape(error_text)}\n\n{text}"
         await safe_edit(query.message, text, markup)
 
 

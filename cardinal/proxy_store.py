@@ -1,14 +1,23 @@
 """
-Хранение прокси, через которые Cardinal подключается к Playerok (REST + WebSocket).
+Хранение прокси, из которых Cardinal собирает две НЕЗАВИСИМЫЕ связки:
+- прокси для Playerok (Account/REST + Runner/WebSocket);
+- прокси для Telegram-сессии бота (aiogram).
 
-Один бот = одна активная связка (в отличие от Shinoa, где прокси привязан к
-пользователю Telegram — тут прокси общий для всего аккаунта Playerok, поэтому
-`user_id` не нужен). Активным может быть только один прокси одновременно —
-как только активируется новый, предыдущий автоматически снимается.
+Это осознанно разделено: один и тот же IP может быть отлично рабочим для
+Telegram, но уже забаненным на Playerok антибот-защитой (DDoS-Guard) — и
+наоборот. Поэтому у каждого сохранённого прокси — два независимых флага
+активности (`active_playerok`, `active_telegram`) и два независимых
+результата последней проверки: активным для каждой цели может быть только
+один прокси одновременно (в рамках этой цели), но это может быть как один
+и тот же прокси для обеих целей, так и два разных, так и вообще прокси
+только под одну из целей.
 
-Нумерация «по порядку» для CLI-флагов --proxy1/--proxy2/... — это позиция в
-списке, отсортированном по `id` (по возрастанию, т.е. по порядку добавления),
-считая с 1. Она НЕ совпадает со значением `id` в БД, если прокси удалялись.
+Нумерация «по порядку» для CLI-флага --proxyN (позиция в списке, отсортированном
+по `id`, считая с 1) — CLI-флаг задаёт прокси именно для Telegram-сессии
+(разово, только на этот запуск): это единственный сценарий, ради которого он
+создавался — оживить Telegram-панель, когда основной путь наружу (VPN/sing-box)
+недоступен, при этом Playerok продолжает идти как настроено отдельно (обычно —
+напрямую, домашним IP).
 """
 from __future__ import annotations
 
@@ -19,6 +28,8 @@ from datetime import datetime
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_FILE = os.path.join(_BASE_DIR, "storage", "proxies.sqlite3")
+
+_TARGETS = ("playerok", "telegram")
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -33,24 +44,32 @@ def _get_conn(db_path: str = DB_FILE) -> sqlite3.Connection:
         with _lock, _conn:
             _conn.execute("""
                 CREATE TABLE IF NOT EXISTS proxies (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    proxy_type   TEXT    NOT NULL,
-                    host         TEXT    NOT NULL,
-                    port         INTEGER NOT NULL,
-                    username     TEXT,
-                    password     TEXT,
-                    country_code TEXT,
-                    country_name TEXT,
-                    city         TEXT,
-                    is_active    INTEGER NOT NULL DEFAULT 0,
-                    last_ok      INTEGER,
-                    last_ms      INTEGER,
-                    last_error   TEXT,
-                    activated_at TEXT,
-                    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proxy_type       TEXT    NOT NULL,
+                    host             TEXT    NOT NULL,
+                    port             INTEGER NOT NULL,
+                    username         TEXT,
+                    password         TEXT,
+                    country_code     TEXT,
+                    country_name     TEXT,
+                    city             TEXT,
+                    active_playerok  INTEGER NOT NULL DEFAULT 0,
+                    active_telegram  INTEGER NOT NULL DEFAULT 0,
+                    playerok_ok      INTEGER,
+                    playerok_ms      INTEGER,
+                    playerok_error   TEXT,
+                    telegram_ok      INTEGER,
+                    telegram_ms      INTEGER,
+                    telegram_error   TEXT,
+                    created_at       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
                 )
             """)
     return _conn
+
+
+def _check_target(target: str) -> None:
+    if target not in _TARGETS:
+        raise ValueError(f"Неизвестное назначение прокси: {target!r} (ожидается playerok/telegram)")
 
 
 def _row_to_dict(row: sqlite3.Row | None) -> dict | None:
@@ -104,36 +123,42 @@ def get_by_ordinal(n: int) -> dict | None:
     return proxies[n - 1]
 
 
-def get_active_proxy() -> dict | None:
+def get_active_proxy(target: str) -> dict | None:
+    """Активный прокси для указанной цели ("playerok" или "telegram"), если есть."""
+    _check_target(target)
     conn = _get_conn()
     with _lock:
-        row = conn.execute("SELECT * FROM proxies WHERE is_active=1 LIMIT 1").fetchone()
+        row = conn.execute(
+            f"SELECT * FROM proxies WHERE active_{target}=1 LIMIT 1"
+        ).fetchone()
     return _row_to_dict(row)
 
 
-def set_active(proxy_id: int, active: bool) -> None:
+def set_active(proxy_id: int, target: str, active: bool) -> None:
+    """Включает/выключает прокси `proxy_id` для цели `target`, не трогая другую цель."""
+    _check_target(target)
     conn = _get_conn()
+    col = f"active_{target}"
     with _lock, conn:
         if active:
-            conn.execute("UPDATE proxies SET is_active=0")
-            conn.execute(
-                "UPDATE proxies SET is_active=1, activated_at=? WHERE id=?",
-                (datetime.now().isoformat(), proxy_id),
-            )
+            conn.execute(f"UPDATE proxies SET {col}=0")
+            conn.execute(f"UPDATE proxies SET {col}=1 WHERE id=?", (proxy_id,))
         else:
-            conn.execute("UPDATE proxies SET is_active=0 WHERE id=?", (proxy_id,))
+            conn.execute(f"UPDATE proxies SET {col}=0 WHERE id=?", (proxy_id,))
 
 
-def update_check(proxy_id: int, res: dict) -> None:
+def update_check(proxy_id: int, target: str, res: dict) -> None:
+    """Сохраняет результат проверки (`proxy_tools.check_proxy_playerok/telegram`) для цели."""
+    _check_target(target)
     conn = _get_conn()
     with _lock, conn:
         conn.execute(
-            """UPDATE proxies
-               SET last_ok=?, last_ms=?, last_error=?,
-                   country_code=COALESCE(?, country_code),
-                   country_name=COALESCE(?, country_name),
-                   city=COALESCE(?, city)
-               WHERE id=?""",
+            f"""UPDATE proxies
+                SET {target}_ok=?, {target}_ms=?, {target}_error=?,
+                    country_code=COALESCE(?, country_code),
+                    country_name=COALESCE(?, country_name),
+                    city=COALESCE(?, city)
+                WHERE id=?""",
             (
                 1 if res.get("ok") else 0,
                 res.get("ms"),

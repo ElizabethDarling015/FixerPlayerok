@@ -84,8 +84,9 @@ class Cardinal:
         self.started_at = time.time()
 
         # Прокси, выбранный флагом --proxyN при запуске (см. main.py) — разовый оверрайд
-        # только на этот процесс, НЕ трогает "активный" прокси в БД (Telegram-меню
-        # Настройки -> Прокси продолжает управлять постоянным состоянием отдельно).
+        # только на этот процесс, ТОЛЬКО для Telegram-сессии бота (см.
+        # _resolve_telegram_proxy_url). Playerok его не видит и продолжает подключаться
+        # как настроено отдельно — обычно напрямую, домашним IP.
         self._cli_proxy = cli_proxy
 
         self.account: Account | None = None
@@ -185,22 +186,46 @@ class Cardinal:
     # Выбор прокси
     # ------------------------------------------------------------------
 
-    def _resolve_proxy_url(self) -> str | None:
+    def _resolve_playerok_proxy_url(self) -> str | None:
         """
+        Прокси для Account/Runner (Playerok). CLI-флаг --proxyN сюда НЕ попадает —
+        он предназначен для Telegram-сессии (см. _resolve_telegram_proxy_url), чтобы
+        можно было поднять управляющую панель через прокси, пока Playerok продолжает
+        идти как настроено отдельно (обычно — напрямую, домашним IP, см. первый
+        абзац proxy_store.py: это разные цели, один и тот же IP может быть рабочим
+        для одной и уже забаненным на другой).
+
         Порядок приоритета:
-        1. Флаг --proxyN командной строки (разово, только этот процесс);
-        2. Прокси, отмеченный «активным» через Telegram-меню Настройки -> Прокси;
-        3. Статический `proxy` из config.toml (обратная совместимость со старым
+        1. Прокси, отмеченный «активным для Playerok» через Telegram-меню Настройки -> Прокси;
+        2. Статический `proxy` из config.toml (обратная совместимость со старым
            способом настройки, если новую систему ещё не трогали).
+        """
+        from . import proxy_store
+        from .proxy_tools import build_proxy_url
+        active = proxy_store.get_active_proxy("playerok")
+        if active:
+            return build_proxy_url(active)
+        return self.settings.playerok.proxy
+
+    def _resolve_telegram_proxy_url(self) -> str | None:
+        """
+        Прокси для Telegram-сессии бота (aiogram).
+
+        Порядок приоритета:
+        1. Флаг --proxyN командной строки (разово, только этот процесс) — основной
+           сценарий его существования: поднять Telegram-панель, когда обычный путь
+           наружу (VPN/sing-box) недоступен;
+        2. Прокси, отмеченный «активным для Telegram» через Telegram-меню Настройки -> Прокси;
+        3. Ничего — прямое подключение (обычный режим, когда VPN/sing-box работает).
         """
         if self._cli_proxy is not None:
             return self._cli_proxy
         from . import proxy_store
         from .proxy_tools import build_proxy_url
-        active = proxy_store.get_active_proxy()
+        active = proxy_store.get_active_proxy("telegram")
         if active:
             return build_proxy_url(active)
-        return self.settings.playerok.proxy
+        return None
 
     # ------------------------------------------------------------------
     # Управление подключением к Playerok API
@@ -222,7 +247,7 @@ class Cardinal:
                 self.account = Account(
                     cookies=self.settings.playerok.cookies,
                     user_agent=self.settings.playerok.user_agent,
-                    proxy=self._resolve_proxy_url(),
+                    proxy=self._resolve_playerok_proxy_url(),
                     requests_timeout=int(self.settings.playerok.requests_timeout),
                 )
 
@@ -363,7 +388,7 @@ class Cardinal:
             self.account = Account(
                 cookies=self.settings.playerok.cookies,
                 user_agent=self.settings.playerok.user_agent,
-                proxy=self._resolve_proxy_url(),
+                proxy=self._resolve_playerok_proxy_url(),
                 requests_timeout=int(self.settings.playerok.requests_timeout),
             )
             logger.info("Авторизуемся на Playerok…")

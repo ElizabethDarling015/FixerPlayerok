@@ -8,6 +8,7 @@ from aiogram.types import BotCommand
 from loguru import logger
 
 from .auth import AuthMiddleware, TgAdmins
+from .bot_session import ProxySwitchableSession
 from .notifications import Notifier
 
 
@@ -18,8 +19,18 @@ def setup_telegram(cardinal):
     """
     bot = Bot(
         token=cardinal.settings.telegram.token,
+        session=ProxySwitchableSession(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    # Прокси именно для Telegram-сессии (CLI-флаг --proxyN -> активный для Telegram
+    # из БД) — НЕ тот же резолвер, что у Account/Runner: Playerok и Telegram теперь
+    # намеренно независимы (см. cardinal/proxy_store.py), иначе при --proxyN, поднятом
+    # ради оживления Telegram-панели без VPN, Playerok тоже принудительно уехал бы на
+    # этот прокси, хотя ему обычно нужен именно домашний IP напрямую.
+    proxy_url = cardinal._resolve_telegram_proxy_url()
+    if proxy_url:
+        bot.session.proxy = proxy_url
+        logger.info("Telegram-сессия бота использует отдельный прокси")
     dispatcher = Dispatcher()
     admins = TgAdmins(cardinal.settings.telegram.admin_ids)
     if not admins.all_ids:

@@ -31,6 +31,7 @@ dev = [
 ]
 cardinal = [
     "aiogram>=3.7",
+    "aiohttp-socks>=0.8",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "loguru>=0.7",

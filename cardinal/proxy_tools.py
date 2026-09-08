@@ -24,6 +24,7 @@ DEFAULT_PORTS = {"socks5": 1080, "socks5h": 1080, "socks4": 1080, "http": 8080, 
 _BOT_CHECK_SIGNATURES = ("ddos-guard", "Ray ID", "cf-error-details", "Attention Required!")
 
 _PLAYEROK_CHECK_URL = "https://playerok.com/graphql"
+_TELEGRAM_CHECK_URL = "https://api.telegram.org"
 _GEO_URL = "http://ip-api.com/json?lang=en&fields=status,country,countryCode,city"
 
 
@@ -117,9 +118,9 @@ def type_label(t: str) -> str:
 from playerokapi.common.utils import parse_proxy_for_ws  # noqa: E402,F401
 
 
-def check_proxy(proxy_url: str, timeout: float = 10.0) -> dict:
+def check_proxy_playerok(proxy_url: str, timeout: float = 10.0) -> dict:
     """
-    Синхронная проверка (вызывать через asyncio.to_thread из хендлеров):
+    Синхронная проверка прокси ДЛЯ PLAYEROK (вызывать через asyncio.to_thread):
     1) достаёт гео через ip-api.com ЧЕРЕЗ прокси (best-effort, не критично);
     2) идёт на playerok.com/graphql ЧЕРЕЗ прокси — это и есть содержательная проверка.
 
@@ -161,6 +162,49 @@ def check_proxy(proxy_url: str, timeout: float = 10.0) -> dict:
             return result
         # Любой ответ без антибот-сигнатур (даже 4xx на голый GET без нужных заголовков) —
         # значит соединение до Playerok через этот прокси в принципе проходит.
+        result["ok"] = True
+        result["ms"] = int((time.monotonic() - t0) * 1000)
+    except Exception as e:
+        result["error"] = f"{type(e).__name__}: {e}"
+    return result
+
+
+def check_proxy_telegram(proxy_url: str, timeout: float = 10.0) -> dict:
+    """
+    Синхронная проверка прокси ДЛЯ TELEGRAM (вызывать через asyncio.to_thread):
+    просто достучаться до api.telegram.org через прокси — без токена бота нет смысла
+    звать реальный метод API, важна только сетевая связность до этого хоста (aiogram
+    дальше сам отвечает за корректность запросов). Гео — тот же best-effort, что и в
+    check_proxy_playerok, чтобы в списке был один общий геолейбл на прокси.
+
+    Возвращает {"ok", "ms", "error", "country_code", "country_name", "city"}.
+    """
+    from curl_cffi import requests as curl_requests
+
+    result = {
+        "ok": False, "ms": None, "error": None,
+        "country_code": None, "country_name": None, "city": None,
+    }
+
+    proxies = {"http": proxy_url, "https": proxy_url}
+    t0 = time.monotonic()
+
+    try:
+        with curl_requests.Session(impersonate="chrome124") as s:
+            geo_resp = s.get(_GEO_URL, proxies=proxies, timeout=timeout)
+            geo = geo_resp.json()
+        if geo.get("status") == "success":
+            result["country_code"] = geo.get("countryCode")
+            result["country_name"] = geo.get("country")
+            result["city"] = geo.get("city")
+    except Exception as e:
+        logger.debug("Гео через прокси не определилось: %s", e)
+
+    try:
+        with curl_requests.Session(impersonate="chrome124") as s:
+            # Просто TLS+HTTP до Telegram — любой ответ (даже 404 на голый домен без
+            # метода) значит, что прокси реально доводит трафик до api.telegram.org.
+            s.get(_TELEGRAM_CHECK_URL, proxies=proxies, timeout=timeout)
         result["ok"] = True
         result["ms"] = int((time.monotonic() - t0) * 1000)
     except Exception as e:

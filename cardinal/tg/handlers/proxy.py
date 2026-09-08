@@ -1,15 +1,14 @@
 """
-Прокси для подключения Cardinal к Playerok (REST + WebSocket).
+Прокси для Cardinal: ДВЕ независимые цели — Playerok (Account/REST + Runner/WS) и
+Telegram-сессия бота (aiogram). Один и тот же сохранённый прокси можно активировать
+для любой из целей независимо (в т.ч. для обеих сразу, или только для одной) — это
+осознанно так, потому что IP может быть рабочим для Telegram, но уже забаненным на
+Playerok антибот-защитой (DDoS-Guard), и наоборот. См. cardinal/proxy_store.py.
 
 Навигация: Настройки -> 🌐 Прокси.
-Один экран: список сохранённых прокси со статусом + для каждого кнопки
-[переключить][проверить][удалить], ниже «➕ Добавить прокси» и ряд навигации.
-Активным может быть только один прокси одновременно — активация нового снимает
-предыдущий. Переключение применяется «на лету», без перезапуска бота: REST сразу
-начинает ходить через новый прокси (или напрямую, если прокси выключен), а
-WebSocket-подключение принудительно обрывается, чтобы переподключиться уже с
-новыми настройками (см. playerokapi/updater/runner.py — он читает account.proxy
-заново на каждой попытке соединения).
+На каждый сохранённый прокси — статус по обеим целям и две кнопки-переключателя
+(🎮 Playerok / ✈️ Telegram), плюс общая проверка (тестирует обе цели за один тап)
+и удаление. Переключение применяется «на лету», без перезапуска бота.
 """
 from __future__ import annotations
 
@@ -25,15 +24,62 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ... import proxy_store
-from ...proxy_tools import build_proxy_url, check_proxy, flag_emoji, parse_proxy_text, type_label
+from ...proxy_tools import (
+    build_proxy_url,
+    check_proxy_playerok,
+    check_proxy_telegram,
+    flag_emoji,
+    parse_proxy_text,
+    type_label,
+)
 from .common import nav_row
 
 logger = logging.getLogger(__name__)
 router = Router(name="proxy")
 
+_TARGET_LABEL = {"playerok": "🎮 Playerok", "telegram": "✈️ Telegram"}
+
 
 class ProxyInput(StatesGroup):
     waiting_data = State()
+
+
+# ──────────────────────────────────────────────
+# Применение прокси к уже работающему боту (независимо по целям)
+# ──────────────────────────────────────────────
+
+def _apply_playerok_proxy(cardinal, proxy_url: str | None) -> None:
+    """
+    REST подхватывает изменение сразу (Account.request читает self.proxy при каждом
+    запросе), WebSocket — после принудительного обрыва текущего соединения (раннер
+    сам переподключится по своей обычной retry-логике, уже с новым прокси).
+    """
+    if cardinal.account is not None:
+        cardinal.account.proxy = proxy_url
+    runner = getattr(cardinal, "runner", None)
+    ws = getattr(runner, "_ws", None) if runner is not None else None
+    if ws is not None:
+        try:
+            ws.close()
+        except Exception as e:
+            logger.warning("Не удалось закрыть WS для переключения прокси: %s", e)
+
+
+def _apply_telegram_proxy(bot: Bot, proxy_url: str | None) -> None:
+    try:
+        if proxy_url:
+            bot.session.proxy = proxy_url
+        else:
+            bot.session.clear_proxy()
+    except Exception as e:
+        logger.warning("Не удалось переключить прокси Telegram-сессии: %s", e)
+
+
+def _apply(cardinal, bot: Bot, target: str, proxy_url: str | None) -> None:
+    if target == "playerok":
+        _apply_playerok_proxy(cardinal, proxy_url)
+    else:
+        _apply_telegram_proxy(bot, proxy_url)
 
 
 # ──────────────────────────────────────────────
@@ -88,22 +134,20 @@ def _input_kb() -> object:
     return builder.as_markup()
 
 
-def _apply_proxy_to_running_account(cardinal, proxy_url: str | None) -> None:
-    """
-    Применяет прокси к уже работающему аккаунту «на лету»:
-    REST подхватывает изменение сразу (Account.request читает self.proxy при каждом
-    запросе), WebSocket — после принудительного обрыва текущего соединения (раннер сам
-    переподключится по своей обычной retry-логике, уже с новым прокси).
-    """
-    if cardinal.account is not None:
-        cardinal.account.proxy = proxy_url
-    runner = getattr(cardinal, "runner", None)
-    ws = getattr(runner, "_ws", None) if runner is not None else None
-    if ws is not None:
-        try:
-            ws.close()
-        except Exception as e:
-            logger.warning("Не удалось закрыть WS для переключения прокси: %s", e)
+def _target_status_line(p: dict, target: str, checking: bool) -> str:
+    label = _TARGET_LABEL[target]
+    if checking:
+        return f"  {label}: ⏳ проверка..."
+    if p[f"active_{target}"]:
+        return f"  {label}: ✅ активен"
+    ok = p.get(f"{target}_ok")
+    if ok == 0:
+        err = p.get(f"{target}_error")
+        suffix = f" — {html.escape(str(err)[:120])}" if err else ""
+        return f"  {label}: ❌ не работает{suffix}"
+    if ok == 1:
+        return f"  {label}: 📶 работает ({p.get(f'{target}_ms')} мс), не активен"
+    return f"  {label}: ⚪ не проверялся"
 
 
 async def _render_menu(bot: Bot, cardinal, chat_id: int, message_id: int,
@@ -111,51 +155,63 @@ async def _render_menu(bot: Bot, cardinal, chat_id: int, message_id: int,
     """Единственный экран «Меню прокси»."""
     proxies = await asyncio.to_thread(proxy_store.list_proxies)
 
-    lines = ["🌐 <b>Меню прокси</b>", "",
-             "Прокси применяется и к REST, и к WebSocket-подключению к Playerok.", ""]
+    lines = [
+        "🌐 <b>Меню прокси</b>", "",
+        "Playerok и Telegram — независимые цели: один прокси можно включить "
+        "для любой из них по отдельности (или для обеих сразу).", "",
+    ]
     if proxies:
         for p in proxies:
-            if checking_id == p["id"]:
-                status = "⏳ проверка..."
-            elif p["is_active"]:
-                status = "✅ активен — Cardinal ходит на Playerok через прокси"
-            elif p.get("last_ok") == 0:
-                status = "❌ не работает"
-            elif p.get("last_ok") == 1:
-                status = f"📶 работает ({p.get('last_ms')} мс), не активен"
-            else:
-                status = "⚪ не активен"
+            checking = checking_id == p["id"]
             lines.append(
                 f"• #{p['id']} {flag_emoji(p.get('country_code'))} {type_label(p['proxy_type'])} "
-                f"<code>{html.escape(p['host'])}:{p['port']}</code> — {_geo_str(p)}, {status}"
+                f"<code>{html.escape(p['host'])}:{p['port']}</code> — {_geo_str(p)}"
             )
-            if checking_id != p["id"] and p.get("last_ok") == 0 and p.get("last_error"):
-                lines.append(f"   ⚠️ <i>{html.escape(str(p['last_error'])[:150])}</i>")
+            lines.append(_target_status_line(p, "playerok", checking))
+            lines.append(_target_status_line(p, "telegram", checking))
     else:
         lines.append("Список пуст. Добавь первый прокси кнопкой ниже.")
 
     lines.append("")
     lines.append(
-        "<i>Можно запустить бота сразу на конкретном сохранённом прокси флагом "
-        "--proxy1 / --proxy2 / ... (номер = порядок добавления в этом списке, "
-        "сверху вниз) — без активации через это меню, разово на один запуск.</i>"
+        "<i>Флаг --proxy1 / --proxy2 / ... при запуске (номер = порядок добавления, "
+        "сверху вниз) разово подключает Telegram-сессию через этот прокси на один "
+        "запуск — удобно, когда обычный путь наружу (VPN) недоступен. На Playerok "
+        "флаг не влияет.</i>"
     )
 
     builder = InlineKeyboardBuilder()
     for p in proxies:
-        label = (
-            f"{flag_emoji(p.get('country_code'))} {type_label(p['proxy_type'])} • "
-            f"{p['host']}:{p['port']}" + (" ✅" if p["is_active"] else "")
+        short = f"{flag_emoji(p.get('country_code'))} {type_label(p['proxy_type'])} #{p['id']}"
+        pk_label = "🎮 Playerok " + ("✅" if p["active_playerok"] else "⚪")
+        tg_label = "✈️ Telegram " + ("✅" if p["active_telegram"] else "⚪")
+        builder.row(
+            InlineKeyboardButton(text=pk_label, callback_data=f"px:toggle:playerok:{p['id']}"),
+            InlineKeyboardButton(text=tg_label, callback_data=f"px:toggle:telegram:{p['id']}"),
         )
         builder.row(
-            InlineKeyboardButton(text=label, callback_data=f"px:toggle:{p['id']}"),
-            InlineKeyboardButton(text="🔍", callback_data=f"px:check:{p['id']}"),
+            InlineKeyboardButton(text=f"🔍 Проверить {short}", callback_data=f"px:check:{p['id']}"),
             InlineKeyboardButton(text="🗑", callback_data=f"px:remove:{p['id']}"),
         )
     builder.row(InlineKeyboardButton(text="➕ Добавить прокси", callback_data="px:add"))
     builder.row(*nav_row(cardinal.l10n, "sys"))
 
     await _show(bot, chat_id, message_id, "\n".join(lines), builder.as_markup())
+
+
+async def _check_both(proxy: dict) -> tuple[dict, dict]:
+    """
+    Гоняет обе проверки ПОСЛЕДОВАТЕЛЬНО (не параллельно), возвращает (res_playerok, res_telegram).
+    Параллельный запуск через asyncio.gather тут не используется намеренно: два
+    одновременных запроса через один и тот же (иногда и так не быстрый — например,
+    датацентровый или зажатый через VPN) канал конкурируют за латентность и повышают
+    шанс ложного таймаута одной из проверок, хотя сам прокси при последовательном
+    обращении отвечает нормально.
+    """
+    url = build_proxy_url(proxy)
+    res_pk = await asyncio.to_thread(check_proxy_playerok, url)
+    res_tg = await asyncio.to_thread(check_proxy_telegram, url)
+    return res_pk, res_tg
 
 
 # ──────────────────────────────────────────────
@@ -218,10 +274,11 @@ async def step_proxy_data(message: Message, state: FSMContext, cardinal, bot: Bo
     )
     await state.clear()
 
-    # Возвращаемся в то же меню, прокси сразу проверяется.
+    # Возвращаемся в то же меню, прокси сразу проверяется по обеим целям.
     await _render_menu(bot, cardinal, message.chat.id, bot_msg_id, checking_id=proxy["id"])
-    res = await asyncio.to_thread(check_proxy, build_proxy_url(proxy))
-    await asyncio.to_thread(proxy_store.update_check, proxy["id"], res)
+    res_pk, res_tg = await _check_both(proxy)
+    await asyncio.to_thread(proxy_store.update_check, proxy["id"], "playerok", res_pk)
+    await asyncio.to_thread(proxy_store.update_check, proxy["id"], "telegram", res_tg)
     await _render_menu(bot, cardinal, message.chat.id, bot_msg_id)
 
 
@@ -232,45 +289,47 @@ async def cb_proxy_check(call: CallbackQuery, cardinal, bot: Bot) -> None:
     if not proxy:
         await call.answer("❌ Прокси не найден", show_alert=True)
         return
-    await call.answer("⏳ Проверяю...")
+    await call.answer("⏳ Проверяю Playerok и Telegram...")
     await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id, checking_id=proxy_id)
-    res = await asyncio.to_thread(check_proxy, build_proxy_url(proxy))
-    await asyncio.to_thread(proxy_store.update_check, proxy_id, res)
+    res_pk, res_tg = await _check_both(proxy)
+    await asyncio.to_thread(proxy_store.update_check, proxy_id, "playerok", res_pk)
+    await asyncio.to_thread(proxy_store.update_check, proxy_id, "telegram", res_tg)
     await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id)
 
 
 @router.callback_query(F.data.startswith("px:toggle:"))
 async def cb_proxy_toggle(call: CallbackQuery, cardinal, bot: Bot) -> None:
-    proxy_id = int(call.data.split(":")[2])
+    _, _, target, proxy_id_str = call.data.split(":")
+    proxy_id = int(proxy_id_str)
     proxy = await asyncio.to_thread(proxy_store.get_proxy, proxy_id)
     if not proxy:
         await call.answer("❌ Прокси не найден", show_alert=True)
         return
 
-    if proxy["is_active"]:
-        # Отключаем — возврат к прямому подключению.
-        await asyncio.to_thread(proxy_store.set_active, proxy_id, False)
-        _apply_proxy_to_running_account(cardinal, None)
-        logger.info("Прокси отключён пользователем %s, Cardinal переходит на прямое подключение",
-                    call.from_user.id)
-        await call.answer("Прокси отключён — переход на прямое подключение")
+    if proxy[f"active_{target}"]:
+        # Отключаем эту цель — возврат к прямому подключению именно для неё.
+        await asyncio.to_thread(proxy_store.set_active, proxy_id, target, False)
+        _apply(cardinal, bot, target, None)
+        logger.info("Прокси отключён для %s (id=%s), переход на прямое подключение", target, proxy_id)
+        await call.answer(f"{_TARGET_LABEL[target]}: прокси отключён")
         await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id)
         return
 
-    # Активация: сначала проверка, чтобы мёртвый прокси не оборвал рабочее подключение.
-    await call.answer("⏳ Проверяю перед подключением...")
+    # Активация: сначала проверка ИМЕННО этой цели, чтобы мёртвый/забаненный прокси
+    # не оборвал рабочее подключение (напоминание: Playerok и Telegram банятся независимо).
+    await call.answer(f"⏳ Проверяю {_TARGET_LABEL[target]}...")
     await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id, checking_id=proxy_id)
-    res = await asyncio.to_thread(check_proxy, build_proxy_url(proxy))
-    await asyncio.to_thread(proxy_store.update_check, proxy_id, res)
+    check_fn = check_proxy_playerok if target == "playerok" else check_proxy_telegram
+    res = await asyncio.to_thread(check_fn, build_proxy_url(proxy))
+    await asyncio.to_thread(proxy_store.update_check, proxy_id, target, res)
 
     if res["ok"]:
-        await asyncio.to_thread(proxy_store.set_active, proxy_id, True)
-        proxy_url = build_proxy_url(proxy)
-        _apply_proxy_to_running_account(cardinal, proxy_url)
-        logger.info("Cardinal переключён на прокси %s:%s", proxy["host"], proxy["port"])
+        await asyncio.to_thread(proxy_store.set_active, proxy_id, target, True)
+        _apply(cardinal, bot, target, build_proxy_url(proxy))
+        logger.info("%s переключён на прокси %s:%s", target, proxy["host"], proxy["port"])
     else:
-        logger.warning("Прокси %s:%s не прошёл проверку, активация отменена: %s",
-                        proxy["host"], proxy["port"], res.get("error"))
+        logger.warning("Прокси %s:%s не прошёл проверку для %s, активация отменена: %s",
+                        proxy["host"], proxy["port"], target, res.get("error"))
 
     await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id)
 
@@ -282,8 +341,10 @@ async def cb_proxy_remove(call: CallbackQuery, cardinal, bot: Bot) -> None:
     if not proxy:
         await call.answer("❌ Прокси не найден", show_alert=True)
         return
-    if proxy["is_active"]:
-        _apply_proxy_to_running_account(cardinal, None)
+    if proxy["active_playerok"]:
+        _apply_playerok_proxy(cardinal, None)
+    if proxy["active_telegram"]:
+        _apply_telegram_proxy(bot, None)
     await asyncio.to_thread(proxy_store.remove_proxy, proxy_id)
     await call.answer("🗑 Прокси удалён")
     await _render_menu(bot, cardinal, call.message.chat.id, call.message.message_id)
