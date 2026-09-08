@@ -234,6 +234,7 @@ STRINGS = {
     "notif_item_raised": "📈 Item \"{item}\" raised (spent {spent}).",
     "notif_insufficient_balance": "💸 Not enough balance to raise \"{item}\": need {price}, available {available}.",
     "notif_error": "🚨 <b>Cardinal error</b>:\n<code>{error}</code>",
+    "notif_playerok_connected": "🔌 <b>Playerok connected</b>\n👤 Account: <b>{username}</b>\n💰 Balance: <b>{balance}</b>",
     "notif_stock_empty": "📭 Stock for \"{item}\" is empty! Refill it to keep auto-delivery working.",
     "notif_restore_ok": "♻️ Item \"{item}\" restored after sale (new ID: <code>{item_id}</code>).",
     "notif_restore_fail": "♻️❌ Failed to restore item \"{item}\": {error}",

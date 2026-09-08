@@ -1343,6 +1343,14 @@ class Notifier:
         if self._toggles.errors:
             await self._send_all(self.cardinal.l10n("notif_error", error=_esc(error_text)))
 
+    async def notify_playerok_connected(self, username: str, balance) -> None:
+        """Уведомление об успешном РУЧНОМ подключении к Playerok (кнопка в TG-панели)."""
+        await self._send_all(self.cardinal.l10n(
+            "notif_playerok_connected",
+            username=_esc(username or "?"),
+            balance=_esc(balance),
+        ))
+
     async def notify_stock_empty(self, item_name: str) -> None:
         if self._toggles.stock_empty:
             await self._send_all(self.cardinal.l10n("notif_stock_empty", item=_esc(item_name)))

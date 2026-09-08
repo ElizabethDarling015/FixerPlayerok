@@ -289,6 +289,11 @@ STRINGS = {
         "🚨 <b>Ошибка Cardinal</b>\n\n"
         "<pre>{error}</pre>"
     ),
+    "notif_playerok_connected": (
+        "🔌 <b>Playerok подключён</b>\n"
+        "👤 Аккаунт: <b>{username}</b>\n"
+        "💰 Баланс: <b>{balance}</b>"
+    ),
     "notif_stock_empty": (
         "📭 <b>Склад пуст</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n\n"

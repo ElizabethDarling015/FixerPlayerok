@@ -35,6 +35,44 @@ _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
 
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """
+    Доращивает недостающие колонки до актуальной схемы, по одной, независимо друг от
+    друга — а не одним блоком, завязанным на наличие конкретной старой колонки
+    (`is_active`). Так переживает любую промежуточную версию таблицы: и совсем старую
+    (единый `is_active`/`last_*`), и любую другую, где почему-либо не хватает части
+    новых колонок. На новых БД (созданных уже с актуальной схемой) ничего не делает —
+    `cols` будет пуст (таблицу только что создал `CREATE TABLE IF NOT EXISTS` выше).
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(proxies)")}
+    if not cols:
+        return  # свежесозданная таблица уже с актуальной схемой, мигрировать нечего
+
+    needed = {
+        "active_playerok": "INTEGER NOT NULL DEFAULT 0",
+        "active_telegram": "INTEGER NOT NULL DEFAULT 0",
+        "playerok_ok": "INTEGER",
+        "playerok_ms": "INTEGER",
+        "playerok_error": "TEXT",
+        "telegram_ok": "INTEGER",
+        "telegram_ms": "INTEGER",
+        "telegram_error": "TEXT",
+    }
+    had_active_playerok = "active_playerok" in cols
+    for col, decl in needed.items():
+        if col not in cols:
+            conn.execute(f"ALTER TABLE proxies ADD COLUMN {col} {decl}")
+
+    # Перенос данных из совсем старой (единый is_active/last_*) схемы — только один
+    # раз, когда active_playerok реально только что добавили этим вызовом, и только
+    # если было откуда переносить (была старая колонка is_active).
+    if not had_active_playerok and "is_active" in cols:
+        conn.execute(
+            "UPDATE proxies SET active_playerok = is_active, "
+            "playerok_ok = last_ok, playerok_ms = last_ms, playerok_error = last_error"
+        )
+
+
 def _get_conn(db_path: str = DB_FILE) -> sqlite3.Connection:
     global _conn
     if _conn is None:
@@ -64,6 +102,7 @@ def _get_conn(db_path: str = DB_FILE) -> sqlite3.Connection:
                     created_at       TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
                 )
             """)
+            _migrate_schema(_conn)
     return _conn
 
 
