@@ -8,6 +8,7 @@ import asyncio
 import html
 import json
 import math
+import time
 from contextlib import suppress
 from datetime import datetime
 
@@ -32,6 +33,13 @@ CHATS_PER_PAGE = 6
 MESSAGES_LIMIT = 24      # серверный лимит chatMessages — не более 24 за запрос
 MESSAGES_PER_PAGE = 8
 QUICK_PREFIX = "!!"
+#: Сколько секунд ждать ответа Playerok на «Прочитано» до перехода в фоновое ожидание.
+#: Дольше тянуть нельзя: Telegram перестаёт принимать ответ на нажатие кнопки
+#: («query is too old»), и алерт просто не показался бы.
+READ_SOFT_TIMEOUT = 8.0
+#: Фоновые задачи, дожидающиеся запоздалого ответа Playerok. Ссылки храним,
+#: иначе asyncio может собрать незавершённую задачу сборщиком мусора.
+_background_tasks: set[asyncio.Task] = set()
 #: Курсоры страниц списка чатов (tg_user_id -> список курсоров): курсоры длинные,
 #: в callback_data (лимит 64 байта) их не положить — держим в кэше.
 _list_cursors: dict[int, list[str | None]] = {}
@@ -69,7 +77,8 @@ class ChatModeGuard(BaseMiddleware):
     async def __call__(self, handler, event: CallbackQuery, data: dict):
         state: FSMContext = data["state"]
         current = await state.get_state()
-        if current is not None and current.startswith("ChatReply:"):
+        # «Закрыть» лишь удаляет служебное сообщение — диалог из-за этого не прерываем.
+        if current is not None and current.startswith("ChatReply:") and event.data != "close":
             await state.clear()
             logger.debug("[chats] Режим живого диалога завершён (навигация: {})", event.data)
         return await handler(event, data)
@@ -409,16 +418,71 @@ async def cb_chat_page(query: CallbackQuery, cardinal, state: FSMContext) -> Non
 
 @router.callback_query(F.data.startswith("chat:read:"))
 async def cb_chat_read(query: CallbackQuery, cardinal) -> None:
-    """Отметить чат прочитанным."""
+    """Отметить чат прочитанным.
+
+    Если Playerok ответил за ``READ_SOFT_TIMEOUT`` секунд — результат показывается
+    алертом (окно с кнопкой «ОК»). Если нет — приходит отдельное сообщение
+    «Playerok не ответил вовремя» с кнопкой «Закрыть», запрос дорабатывает в фоне,
+    и когда Playerok ответит, в это же сообщение дописывается вторая строка с итогом
+    и временем выполнения."""
     if not await _require_online(cardinal, query):
         return
-    await _safe_answer(query)
     chat_id = query.data.split(":", 2)[2]
+    l10n = cardinal.l10n
+    started = time.monotonic()
+    task = asyncio.ensure_future(asyncio.to_thread(cardinal.account.mark_chat_as_read, chat_id))
+
+    done, _ = await asyncio.wait({task}, timeout=READ_SOFT_TIMEOUT)
+    if done:
+        exc = task.exception()
+        if exc is not None:
+            logger.opt(exception=exc).error("Ошибка отметки прочитанным чата {}", chat_id)
+            await _safe_answer(query, l10n("chats_read_failed"), show_alert=True)
+        else:
+            await _safe_answer(query, l10n("chats_read_done"), show_alert=True)
+        return
+
+    # Playerok тянет с ответом: снимаем «часики» с кнопки и переходим в фоновое ожидание.
+    await _safe_answer(query)
+    logger.warning(
+        "[chats] Playerok не ответил на «Прочитано» за {} с (чат {}) — жду в фоне",
+        READ_SOFT_TIMEOUT, chat_id,
+    )
+    first_line = l10n("chats_read_slow", seconds=f"{READ_SOFT_TIMEOUT:g}")
+    kb = InlineKeyboardBuilder()
+    kb.button(text=l10n("btn_close"), callback_data="close")
+    markup = kb.as_markup()
+    note: Message | None = None
     try:
-        await asyncio.to_thread(cardinal.account.mark_chat_as_read, chat_id)
-        await query.message.answer(cardinal.l10n("chats_read_done"))
+        note = await query.message.answer(first_line, reply_markup=markup)
     except Exception:
-        logger.exception("Ошибка отметки прочитанным чата {}", chat_id)
+        logger.exception("[chats] Не удалось отправить уведомление о долгом ответе Playerok")
+
+    bg = asyncio.create_task(_finish_slow_read(task, note, started, chat_id, l10n, first_line, markup))
+    _background_tasks.add(bg)
+    bg.add_done_callback(_background_tasks.discard)
+
+
+async def _finish_slow_read(task, note, started, chat_id, l10n, first_line, markup) -> None:
+    """Дожидается запоздалого ответа Playerok и дописывает итог в уведомление ``note``."""
+    try:
+        await task
+    except Exception as exc:
+        elapsed = time.monotonic() - started
+        logger.opt(exception=exc).error(
+            "Ошибка отметки прочитанным чата {} (через {:.1f} с)", chat_id, elapsed
+        )
+        second_line = l10n("chats_read_late_failed", seconds=f"{elapsed:.1f}")
+    else:
+        elapsed = time.monotonic() - started
+        logger.info("[chats] Playerok ответил на «Прочитано» через {:.1f} с (чат {})", elapsed, chat_id)
+        second_line = l10n("chats_read_late_ok", seconds=f"{elapsed:.1f}")
+
+    if note is None:
+        return
+    # Если уведомление уже закрыли кнопкой — редактировать нечего, ошибку глотаем.
+    with suppress(Exception):
+        await note.edit_text(f"{first_line}\n{second_line}", reply_markup=markup)
 
 @router.callback_query(F.data.startswith("chat:reply:"))
 async def cb_chat_reply(query: CallbackQuery, cardinal, state: FSMContext) -> None:
