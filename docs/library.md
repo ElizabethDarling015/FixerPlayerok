@@ -1,6 +1,6 @@
 # Библиотека playerokapi
 
-Краткие примеры использования Python-пакета `playerokapi` (независим от бота PlayerokCardinal).
+Краткие примеры использования Python-пакета `playerokapi` (независим от бота FixerPlayerok).
 Больше сценариев — в папке [`examples/`](../examples/).
 
 ## Быстрый старт

@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="PLAYEROK CARDINAL" width="720">
+<img src="assets/banner.png" alt="FIXER PLAYEROK" width="720">
 
-# PlayerokCardinal
+# FixerPlayerok
 
-Бот для автоматизации продаж на [Playerok](https://playerok.com).
-
+Бот-помощник для продавцов [Playerok](https://playerok.com): автовыдача, уведомления о сделках
+и переписка с покупателями — всё из Telegram.
 
 ---
 
@@ -13,16 +13,13 @@
 ![stack](https://img.shields.io/badge/stack-Python%20%C2%B7%20aiogram%20%C2%B7%20Playerok-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
-![visitors](https://api.visitorbadge.io/api/visitors?path=scwee%2FPlayerokCardinal&label=visitors&labelColor=%23555555&countColor=%23007ec6)
-
-![PLAYEROK](https://img.shields.io/badge/PLAYEROK-BOT-brightgreen?style=for-the-badge)
 ![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![aiogram](https://img.shields.io/badge/aiogram-3.7%2B-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-BOT-26A5E0?style=for-the-badge&logo=telegram&logoColor=white)
 
-![stars](https://img.shields.io/github/stars/scwee/PlayerokCardinal)
-![forks](https://img.shields.io/github/forks/scwee/PlayerokCardinal)
-![watchers](https://img.shields.io/github/watchers/scwee/PlayerokCardinal)
+![stars](https://img.shields.io/github/stars/ElizabethDarling015/FixerPlayerok)
+![forks](https://img.shields.io/github/forks/ElizabethDarling015/FixerPlayerok)
+![last commit](https://img.shields.io/github/last-commit/ElizabethDarling015/FixerPlayerok)
 
 </div>
 
@@ -32,150 +29,142 @@
 ## Содержание
 
 - [Возможности](#возможности)
-  - [Playerok](#playerok)
-  - [Уведомления и ПУ в Telegram](#уведомления-и-пу-в-telegram)
-  - [Дополнительные возможности](#дополнительные-возможности)
-- [Преимущества](#преимущества)
-  - [Для пользователей](#для-пользователей)
-  - [Для разработчиков](#для-разработчиков)
-- [Плагины](#плагины)
 - [Установка](#установка)
   - [Cookies / token Playerok](#cookies--token-playerok)
-  - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
-- [Установка плагинов](#установка-плагинов)
-- [Помощь](#помощь)
+  - [Windows](#windows)
+- [Команды запуска](#команды-запуска)
+- [Автозапуск (systemd)](#автозапуск-systemd)
+- [Обновление](#обновление)
+- [Где что лежит](#где-что-лежит)
 - [FAQ](#faq)
-- [Star it](#star-it)
+- [Лицензия](#лицензия)
 
 ## Возможности
 
-### Playerok
+**Playerok**
 
-- Автовыдача товаров из файлов-складов (безопасная: при сбое отправки позиция возвращается на склад; дедуп по сделке в SQLite).
+- Автовыдача товаров из файлов-складов: при сбое отправки позиция возвращается на склад,
+  повторная выдача по одной сделке исключена (журнал в SQLite).
 - Автоподнятие лотов по таймеру.
-- Автоответ на заготовленные `!команды` (переменные `$username`, `$chat_id`, `$date`, `$time`).
-- Приветствие новых покупателей (с дедупом).
-- Автовосстановление лотов после продажи (тот же приоритет DEFAULT/PREMIUM; при нехватке
-  баланса на премиум — бесплатное выставление + предупреждение в Telegram).
+- Автовосстановление лотов после продажи.
+- Приветствие новых покупателей.
 - Вечный онлайн.
-- Ежедневная сводка в Telegram (продажи, выручка, баланс, остатки складов).
 - Чёрный список покупателей.
-- Уведомления в Telegram и полноценная панель управления.
 
-### Уведомления и ПУ в Telegram
+**Telegram**
 
-- Панель `/menu`: статус, модули, автовыдача, автоответчик, чёрный список, уведомления, плагины, логи, бэкап, обновление с GitHub, перезагрузка конфигов, перезапуск и выключение.
-- Уведомления о сделках, оплате, выдаче (с остатком склада), сообщениях, отзывах, проблемах в сделках, поднятии лотов, нехватке баланса, ошибках, пустом складе и покупках из чёрного списка.
-- Ответ на сообщения покупателя прямо из Telegram (reply на уведомление).
-- Настройка автовыдачи и автоответчика из панели (в т.ч. пополнение склада текстом или `.txt`-файлом).
-
-### Дополнительные возможности
-
-- Переменные в текстах автоответа / приветствия / выдачи.
-- Плагины без правки кода бота (папка `plugins/`).
-- Бэкап конфигов и данных zip-архивом из Telegram.
-- Автозапуск через systemd (`./cardinal.sh --service`, Linux).
-
-## Преимущества
-
-### Для пользователей
-
-- Нужный продавцу функционал в одном боте: выдача, ответы, поднятие, онлайн, сводка, ПУ в Telegram.
-- Установка одной командой: `./cardinal.sh` (Linux/macOS) или `Cardinal.bat` (Windows).
-- Конфиги в TOML (`configs/`), логи с ротацией в `storage/logs/`.
-- Плагины расширяют поведение под свои сценарии.
-- Полное управление через Telegram после первичной настройки.
-
-### Для разработчиков
-
-- Python 3.11+, type-hints, pydantic-валидация конфигов, loguru.
-- Плагины через хуки (`PluginManager`).
-- Отдельный Python-пакет **playerokapi** (Account, Runner, события) — можно использовать без бота; примеры: [`docs/library.md`](docs/library.md).
-
-## Плагины
-
-Отдельного канала с плагинами нет. Кладёте свои `.py` в `plugins/` (см. [`plugins/example_plugin.py`](plugins/example_plugin.py)) или ставите файл через раздел «Плагины» в `/menu`.
-
-**Важно:** не устанавливайте плагины из непроверенных источников. Через систему плагинов злоумышленник может получить полный доступ к устройству и аккаунту Playerok.
+- Панель `/menu`: статус и баланс, чаты с покупателями, статистика, сводка по запросу,
+  автовыдача, автоответчик, чёрный список, уведомления, логи, бэкап, прокси,
+  обновление с GitHub.
+- Чаты с покупателями: история переписки, живой диалог (текст и фото уходят покупателю),
+  быстрые шаблоны — `!!команда` подставляет заготовленный ответ из автоответчика
+  (переменные `$username`, `$chat_id`, `$date`, `$time`).
+- Уведомления о сделках, оплате, выдаче, сообщениях, отзывах, проблемах в сделках,
+  ошибках, пустом складе и покупках из чёрного списка; ответ покупателю — reply на уведомление.
+- Ежедневная сводка: продажи, выручка, баланс, остатки складов.
+- Бэкап конфигов и данных одним zip-архивом.
 
 ## Установка
 
-Требуется **Python 3.11+**.
+Нужен **Python 3.11+** (на Linux скрипт поставит его сам).
 
 ### Cookies / token Playerok
 
 1. Откройте [playerok.com](https://playerok.com) и войдите в аккаунт.
-2. DevTools (F12) → вкладка Network → любой запрос к `playerok.com`.
-3. Скопируйте заголовок **Cookie** целиком (или хотя бы значение куки `token` — JWT вида `eyJ...`).
-4. Вставьте в мастер настройки при первом запуске (или в `configs/main.toml`, секция `[playerok]`, поле `cookies`).
+2. DevTools (F12) → Network → любой запрос к `playerok.com`.
+3. Скопируйте заголовок **Cookie** целиком (минимум — значение куки `token`, JWT вида `eyJ...`).
+4. Вставьте в мастер настройки при первом запуске (или в `configs/main.toml`, `[playerok]` → `cookies`).
 
-Обычно хватает `token=...`. Если появится `BotCheckDetectedException` — добавьте куки DDoS-Guard (например `__ddg5_`) из того же браузера или укажите прокси.
+Если бот ловит антибот-проверку (`BotCheckDetectedException`) — возьмите свежие cookies
+вместе с `__ddg5_` из браузера на том же IP, с которого работает бот.
+
+### Linux / macOS
+
+```bash
+git clone https://github.com/ElizabethDarling015/FixerPlayerok.git
+cd FixerPlayerok
+./fixer.sh
+```
+
+При первом запуске скрипт создаст виртуальное окружение, поставит зависимости и проведёт
+мастер настройки (cookies, Telegram-бот, админы, модули). Ставьте через `git clone`, а не
+архивом — так обновления приходят чисто.
 
 ### Windows
 
 1. Установите [Python 3.11+](https://www.python.org/downloads/) с галочкой **Add python.exe to PATH**.
-2. Скачайте и распакуйте архив репозитория.
-3. Запустите `Cardinal.bat` двойным кликом.
-4. При первом запуске пройдите мастер настройки (cookies, Telegram-бот, админы, модули).
+2. Скачайте репозиторий и запустите `Fixer.bat`.
 
-### Linux / macOS
+## Команды запуска
 
-Из корня репозитория:
+| Команда | Что делает |
+|---|---|
+| `./fixer.sh` | установка (при первом запуске), настройка и запуск бота |
+| `./fixer.sh --setup` | заново пройти мастер настройки (перезапишет `configs/main.toml`) |
+| `./fixer.sh --check` | проверить token и авторизацию на Playerok, бота не запускает |
+| `./fixer.sh --update` | обновить код с GitHub и зависимости |
+| `./fixer.sh --install-service` | установить systemd-сервис `FixerPlayerok` и запустить его |
+| `./fixer.sh --remove-service` | остановить и удалить сервис |
+| `./fixer.sh --offline` | запуск без подключения к Playerok API — для тестов; действует только на этот запуск |
+| `./fixer.sh --proxyN` | Telegram-сессия через N-й сохранённый прокси, разово (на чёрный день, когда без прокси Telegram недоступен) |
+| `./fixer.sh --add-proxy=URL` | добавить прокси без запуска бота (`socks5://user:pass@host:port` и т.п.) |
+
+Скрипт рассчитан на bash; `sh fixer.sh` тоже работает — он сам перезапустится под bash.
+
+## Автозапуск (systemd)
 
 ```bash
-chmod +x cardinal.sh
-./cardinal.sh              # первый раз: Python (если нужно) + зависимости + настройка + запуск
-./cardinal.sh --setup      # заново пройти настройку
-./cardinal.sh --check      # проверить token и авторизацию
-./cardinal.sh --update     # обновить зависимости
-./cardinal.sh --service    # systemd-автозапуск (Linux)
+./fixer.sh --install-service
 ```
 
-Одной командой:
+Без `sudo` — пароль скрипт спросит сам. Сервис создаётся под текущего пользователя и папку проекта:
+`/etc/systemd/system/FixerPlayerok.service`. Если на машине есть `sing-box.service`,
+бот стартует после него. Старый сервис `PlayerokCardinal` при установке будет найден и удалён.
 
 ```bash
-wget https://github.com/scwee/PlayerokCardinal/archive/refs/heads/main.tar.gz -O pc.tar.gz \
-  && tar -xzf pc.tar.gz && cd PlayerokCardinal-main && chmod +x cardinal.sh && ./cardinal.sh
+sudo systemctl status FixerPlayerok     # статус
+sudo systemctl restart FixerPlayerok    # перезапуск
+journalctl -u FixerPlayerok -f          # логи
 ```
 
-Либо, если уже клонировали репозиторий на сервер: `./cardinal.sh`.
+## Обновление
 
-Авторизация в Telegram-панели: ID администраторов в `configs/main.toml`, либо секретный код из консоли при старте.
+- Из Telegram: `/menu` → ⚙️ Настройки → ⬇️ Обновить с GitHub — скачает новую версию и перезапустит бота.
+- С сервера: `./fixer.sh --update` — если работает сервис, скрипт остановит его на время обновления
+  и запустит обратно.
 
-## Установка плагинов
+`configs/`, `storage/` и свои файлы в `plugins/` при обновлении не затрагиваются.
 
-1. Положите файл `.py` в папку `plugins/` и перезапустите бота  
-   **или** `/menu` → Плагины → добавить файл из Telegram.
-2. Не ставьте плагины из неизвестных источников (см. предупреждение выше).
+## Где что лежит
 
-## Помощь
+| Путь | Что там |
+|---|---|
+| `configs/main.toml` | cookies, токен Telegram-бота, админы, модули |
+| `configs/autoresponse.toml` | шаблоны ответов (`!!команда` в живом диалоге) |
+| `configs/autodelivery.toml` | лоты автовыдачи |
+| `configs/blacklist.toml` | чёрный список |
+| `storage/` | склады, базы, журнал выдач, прокси |
+| `storage/logs/fixer.log` | лог бота |
 
-**Создатель** — [@Scwee_xz](https://t.me/Scwee_xz)
-
-Telegram-чат поддержки появится позже. Пока смотрите [FAQ](#faq), логи в `storage/logs/cardinal.log` и раздел «Настройки» в `/menu`.
+Кнопка «💾 Бэкап» в настройках присылает zip с `configs/` и `storage/` (без логов).
+Внутри cookies и токен — не пересылайте архив никому.
 
 ## FAQ
 
-**Где взять cookies?**  
-См. [Cookies / token Playerok](#cookies--token-playerok). В мастер можно вставить и голое значение `token` без префикса `token=`.
+**BotCheckDetectedException / антибот**
+Свежие cookies (включая `__ddg5_`) из браузера на том же IP, что и бот. Не запускайте две копии
+бота с одним аккаунтом с разных IP. Проверка: `./fixer.sh --check`.
 
-**BotCheckDetectedException / антибот**  
-Добавьте полные cookies из браузера (в т.ч. `__ddg5_`) или прокси в `[playerok]` → `proxy`. Проверка: `./cardinal.sh --check`.
+**Token «обрезался» / 500 при авторизации**
+Token — JWT из трёх частей через точку; мастер предупредит, если строка обрезана или просрочена.
 
-**Token «обрезался» / 500 при авторизации**  
-Token — JWT из трёх частей через точку. Скопируйте его целиком; мастер предупредит, если строка похожа на обрезанную или просроченную.
-
-**macOS: ошибка curl_cffi / symbol not found**  
+**macOS: ошибка curl_cffi / symbol not found**
 Зависимости ограничивают `curl_cffi<0.10`. При проблеме: `pip install "curl_cffi==0.7.4"`.
 
-**Бот в Telegram не отвечает**  
+**Бот в Telegram не отвечает**
 Проверьте токен бота и ID админов; при пустом списке админов отправьте боту код из консоли.
-
-## Star it
-
-Если PlayerokCardinal вам полезен — [поставьте звезду](https://github.com/scwee/PlayerokCardinal) репозиторию на GitHub (нужно быть авторизованным).
 
 ## Лицензия
 
-MIT — см. [`LICENSE`](LICENSE).
+MIT — см. [`LICENSE`](LICENSE). Проект вырос из PlayerokCardinal (scwee), исходный копирайт сохранён.

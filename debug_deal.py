@@ -1,7 +1,7 @@
 """Диагностика get_deal для последней сделки."""
 import asyncio
 from playerokapi.account import Account
-from cardinal.settings import load_main_settings
+from fixer.settings import load_main_settings
 
 async def main():
     settings = load_main_settings()

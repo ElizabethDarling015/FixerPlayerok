@@ -29,7 +29,7 @@ dev = [
     "graphql-core>=3.2",
     "playwright",
 ]
-cardinal = [
+fixer = [
     "aiogram>=3.7",
     "aiohttp-socks>=0.8",
     "pydantic>=2.7",
@@ -39,12 +39,12 @@ cardinal = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["playerokapi", "playerokapi.*", "cardinal", "cardinal.*"]
+include = ["playerokapi", "playerokapi.*", "fixer", "fixer.*"]
 
 [tool.setuptools.package-data]
 # PEP 561: маркер py.typed — потребители библиотеки получают аннотации типов.
 playerokapi = ["py.typed"]
-cardinal = ["py.typed"]
+fixer = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
