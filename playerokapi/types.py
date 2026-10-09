@@ -221,13 +221,16 @@ class UserProfile:
 
     def __init__(self, id: str, username: str | None, role: UserTypes | None, avatar_url: str | None,
                  is_online: bool | None, is_blocked: bool | None, rating: int | None, reviews_count: int | None,
-                 support_chat_id: str | None, system_chat_id: str | None, created_at: str | None):
+                 support_chat_id: str | None, system_chat_id: str | None, created_at: str | None,
+                 raw_role: str | None = None):
         self.id: str = id
         """ID пользователя."""
         self.username: str | None = username
         """Никнейм пользователя."""
         self.role: UserTypes | None = role
         """Роль пользователя."""
+        self.raw_role: str | None = raw_role
+        """Роль как её прислал сервер (строка) — есть даже для ролей, которых нет в `UserTypes`."""
         self.avatar_url: str | None = avatar_url
         """URL аватара пользователя."""
         self.is_online: bool | None = is_online
@@ -1103,12 +1106,30 @@ class TransactionProvider:
     """Провайдер финансовой операции (пополнение/вывод)."""
 
     def __init__(self, id: str | None, name: str | None, fee: float | None,
-                 min_fee_amount: int | None, description: str | None):
+                 min_fee_amount: int | None, description: str | None,
+                 min_out: int | None = None, max_out: int | None = None,
+                 saved_account: str | None = None):
         self.id: str | None = id
         self.name: str | None = name
         self.fee: float | None = fee
+        """Комиссия в процентах."""
         self.min_fee_amount: int | None = min_fee_amount
+        """Минимальная комиссия, ₽."""
         self.description: str | None = description
+        self.min_out: int | None = min_out
+        """Минимальная сумма вывода этим способом, ₽."""
+        self.max_out: int | None = max_out
+        """Максимальная сумма вывода этим способом, ₽."""
+        self.saved_account: str | None = saved_account
+        """Реквизиты, сохранённые на сайте (например, телефон для СБП)."""
+
+
+class SbpBank:
+    """Банк — участник СБП (для вывода по номеру телефона)."""
+
+    def __init__(self, id: str, name: str):
+        self.id: str = id
+        self.name: str = name
 
 
 class Transaction:

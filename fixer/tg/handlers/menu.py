@@ -8,25 +8,23 @@ from contextlib import suppress
 from pathlib import Path
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from loguru import logger
 
 from ...settings import save_main_settings, STORAGE_DIR
-from .common import cancel_markup, nav_row, on_off, safe_edit
+from .common import nav_row, on_off, safe_edit
 
 router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
-MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "greeting", "online", "digest")
+MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "online", "digest")
 
 #: Файл-флаг: каким чатам уже установили reply-клавиатуру (для миграции).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
-
-class EditGreeting(StatesGroup):
-    text = State()
 
 # ----------------------------------------------------------------------
 # Легаси reply-клавиатура «Меню» (большая кнопка под полем ввода) — демонтаж.
@@ -119,27 +117,26 @@ def build_main_menu(fixer) -> tuple[str, object]:
     # Ряд 2: заготовки будущих разделов
     builder.button(text=l10n("btn_auto_publish"), callback_data="auto_publish")
     builder.button(text=l10n("btn_last_deals"), callback_data="last_deals")
-    # Ряд 3: ЧС + заглушка (чтобы пары остались ровными)
+    # Ряд 3: ЧС + вывод средств
     builder.button(text=l10n("menu_section_blacklist"), callback_data="bl")
-    builder.button(text=l10n("menu_section_stub"), callback_data="noop")
+    builder.button(text=l10n("btn_withdraw"), callback_data="wd")
     # Ряд 4
-    builder.button(text=l10n("menu_section_plugins"), callback_data="pl")
     builder.button(text=l10n("menu_section_stats"), callback_data="st")
+    builder.button(text=l10n("menu_section_plugins"), callback_data="pl")
     # Ряд 5
-    builder.button(text=l10n("menu_section_settings"), callback_data="sys")
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
+    builder.button(text=l10n("menu_section_settings"), callback_data="sys")
     builder.adjust(1, 2, 2, 2, 2)
     return text, builder.as_markup()
 
 def build_toggles_menu(fixer) -> tuple[str, object]:
-    """Подменю «Глобальные переключатели»: тумблеры всех модулей + текст приветствия."""
+    """Подменю «Глобальные переключатели»: тумблеры всех модулей."""
     l10n = fixer.l10n
     builder = InlineKeyboardBuilder()
     for name in MODULE_NAMES:
         enabled = getattr(fixer.settings.modules, name)
         builder.button(text=f"{on_off(l10n, enabled)} {l10n('module_' + name)}", callback_data=f"mod:{name}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text=l10n("gl_btn_greeting_text"), callback_data="gl:greet"))
     builder.row(*nav_row(l10n, "sys"))
     return l10n("gl_title"), builder.as_markup()
 
@@ -176,13 +173,12 @@ async def cb_menu(query: CallbackQuery, fixer) -> None:
     await safe_edit(query.message, text, markup)
     await query.answer()
 
-@router.callback_query(F.data.in_({"auto_publish", "last_deals"}))
+@router.callback_query(F.data == "auto_publish")
 async def cb_in_development(query: CallbackQuery, fixer) -> None:
     """Заглушка для кнопок будущих разделов («Чаты» обрабатывает раздел chats)."""
     l10n = fixer.l10n
     section_key = {
         "auto_publish": "btn_auto_publish",
-        "last_deals": "btn_last_deals",
     }[query.data]
     # Берём текст кнопки без эмодзи для алерта
     section = l10n(section_key).split(" ", 1)[-1]
@@ -204,7 +200,7 @@ async def cb_toggle_module(query: CallbackQuery, fixer) -> None:
     await safe_edit(query.message, text, markup)
 
 # ----------------------------------------------------------------------
-# Текст приветствия (FSM)
+# Глобальные переключатели
 # ----------------------------------------------------------------------
 
 @router.callback_query(F.data == "gl")
@@ -214,33 +210,21 @@ async def cb_toggles_menu(query: CallbackQuery, fixer) -> None:
     await safe_edit(query.message, text, markup)
     await query.answer()
 
-@router.callback_query(F.data == "gl:greet")
-async def cb_edit_greeting(query: CallbackQuery, state: FSMContext, fixer) -> None:
-    l10n = fixer.l10n
-    await state.set_state(EditGreeting.text)
-    await safe_edit(query.message,
-                    l10n("gl_enter_greeting", current=html.escape(fixer.settings.greeting.text)),
-                    cancel_markup(l10n))
-    await query.answer()
-
-@router.message(EditGreeting.text, F.text)
-async def msg_greeting_text(message: Message, state: FSMContext, fixer) -> None:
-    await state.clear()
-    fixer.settings.greeting.text = message.text
-    save_main_settings(fixer.settings)
-    await message.answer(fixer.l10n("gl_greeting_saved"))
-    text, markup = build_toggles_menu(fixer)
-    await message.answer(text, reply_markup=markup)
-
 @router.callback_query(F.data == "digest:now")
 async def cb_digest_now(query: CallbackQuery, fixer) -> None:
     """Кнопка «Сводка сейчас»: строит и присылает сводку, не дожидаясь расписания."""
-    import asyncio as _asyncio
     module = next((m for m in fixer.modules if m.name == "digest"), None)
     if module is None:
         await query.answer(fixer.l10n("digest_unavailable"), show_alert=True)
         return
-    text = await _asyncio.to_thread(module.build_digest)
+    if fixer.account is None:
+        await query.answer(fixer.l10n("st_offline"), show_alert=True)
+        return
+    try:
+        text = await module.build_digest()
+    except Exception as exc:
+        logger.exception("[digest] Не удалось построить сводку")
+        text = fixer.l10n("st_failed", error=html.escape(str(exc)[:200]))
 
     # Создаём клавиатуру с кнопкой "На главную"
     l10n = fixer.l10n
@@ -258,9 +242,19 @@ async def cb_noop(query: CallbackQuery) -> None:
     await query.answer()
 
 @router.callback_query(F.data == "close")
-async def cb_close(query: CallbackQuery) -> None:
-    await query.message.delete()
-    await query.answer()
+async def cb_close(query: CallbackQuery, fixer) -> None:
+    """Удаляет сообщение. Telegram разрешает боту удалять только сообщения моложе 48 часов —
+    старое (например, давно открытое меню) вместо этого сворачиваем: без кнопок, одна строка."""
+    try:
+        await query.message.delete()
+    except TelegramBadRequest:
+        with suppress(TelegramBadRequest):
+            if query.message.photo or query.message.caption is not None:
+                await query.message.edit_caption(caption=fixer.l10n("menu_closed"), reply_markup=None)
+            else:
+                await query.message.edit_text(fixer.l10n("menu_closed"), reply_markup=None)
+    with suppress(Exception):
+        await query.answer()
 
 @router.callback_query(F.data == "fsm:cancel")
 async def cb_fsm_cancel(query: CallbackQuery, state: FSMContext, fixer) -> None:

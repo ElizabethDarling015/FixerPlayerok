@@ -67,7 +67,6 @@ class ModulesSettings(BaseModel):
     autoraise: bool = False
     autoresponse: bool = True
     autorestore: bool = False
-    greeting: bool = False
     online: bool = True
     digest: bool = True
 
@@ -84,12 +83,6 @@ class AutoDeliverySettings(BaseModel):
 
     delivery_text: str = "Спасибо за покупку! Вот ваш товар:\n{item}"
     ledger_file: str = os.path.join(STORAGE_DIR, "autodelivery_ledger.sqlite3")
-
-
-class GreetingSettings(BaseModel):
-    """Секция `[greeting]` — приветствие новых покупателей."""
-
-    text: str = "Привет, $username! Я на связи — пишите, если есть вопросы по лоту."
 
 
 class OnlineSettings(BaseModel):
@@ -131,8 +124,9 @@ class DigestSettings(BaseModel):
 class NotificationsSettings(BaseModel):
     """Секция `[notifications]` — какие уведомления слать в Telegram."""
 
+    # «Новая сделка» и «Оплата лота» — одно уведомление (сделка без оплаты не возникает),
+    # поэтому один тумблер. Старый ключ item_paid в main.toml игнорируется.
     new_deal: bool = True
-    item_paid: bool = True
     delivery: bool = True
     new_message: bool = False
     new_review: bool = True
@@ -157,7 +151,6 @@ class MainSettings(BaseSettings):
     modules: ModulesSettings = ModulesSettings()
     autoraise: AutoRaiseSettings = AutoRaiseSettings()
     autodelivery: AutoDeliverySettings = AutoDeliverySettings()
-    greeting: GreetingSettings = GreetingSettings()
     online: OnlineSettings = OnlineSettings()
     digest: DigestSettings = DigestSettings()
     notifications: NotificationsSettings = NotificationsSettings()
@@ -214,9 +207,15 @@ class AutoDeliveryConfig(BaseModel):
 
 
 class BlacklistConfig(BaseModel):
-    """Чёрный список покупателей: `usernames` — список ников Playerok (без учёта регистра)."""
+    """Чёрный список покупателей.
+
+    `usernames` — ники Playerok (без учёта регистра), их добавляет продавец.
+    `known_ids` — ник из списка → ID пользователя Playerok. Заполняется сам при первой сделке
+    такого покупателя: дальше он узнаётся по ID, даже если сменит ник.
+    """
 
     usernames: list[str] = Field(default_factory=list)
+    known_ids: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("usernames")
     @classmethod
@@ -228,12 +227,32 @@ class BlacklistConfig(BaseModel):
                 cleaned.append(username)
         return cleaned
 
-    def contains(self, username: str | None) -> bool:
-        """Проверяет, есть ли ник в чёрном списке (без учёта регистра)."""
+    def _entry(self, username: str | None) -> str | None:
         if not username:
-            return False
+            return None
         needle = username.strip().casefold()
-        return any(u.casefold() == needle for u in self.usernames)
+        return next((u for u in self.usernames if u.casefold() == needle), None)
+
+    def contains(self, username: str | None, user_id: str | None = None) -> bool:
+        """Покупатель в чёрном списке: по нику (без учёта регистра) или по запомненному ID."""
+        if self._entry(username) is not None:
+            return True
+        return bool(user_id) and user_id in {
+            uid for name, uid in self.known_ids.items() if self._entry(name) is not None
+        }
+
+    def remember_id(self, username: str | None, user_id: str | None) -> bool:
+        """Запоминает ID покупателя из списка. True — если что-то изменилось (нужно сохранить)."""
+        entry = self._entry(username)
+        if entry is None or not user_id or self.known_ids.get(entry) == user_id:
+            return False
+        self.known_ids[entry] = user_id
+        return True
+
+    def remove(self, username: str) -> None:
+        """Убирает ник из списка вместе с запомненным ID."""
+        self.usernames = [u for u in self.usernames if u != username]
+        self.known_ids.pop(username, None)
 
 
 # ----------------------------------------------------------------------

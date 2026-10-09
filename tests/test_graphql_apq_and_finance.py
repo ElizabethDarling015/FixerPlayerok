@@ -99,15 +99,19 @@ def test_count_deals_and_chats():
 
 def test_finance_methods_shapes():
     account = make_account()
-    account._query = MagicMock(return_value={
+    account.id = "u1"
+    account._persisted_query = MagicMock(return_value={
         "transactions": {"edges": [{"node": {"id": "tx-1", "value": 50, "status": "CONFIRMED"}}],
                          "pageInfo": {}, "totalCount": 1},
     })
-    page = account.get_transactions(count=5)
+    page = account.get_transactions(count=5, filter={"operation": ["WITHDRAW"]})
     assert page is not None
     assert page.transactions[0].id == "tx-1"
-    assert account._query.call_args.args[0] == "transactions"
-    assert account._query.call_args.args[1]["hasSupportAccess"] is False
+    assert account._persisted_query.call_args.args[0] == "transactions"
+    variables = account._persisted_query.call_args.args[1]
+    assert variables["hasSupportAccess"] is False
+    # Как у сайта: без userId в фильтре сервер транзакции не отдаёт.
+    assert variables["filter"] == {"operation": ["WITHDRAW"], "userId": account.id}
 
     account._query = MagicMock(return_value={"createPaymentURL": "https://pay.example/1"})
     assert account.create_payment_url(100, "SBP") == "https://pay.example/1"
@@ -141,8 +145,8 @@ def test_my_item_extra_fields():
 
 
 def test_query_texts_cover_all_persisted():
-    from playerokapi.graphql_queries import PERSISTED_QUERIES, QUERY_TEXTS, QUERIES
-    assert set(QUERY_TEXTS) == set(PERSISTED_QUERIES)
+    from playerokapi.graphql_queries import HASH_ONLY_QUERIES, PERSISTED_QUERIES, QUERY_TEXTS, QUERIES
+    assert set(QUERY_TEXTS) | HASH_ONLY_QUERIES == set(PERSISTED_QUERIES)
     assert "chosenVerifiedCard" in QUERIES["viewer"]
     assert "createDeal" in QUERIES
     assert "requestWithdrawal" in QUERIES

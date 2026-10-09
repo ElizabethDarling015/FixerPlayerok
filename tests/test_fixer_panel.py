@@ -21,19 +21,36 @@ def test_main_menu_contains_status_and_sections():
     text, markup = build_main_menu(fixer)
     assert "seller" in text and "100" in text  # аккаунт и баланс
     callbacks = all_callback_data(markup)
-    # Тумблеры модулей переехали в подменю «Глобальные переключатели».
+    assert "Online" in text  # строка подключения
+    # Тумблеры модулей и разделы автовыдачи/автоответчика/уведомлений — в «Настройках».
     assert not any(cb.startswith("mod:") for cb in callbacks)
-    for section in ("gl", "ad", "ar", "bl", "nt", "pl", "st", "sys"):
+    for section in ("chats", "bl", "pl", "st", "sys", "digest:now"):
         assert section in callbacks
 
 
-def test_toggles_menu_contains_all_modules_and_greeting():
+def test_main_menu_button_order():
+    """Ряды: «Статистика»+«Плагины», «Сводка сейчас»+«Настройки»."""
+    _, markup = build_main_menu(make_fixer())
+    rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
+    assert ["st", "pl"] in rows and ["digest:now", "sys"] in rows
+
+
+def test_settings_menu_close_is_last_and_red():
+    from fixer.tg.handlers.system import build_system_menu
+    _, markup = build_system_menu(make_fixer())
+    rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
+    assert ["sys:update", "px:menu"] in rows and ["sys:clear_confirm", "close"] in rows
+    close = next(b for row in markup.inline_keyboard for b in row if b.callback_data == "close")
+    assert close.text.startswith("❌")
+
+
+def test_toggles_menu_contains_all_modules():
     fixer = make_fixer()
     text, markup = build_toggles_menu(fixer)
     callbacks = all_callback_data(markup)
     for name in MODULE_NAMES:
         assert f"mod:{name}" in callbacks
-    assert "gl:greet" in callbacks
+    assert "greeting" not in MODULE_NAMES and "gl:greet" not in callbacks
     assert "menu" in callbacks  # кнопка «Главное меню»
 
 
@@ -150,7 +167,11 @@ def test_plugins_menu_has_toggle_and_delete_buttons():
     )
     text, markup = build_plugins_menu(fixer)
     callbacks = all_callback_data(markup)
-    assert "pl:t:0" in callbacks and "pl:d:0" in callbacks
+    # В списке — меню плагина и быстрый тумблер; удаление — внутри меню плагина.
+    assert "pl:menu:0" in callbacks and "pl:t:0" in callbacks
+    from fixer.tg.handlers.plugins_panel import build_plugin_menu
+    _, plugin_markup = build_plugin_menu(fixer, 0)
+    assert "pl:d:0" in all_callback_data(plugin_markup)
 
 
 def test_system_menu_has_all_buttons():
@@ -167,33 +188,19 @@ def test_system_menu_has_all_buttons():
     assert "sys:restart" not in callbacks and "sys:off" not in callbacks
 
 
-def test_stats_view_totals():
-    import datetime
-
-    from fixer.tg.handlers.stats import build_stats_view
-
-    fixer = make_fixer()
-    assert build_stats_view(fixer) is None  # без модуля сводки
-
-    today = datetime.date.today().isoformat()
-    old_day = (datetime.date.today() - datetime.timedelta(days=20)).isoformat()
-
-    def get_last_days(days):
-        rows = [(today, 2, 300.0)]
-        if days >= 30:
-            rows.append((old_day, 1, 100.0))
-        return rows
-
-    fixer.modules = [SimpleNamespace(name="digest", get_last_days=get_last_days)]
-    view = build_stats_view(fixer)
-    assert view is not None
-    text, markup = view
-    assert today in text
-    assert "2" in text and "300.00" in text  # неделя
-    assert "400.00" in text  # месяц: 300 + 100
-    assert "menu" in all_callback_data(markup)
-
-
 def test_locales_have_same_keys():
     from fixer.locales import en, ru
     assert set(ru.STRINGS) == set(en.STRINGS)
+
+
+def test_locales_have_same_placeholders():
+    """Подстановки {…} в ru и en совпадают — иначе в одном из языков уведомление
+    придёт сырым шаблоном (как было с сообщениями поддержки)."""
+    import string
+    from fixer.locales import en, ru
+
+    def placeholders(text):
+        return {field for _, field, _, _ in string.Formatter().parse(text) if field}
+
+    for key in ru.STRINGS:
+        assert placeholders(ru.STRINGS[key]) == placeholders(en.STRINGS[key]), key

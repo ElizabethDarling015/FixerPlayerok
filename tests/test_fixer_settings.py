@@ -39,7 +39,7 @@ def test_load_main_settings_valid(tmp_path):
     assert settings.telegram.admin_ids == [42]
     assert settings.modules.autoraise is True
     assert settings.modules.autodelivery is True  # значение по умолчанию
-    assert settings.notifications.item_paid is True
+    assert settings.notifications.new_deal is True
 
 
 def test_load_main_settings_missing_file(tmp_path):

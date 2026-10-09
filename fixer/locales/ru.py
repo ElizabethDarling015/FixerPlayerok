@@ -28,8 +28,112 @@ STRINGS = {
     "chats_read_late_failed": "❌ Не удалось отметить чат прочитанным (через {seconds} с), см. лог.",
     "btn_auto_publish": "📤 Автовыставление",
     "btn_last_deals": "🕒 Последние сделки",
+    "wd_offline": (
+        '⚠️ Playerok не подключён.\n'
+        'Вывод средств доступен в онлайн-режиме.'
+    ),
+    "wd_failed": '❌ Не получилось: {error}',
+    "wd_status_confirmed": '✅ Проведена',
+    "wd_status_processing": '🔄 В обработке',
+    "wd_status_pending": '⏳ В очереди',
+    "wd_done": (
+        '✅ <b>Заявка на вывод создана</b>\n'
+        '\n'
+        '💸 Сумма: <b>{amount}</b>\n'
+        '📍 Куда: {destination}\n'
+        '📋 Статус: {status}\n'
+        '🆔 <code>{tx_id}</code>\n'
+        '\n'
+        'Когда Playerok проведёт выплату, придёт уведомление «Выплата с баланса».'
+    ),
+    "wd_sending": '⏳ Создаю заявку на вывод…',
+    "wd_btn_go": '✅ Вывести',
+    "wd_confirm": (
+        '💳 <b>Подтвердите вывод</b>\n'
+        '\n'
+        '💸 Сумма: <b>{amount}</b>\n'
+        '📍 Куда: {destination}\n'
+        '🧾 Комиссия Playerok ≈ {fee} ({fee_rule})\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '⚠️ После нажатия «Вывести» заявка уйдёт на Playerok.'
+    ),
+    "wd_usdt_estimate": '🪙 ≈ {usdt} USDT по курсу {rate} ₽ (до комиссии)',
+    "wd_err_provider_gone": 'Этот способ вывода сейчас недоступен на Playerok.',
+    "wd_err_expired": 'Данные вывода устарели — начните заново: «💳 Вывод средств».',
+    "wd_err_balance": 'Больше, чем доступно к выводу ({available}).',
+    "wd_err_max": 'Больше максимальной суммы для этого способа ({max}).',
+    "wd_err_min": 'Меньше минимальной суммы для этого способа ({min}).',
+    "wd_err_amount": 'Напишите сумму целым числом в рублях, например: <code>2000</code>',
+    "wd_btn_cancel": '✖️ Отмена',
+    "wd_btn_all": 'Всё доступное — {amount}',
+    "wd_amount_prompt": (
+        '💳 <b>Вывод</b> → {destination}\n'
+        '\n'
+        '💰 Доступно: <b>{available}</b>\n'
+        '📏 Лимиты способа: {min} – {max}\n'
+        '\n'
+        'Напишите сумму в рублях или нажмите кнопку:'
+    ),
+    "wd_err_usdt": 'Это не похоже на адрес TRC20: он начинается с <code>T</code> и состоит из 34 символов.',
+    "wd_enter_usdt": (
+        '🪙 Напишите адрес кошелька <b>USDT (TRC20)</b> — начинается с <code>T</code>, 34 символа.\n'
+        '\n'
+        '⚠️ Перевод на неверный адрес не вернуть — проверьте адрес дважды.'
+    ),
+    "wd_no_cards": (
+        '💳 На Playerok нет привязанных карт.\n'
+        'Привяжите карту в кошельке на сайте и вернитесь сюда.'
+    ),
+    "wd_choose_card": (
+        '💳 <b>Карта для вывода</b>\n'
+        '\n'
+        'Выберите карту, привязанную на Playerok:'
+    ),
+    "wd_err_phone": 'Не похоже на российский номер. Пример: <code>+79001234567</code>',
+    "wd_enter_phone": (
+        '📱 На сайте нет сохранённого номера для СБП.\n'
+        'Напишите номер телефона, привязанный к банку (например: <code>+79001234567</code>):'
+    ),
+    "wd_err_bank_not_found": 'Банк не найден — попробуйте другое название.',
+    "wd_enter_bank": '🔍 Напишите часть названия банка (например: <code>альфа</code>):',
+    "wd_choose_bank": (
+        '🏦 <b>Банк получателя (СБП)</b>\n'
+        '\n'
+        'Выберите банк или найдите его по названию:'
+    ),
+    "wd_btn_bank_search": '🔍 Найти другой банк',
+    "wd_btn_repeat": '⚡ Как в прошлый раз: {label}',
+    "wd_site_only": '<i>только на сайте</i>',
+    "wd_methods_header": '<b>Способы</b> (комиссия · лимиты):',
+    "wd_available": '💰 Доступно к выводу: <b>{amount}</b>',
+    "wd_title": '💳 <b>Вывод средств</b>',
+    "btn_withdraw": '💳 Вывод средств',
+    "ld_failed": '⚠️ Не удалось загрузить сделки: {error}',
+    "ld_offline": (
+        '⚠️ Playerok не подключён.\n'
+        'Раздел «Последние сделки» доступен в онлайн-режиме.'
+    ),
+    "ld_btn_refresh": '🔄 Обновить',
+    "ld_page": '<i>📄 Стр. {page}</i>',
+    "ld_empty": 'Продаж пока нет.',
+    "ld_entry": (
+        '📂 <b>Раздел:</b> {section}\n'
+        '🎁 <b>Лот:</b> {item}\n'
+        '👤 <b>Покупатель:</b> {buyer} | 💰 <b>Цена:</b> {price}\n'
+        '{state}'
+    ),
+    "ld_title": '🕒 <b>Последние сделки</b>',
+    "ld_review": ' · ⭐ {rating}',
+    "ld_state_unknown": '❔ {status}',
+    "ld_state_problem": '⚠️ Проблема в сделке',
+    "ld_state_rolled_back": '↩️ Возврат',
+    "ld_state_auto": '✅ Завершено автоматически',
+    "ld_state_confirmed": '✅ Завершено',
+    "ld_state_sent": '⏳ Не подтвердил',
+    "ld_state_paid": '💰 Оплачено, ждёт выдачи',
     "alert_in_development": "⏸ Раздел «{section}» в разработке — появится в следующих обновлениях.",
-    "btn_close": "✖️ Закрыть",
+    "btn_close": "❌ Закрыть",
     "cancelled": "Действие отменено.",
     "stub_message": "⏸ Раздел перенесён в Настройки",
     "btn_cancel": "Отмена",
@@ -48,7 +152,6 @@ STRINGS = {
     "menu_section_autoresponse": "💬 Автоответчик",
     "menu_section_blacklist": "🚫 Чёрный список",
     "menu_section_notifications": "🔔 Уведомления",
-    "menu_section_stub": "⏸ В разработке",
     "menu_section_plugins": "🧩 Плагины",
     "menu_section_settings": "⚙️ Настройки",
     "menu_btn_digest": "📊 Сводка сейчас",
@@ -58,7 +161,6 @@ STRINGS = {
     "module_autoraise": "Автоподнятие",
     "module_autoresponse": "Автоответчик",
     "module_autorestore": "Автовосстановление",
-    "module_greeting": "Приветствие",
     "module_online": "Вечный онлайн",
     "module_digest": "Сводка дня",
     "module_toggled_on": "Модуль «{module}» включён.",
@@ -66,20 +168,29 @@ STRINGS = {
 
     # --- Глобальные переключатели ---
     "gl_title": "🎛 <b>Глобальные переключатели</b>\n\nНажмите на модуль, чтобы включить или выключить его:",
-    "gl_btn_greeting_text": "✏️ Текст приветствия",
-    "gl_enter_greeting": (
-        "Пришлите новый текст приветствия.\n"
-        "Переменная <code>$username</code> — ник покупателя.\n\n"
-        "Текущий текст:\n<code>{current}</code>"
-    ),
-    "gl_greeting_saved": "✅ Текст приветствия сохранён.",
 
     # --- Статистика ---
-    "st_title": "📈 <b>Статистика продаж</b> (последние 7 дней):",
-    "st_line": "• {day}: <b>{count}</b> шт. на <b>{revenue}</b>",
-    "st_empty": "За последние 7 дней продаж не было.",
-    "st_total_week": "Итого за 7 дней: <b>{count}</b> шт. на <b>{revenue}</b>",
-    "st_total_month": "Итого за 30 дней: <b>{count}</b> шт. на <b>{revenue}</b>",
+    "st_title": (
+        '📈 <b>Статистика продаж</b>\n'
+        '<i>по данным Playerok, последние 7 дней</i>\n'
+    ),
+    "digest_stocks_block": (
+        '\n'
+        '\n'
+        '📦 Остатки складов авто-выдачи:\n'
+        '{stocks}'
+    ),
+    "st_offline": (
+        '⚠️ Playerok не подключён.\n'
+        'Статистика и сводка доступны в онлайн-режиме.'
+    ),
+    "st_failed": '⚠️ Не удалось загрузить историю продаж с Playerok: {error}',
+    "st_refunds_month": '↩️ Возвратов за 30 дней: <b>{refunds}</b>',
+    "st_line_refunds": ' · ↩️ {refunds}',
+    "st_line": '• {day}: <b>{count}</b> шт. · {gross} (на руки {net})',
+    "st_empty": 'За последние 7 дней продаж не было.',
+    "st_total_week": 'За 7 дней: <b>{count}</b> шт. · <b>{gross}</b> (на руки {net})',
+    "st_total_month": 'За 30 дней: <b>{count}</b> шт. · <b>{gross}</b> (на руки {net})',
 
     # --- Авто-выдача ---
     "ad_title": "📦 <b>Авто-выдача</b>\n\nЛоты и остатки на складах:",
@@ -130,7 +241,12 @@ STRINGS = {
     "ar_builtin_commands_response": "Доступные команды:\n{commands}",
 
     # --- Чёрный список ---
-    "bl_title": "🚫 <b>Чёрный список</b>\n\nЭтих покупателей игнорируют автоответчик и приветствие, а о их покупках приходит предупреждение.\nНажмите на ник, чтобы убрать из списка:",
+    "bl_title": (
+        '🚫 <b>Чёрный список</b>\n'
+        '\n'
+        'О покупках этих покупателей приходит предупреждение. После первой сделки бот запоминает ID покупателя — смена ника не поможет.\n'
+        'Нажмите на ник, чтобы убрать из списка:'
+    ),
     "bl_empty": "Чёрный список пуст.",
     "bl_btn_add": "➕ Добавить ник",
     "bl_enter_username": "Отправьте ник покупателя Playerok (без учёта регистра):",
@@ -141,21 +257,20 @@ STRINGS = {
 
     # --- Сводка дня ---
     "digest_text": (
-        "📊 <b>Сводка за {date}</b>\n\n"
-        "🛒 Продаж: <b>{sales}</b>\n"
-        "💰 Выручка: <b>{revenue}</b>\n"
-        "💳 Баланс: <b>{balance}</b>\n"
-        "⏱ Аптайм: <b>{uptime}</b>\n\n"
-        "📦 Остатки складов:\n{stocks}"
+        '📊 <b>Сводка за {date}</b>\n'
+        '\n'
+        '🛒 Продаж: <b>{sales}</b>\n'
+        '💰 Выручка: <b>{revenue}</b> (на руки {net})\n'
+        '↩️ Возвратов: <b>{refunds}</b>\n'
+        '💳 Баланс: <b>{balance}</b>\n'
+        '⏱ Аптайм: <b>{uptime}</b>{stocks}'
     ),
     "digest_stock_line": "• {name} — <b>{stock}</b> шт.",
-    "digest_no_stocks": "склады авто-выдачи не настроены",
     "digest_unavailable": "Модуль сводки недоступен.",
 
     # --- Уведомления ---
     "nt_title": "🔔 <b>Уведомления</b>\n\nНажмите, чтобы переключить:",
     "nt_new_deal": "Новая сделка",
-    "nt_item_paid": "Оплата лота",
     "nt_delivery": "Выдача товара",
     "nt_new_message": "Новые сообщения",
     "nt_new_review": "Новые отзывы",
@@ -178,24 +293,67 @@ STRINGS = {
         "🧩 Модули: {modules}"
     ),
     "notif_new_deal": (
-        "🛒 <b>Новая сделка</b>\n\n"
-        "📂 <b>Раздел:</b> {section}\n"
-        "🎁 <b>Лот:</b> {item}\n"
-        "👤 <b>Покупатель:</b> {buyer}\n"
-        "📋 <b>Статус:</b> {status}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>Цена:</b> {price} ₽\n"
-        "🤖 <i>Авто-выдача активна</i>\n\n"
-        "💬 <i>Ответ на сообщение, отвечает в чат</i>\n"
-        "🆔 <code>{chat_id}</code>"
+        '🛒 <b>Новая сделка</b>\n'
+        '\n'
+        '📂 <b>Раздел:</b> {section}\n'
+        '🎁 <b>Лот:</b> {item}\n'
+        '👤 <b>Покупатель:</b> {buyer}\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '💰 <b>Цена:</b> {price} ₽{autodelivery}\n'
+        '🆔 <code>{chat_id}</code>'
     ),
-    "notif_item_paid": (
-        "💸 <b>Лот оплачен</b>\n\n"
-        "📂 <b>Раздел:</b> {section}\n"
-        "🎁 <b>Лот:</b> {item}\n"
-        "👤 <b>Покупатель:</b> {buyer}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>Цена:</b> {price} ₽"
+    "menu_closed": '✖️ Меню закрыто.',
+    "payout_line_balance": '💰 <b>Остаток:</b> {balance} ₽',
+    "payout_line_date": '🕒 <b>Дата:</b> {date}',
+    "payout_line_status": '📋 <b>Статус:</b> {status}',
+    "payout_line_method": '🏦 <b>Способ:</b> {method}',
+    "payout_line_amount": '💸 <b>Сумма:</b> <code>-{amount} ₽</code>',
+    "notif_system_lot": (
+        '\n'
+        '\n'
+        '🎁 <b>Лот:</b> {lot}'
+    ),
+    "notif_system_message": (
+        '📢 <b>Уведомление Playerok</b>\n'
+        '\n'
+        '💬 {text}{lot}'
+    ),
+    "notif_place_deal_chat": '🛒 Чат с покупателем {buyer}',
+    "notif_staff_finished": (
+        '✅ <b>Чат завершён</b>\n'
+        '{place}\n'
+        '👤 {staff}'
+    ),
+    "notif_staff_started": (
+        '👀 <b>Смотрим чат…</b>\n'
+        '{place}\n'
+        '👤 {staff}'
+    ),
+    "notif_support_message": (
+        '🛟 <b>Поддержка Playerok</b>\n'
+        '👤 {staff}\n'
+        '\n'
+        '💬 {text}\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '<i>Ответ на сообщение, отвечает в чат поддержки</i>'
+    ),
+    "deal_confirm_offline": '⚠️ Playerok не подключён — подтвердить выдачу сейчас нельзя.',
+    "deal_confirm_failed": '❌ Не удалось подтвердить выдачу: {error}',
+    "deal_confirm_test": '✅ Выдача подтверждена (это тестовое уведомление — на Playerok ничего не отправлено).',
+    "deal_confirm_ok": '✅ Выдача подтверждена.',
+    "deal_btn_collapse": '➖ Свернуть',
+    "deal_btn_confirm": '✅ Подтвердить выдачу',
+    "notif_new_deal_short": (
+        '🛒 <b>Раздел:</b> {section}\n'
+        '🎁 <b>Лот:</b> {item}\n'
+        '👤 <b>Купил:</b> {buyer}\n'
+        '💰 <b>Цена:</b> {price}\n'
+        '🆔 <code>{chat_id}</code>'
+    ),
+    "notif_new_deal_autodelivery": (
+        '\n'
+        '🤖 <i>Авто-выдача активна</i>'
     ),
     "notif_delivery_ok": (
         "📦 <b>Товар выдан</b>\n\n"
@@ -204,46 +362,41 @@ STRINGS = {
         "📊 <b>Остаток на складе:</b> {stock} шт."
     ),
     "notif_new_message": (
-        "💌 <b>{username}</b>\n\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
-        "💬 {text}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Ответ на сообщение, отвечает в чат</i>"
+        '💌 <b>Сообщение от {username}!</b>\n'
+        '💬:{text}\n'
+        '\n'
+        '🎁 <b>Лот:</b> {item}'
     ),
     "notif_payout": (
-        "💳 <b>Выплата с баланса</b>\n\n"
-        "💸 <b>Сумма:</b> <code>-{amount} ₽</code>\n"
-        "🏦 <b>Способ:</b> {method}\n"
-        "📋 <b>Статус:</b> {status}\n"
-        "🕒 <b>Дата:</b> {date}\n"
-        "💰 <b>Остаток:</b> {balance}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Ответ на сообщение, отвечает в чат</i>"
+        '💳 <b>Выплата с баланса</b>\n'
+        '\n'
+        '{details}━━━━━━━━━━━━━━━━━━━\n'
+        '💬 {text}'
     ),
     "notif_item_expiring": (
         "⏳ <b>Лот скоро снимут с продажи</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "📂 <b>Раздел:</b> {section}\n"
-        "💰 <b>Цена:</b> {price}\n\n"
+        "💰 <b>Цена:</b> {price}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Ответ на сообщение, отвечает в чат</i>"
+        "💬 {text}"
     ),
     "notif_item_expiring_plain": (
         "⏳ <b>Лот скоро снимут с продажи</b>\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Ответ на сообщение, отвечает в чат</i>"
+        "💬 {text}"
     ),
     "notif_support_in_deal_chat": (
-        "✉️ <b>{username}</b>\n\n"
-        "📂 <b>Раздел:</b> {section}\n"
-        "👤 <b>Покупатель:</b> {buyer}\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
-        "💬 {text}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Поддержка просматривает чат сделки. Ответьте для продолжения диалога.</i>"
+        '🛟 <b>Поддержка в сделке</b>\n'
+        '👤 {staff}\n'
+        '\n'
+        '🛒 <b>Покупатель:</b> {buyer}\n'
+        '🎁 <b>Лот:</b> {item}\n'
+        '\n'
+        '💬 {text}\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '<i>Ответ на сообщение, отвечает в чат сделки</i>'
     ),
     "notif_new_review": (
         "⭐ <b>Новый отзыв</b>\n\n"
@@ -254,13 +407,13 @@ STRINGS = {
     "notif_deal_problem": (
         "⚠️ <b>Проблема в сделке</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
+        "🎁 <b>Лот:</b> {item}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "🆔 <b>ID сделки:</b> <code>{deal_id}</code>"
     ),
     "notif_deal_problem_resolved": (
         "✅ <b>Проблема решена</b>\n\n"
-        "📂 <b>Раздел:</b> {section}\n\n"
+        "📂 <b>Раздел:</b> {section}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "🆔 <b>ID сделки:</b> <code>{deal_id}</code>"
     ),
@@ -268,9 +421,9 @@ STRINGS = {
         "🤝 <b>Сделка подтверждена</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
         "🎁 <b>Лот:</b> {item}\n"
-        "👤 <b>Покупатель:</b> {buyer}\n\n"
+        "👤 <b>Покупатель:</b> {buyer}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>Цена:</b> {price} ₽\n\n"
+        "💰 <b>Цена:</b> {price} ₽\n"
         "🆔 <code>{chat_id}</code>"
     ),
     "notif_deal_rolled_back": (
@@ -292,11 +445,6 @@ STRINGS = {
     "notif_error": (
         "🚨 <b>Ошибка Fixer</b>\n\n"
         "<pre>{error}</pre>"
-    ),
-    "notif_playerok_connected": (
-        "🔌 <b>Playerok подключён</b>\n"
-        "👤 Аккаунт: <b>{username}</b>\n"
-        "💰 Баланс: <b>{balance}</b>"
     ),
     "notif_stock_empty": (
         "📭 <b>Склад пуст</b>\n\n"
@@ -331,6 +479,8 @@ STRINGS = {
     "reply_sent": "✅ Отправлено в чат Playerok.",
     "reply_failed": "❌ Не удалось отправить: {error}",
     "reply_unknown": "Не понимаю, куда отправить: ответьте на уведомление о сообщении.",
+    "reply_offline": "🤬 Нет связи с Playerok — сообщение не отправлено.",
+    "reply_refused": "🤷 Playerok не принял сообщение. Посмотрите лог: Настройки → 📄 Логи.",
 
     # --- Система ---
     "settings_title": "⚙️ <b>Настройки</b>",
@@ -367,8 +517,8 @@ STRINGS = {
     "sys_btn_tests": "🧪 Тесты",
     "test_title": "🧪 <b>Тесты уведомлений</b>",
     "test_user_message": "👤 Сообщение от Test",
-    "test_support_message": "🛠 Отдельный чат поддержки",
-    "test_support_in_deal": "🛠 Поддержка в чате сделки",
+    "test_support_message": '🛟 Чат поддержки',
+    "test_support_in_deal": '🛟 Поддержка в сделке',
     "test_new_deal": "🛒 Новая сделка",
     "test_deal_confirmed": "🤝 Сделка подтверждена",
     "test_new_review": "⭐ Новый отзыв",
@@ -376,7 +526,23 @@ STRINGS = {
     "test_error": "🚨 Ошибка",
     "test_payout": "💳 Выплата",
     "test_item_expiring": "⏳ Снятие лота",
-    "test_photo": "🖼 Фото лота",
+    "test_blacklist": '🚫 Сделка с ЧС',
+    "test_system_notice": '📢 Уведомление Playerok',
+    "test_staff_event": '👀 Смотрим чат',
+    "test_staff_finished": "✅ Чат завершён",
+    "test_item_expiring_plain": "⏳ Снятие (лот не найден)",
+    "test_deal_problem": "⚠️ Проблема в сделке",
+    "test_problem_resolved": "✅ Проблема решена",
+    "test_rolled_back": "↩️ Сделка возвращена",
+    "test_item_raised": "📈 Лот поднят",
+    "test_no_balance": "💸 Не хватает баланса",
+    "test_stock_empty": "📭 Склад пуст",
+    "test_restore_ok": "♻️ Лот восстановлен",
+    "test_restore_fail": "♻️❌ Ошибка восстановл.",
+    "test_restore_free": "♻️⚠️ Восст. бесплатно",
+    "test_started": "🐦 Бот запущен",
+    "test_page_1": "📄 <b>Страница 1:</b> сообщения, поддержка, сделки",
+    "test_page_2": "📄 <b>Страница 2:</b> проблемы, модули, служебные",
 
     # --- Плагины ---
     "pl_title": "🧩 <b>Плагины</b>\n\nЗагружены из папки <code>plugins/</code>:",

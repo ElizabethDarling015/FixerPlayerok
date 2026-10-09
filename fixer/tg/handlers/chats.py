@@ -16,7 +16,7 @@ from aiogram import F, Router
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReactionTypeEmoji
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 from string import Template
@@ -24,6 +24,8 @@ from string import Template
 from playerokapi import parser
 from playerokapi.common.exceptions import PersistedQueryNotFoundError, RequestPlayerokError
 
+from .. import chat_kinds
+from ..reactions import deliver, precheck
 from .common import nav_row, safe_edit
 
 router = Router(name="chats")
@@ -157,21 +159,11 @@ async def _require_online(fixer, query: CallbackQuery) -> bool:
     return False
 
 def _other_user(fixer, chat):
-    users = getattr(chat, "users", None) or []
-    other = next((u for u in users if u.id != fixer.account.id), None)
-    return other or (users[0] if users else None)
+    """Покупатель в чате: не продавец и не сотрудник Playerok (``None`` для поддержки/уведомлений).
 
-async def _react(message: Message) -> None:
-    for emoji in ("✅", "👍"):
-        try:
-            await message.bot.set_message_reaction(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                reaction=[ReactionTypeEmoji(emoji=emoji)],
-            )
-            break
-        except Exception:
-            continue
+    Раньше при отсутствии собеседника возвращался первый участник — то есть сам продавец,
+    отсюда «Bez Limit» вместо чата уведомлений."""
+    return chat_kinds.counterpart(chat, getattr(fixer.account, "id", None))
 
 def _match_quick_command(fixer, text: str) -> tuple[str, str] | None:
     """Распознаёт быструю команду продавца: текст начинается с ``!!``, а после
@@ -216,21 +208,33 @@ def _fmt_time(iso_dt: str | None) -> str:
 # Построение экранов
 # ----------------------------------------------------------------------
 
-def build_chats_list(fixer, chat_list, page: int, has_next: bool) -> tuple[str, object]:
+def pinned_chat_ids(fixer) -> list[str]:
+    """ID чатов, закреплённых вверху списка: поддержка и уведомления площадки (из профиля)."""
+    profile = getattr(fixer.account, "profile", None)
+    ids = [getattr(profile, "support_chat_id", None), getattr(profile, "system_chat_id", None)]
+    return [cid for cid in ids if cid]
+
+
+def build_chats_list(fixer, chat_list, page: int, has_next: bool, pinned=()) -> tuple[str, object]:
+    """Список чатов. `pinned` — закреплённые чаты (только на первой странице); из обычного
+    списка они убираются на всех страницах, остальные идут как отдаёт Playerok (по активности)."""
     l10n = fixer.l10n
     text = l10n("chats_title")
     builder = InlineKeyboardBuilder()
 
-    if not chat_list or not chat_list.chats:
+    pinned_ids = set(pinned_chat_ids(fixer)) | {c.id for c in pinned}
+    regular = [c for c in (chat_list.chats if chat_list and chat_list.chats else []) if c.id not in pinned_ids]
+    visible = list(pinned) + regular
+
+    if not visible:
         text += "\n\n" + l10n("chats_empty")
     else:
-        for chat in chat_list.chats:
-            other = _other_user(fixer, chat)
-            username = other.username if other and other.username else "Unknown"
+        for chat in visible:
+            title = chat_kinds.chat_title(chat, fixer.account)
             unread = chat.unread_messages_counter or 0
             badge = f" 🔸{unread}" if unread > 0 else ""
             builder.button(
-                text=f"👤 {html.escape(username)}{badge}",
+                text=f"{title}{badge}",
                 callback_data=f"chat:view:{chat.id}",
             )
         builder.adjust(1)
@@ -251,10 +255,15 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
     l10n = fixer.l10n
     account_id = fixer.account.id
 
+    kind = chat_kinds.chat_kind(chat, fixer.account)
     other = _other_user(fixer, chat)
     username = other.username if other and other.username else "Unknown"
 
-    text = l10n("chats_view_title", username=html.escape(username))
+    if kind == chat_kinds.PM:
+        text = l10n("chats_view_title", username=html.escape(username))
+    else:
+        title = chat_kinds.SUPPORT_TITLE if kind == chat_kinds.SUPPORT else chat_kinds.SYSTEM_TITLE
+        text = f"💬 <b>{html.escape(title)}</b>\n\n"
 
     photo_urls: list[str] = []
 
@@ -296,6 +305,12 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
                 file_url = getattr(msg.file, "url", None)
                 if file_url:
                     photo_urls.append(file_url)
+            elif chat_kinds.staff_event(msg):
+                who = html.escape(chat_kinds.staff_display_name(msg))
+                if chat_kinds.staff_event(msg) == "CHAT_STARTED":
+                    msg_text = f"<i>👀 Смотрим чат… ({who})</i>"
+                else:
+                    msg_text = f"<i>✅ Чат завершён ({who})</i>"
             elif msg.event:
                 msg_text = f"<i>(системное событие: {html.escape(str(msg.event))})</i>"
             else:
@@ -315,6 +330,14 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
 
             if msg.user and msg.user.id == account_id:
                 text += f"👤 <b>Вы</b> ({time_str}):\n{msg_text}\n"
+            elif chat_kinds.staff_event(msg):
+                text += f"{msg_text} ({time_str})\n"
+            elif chat_kinds.is_staff_message(msg):
+                sender = html.escape(chat_kinds.staff_display_name(msg))
+                text += f"🛟 <b>{sender}</b> ({time_str}):\n{msg_text}\n"
+            elif msg.user is None and kind != chat_kinds.PM:
+                sender = chat_kinds.SUPPORT_BOT if kind == chat_kinds.SUPPORT else chat_kinds.SYSTEM_SENDER
+                text += f"<b>{html.escape(sender)}</b> ({time_str}):\n{msg_text}\n"
             else:
                 sender = html.escape(msg.user.username) if msg.user and msg.user.username else html.escape(username)
                 text += f"🛒 <b>{sender}</b> ({time_str}):\n{msg_text}\n"
@@ -381,7 +404,17 @@ async def cb_chats_list(query: CallbackQuery, fixer) -> None:
                 cursors.append(nxt)
             elif not cursors[page + 1]:
                 cursors[page + 1] = nxt
-        text, markup = build_chats_list(fixer, chat_list, page, has_next)
+        pinned = []
+        if page == 0:
+            for chat_id in pinned_chat_ids(fixer):
+                try:
+                    pinned_chat = await _get_chat(fixer, chat_id)
+                except Exception:
+                    logger.debug("[chats] Закреплённый чат {} не загрузился", chat_id)
+                    continue
+                if pinned_chat is not None:
+                    pinned.append(pinned_chat)
+        text, markup = build_chats_list(fixer, chat_list, page, has_next, pinned)
         await safe_edit(query.message, text, markup)
     except Exception:
         logger.exception("Ошибка при получении списка чатов")
@@ -516,17 +549,18 @@ async def on_chat_mode_photo(message: Message, state: FSMContext, fixer) -> None
     if not chat_id:
         await state.clear()
         return
+    if not await precheck(message, fixer, chat_id):
+        return
     try:
         photo = message.photo[-1]
         tg_file = await message.bot.get_file(photo.file_id)
         buf = await message.bot.download_file(tg_file.file_path)
         image = buf.read()
-        await asyncio.to_thread(fixer.account.send_message, chat_id, None, image)
     except Exception:
-        logger.exception("Ошибка при отправке изображения в чат {}", chat_id)
-        await message.answer(fixer.l10n("reply_failed", error="не удалось отправить, см. лог"))
+        logger.exception("Не удалось скачать фото из Telegram для чата {}", chat_id)
+        await message.answer(fixer.l10n("reply_failed", error="не удалось скачать фото из Telegram"))
         return
-    await _react(message)
+    await deliver(message, fixer, chat_id, None, image, check=False)
 
 @router.message(ChatReply.message, F.text & ~F.text.startswith("/"))
 async def on_chat_mode_message(message: Message, state: FSMContext, fixer) -> None:
@@ -539,6 +573,8 @@ async def on_chat_mode_message(message: Message, state: FSMContext, fixer) -> No
         await state.clear()
         return
 
+    if not await precheck(message, fixer, chat_id):
+        return
     text_to_send = message.text
     quick = _match_quick_command(fixer, message.text)
     if quick is not None:
@@ -552,11 +588,4 @@ async def on_chat_mode_message(message: Message, state: FSMContext, fixer) -> No
         text_to_send = _format_quick_response(template, username=username, chat_id=chat_id)
         logger.info("[chats] Быстрая команда продавца {!r} → чат {}", command, chat_id)
 
-    try:
-        await asyncio.to_thread(fixer.account.send_message, chat_id, text_to_send)
-    except Exception:
-        logger.exception("Ошибка при отправке сообщения в чат {}", chat_id)
-        await message.answer(fixer.l10n("reply_failed", error="не удалось отправить, см. лог"))
-        return
-
-    await _react(message)
+    await deliver(message, fixer, chat_id, text_to_send, check=False)

@@ -466,7 +466,6 @@ PYEOF
     echo "${BOLD}  3. Модули (всё переключается позже из TG-панели)${NC}"
     ask_yn "Авто-выдача товаров?" y;                    MOD_AUTODELIVERY="$REPLY"
     ask_yn "Автоответчик на команды?" y;                MOD_AUTORESPONSE="$REPLY"
-    ask_yn "Приветствие новых покупателей?" n;          MOD_GREETING="$REPLY"
     ask_yn "Автоподнятие лотов (тратит баланс!)?" n;    MOD_AUTORAISE="$REPLY"
     ask_yn "Автовосстановление лотов после продажи?" n; MOD_AUTORESTORE="$REPLY"
     ask_yn "Вечный онлайн?" y;                          MOD_ONLINE="$REPLY"
@@ -494,7 +493,6 @@ PYEOF
         echo "autoraise = $MOD_AUTORAISE"
         echo "autoresponse = $MOD_AUTORESPONSE"
         echo "autorestore = $MOD_AUTORESTORE"
-        echo "greeting = $MOD_GREETING"
         echo "online = $MOD_ONLINE"
         echo "digest = $MOD_DIGEST"
     } > configs/main.toml

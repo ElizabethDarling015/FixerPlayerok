@@ -76,3 +76,15 @@ def drain_events(runner) -> list:
     while not runner._event_queue.empty():
         events_list.append(runner._event_queue.get_nowait())
     return events_list
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_reaction_storage(tmp_path, monkeypatch):
+    """Реакции сделок и наблюдение за премиумом — во временной папке, не в storage/."""
+    from fixer.modules import autorestore
+    from fixer.tg import reactions
+    monkeypatch.setattr(reactions, "DEAL_REACTIONS_FILE", str(tmp_path / "deal_reactions.json"))
+    monkeypatch.setattr(autorestore, "PREMIUM_WATCH_FILE", str(tmp_path / "premium_watch.json"))

@@ -176,6 +176,7 @@ def user_profile(data: dict | None) -> types.UserProfile | None:
         support_chat_id=data.get("supportChatId"),
         system_chat_id=data.get("systemChatId"),
         created_at=data.get("createdAt"),
+        raw_role=data.get("role"),
     )
 
 
@@ -748,12 +749,17 @@ def message_template_list(data: dict | None) -> types.MessageTemplateList | None
 def transaction_provider(data: dict | None) -> types.TransactionProvider | None:
     if not data:
         return None
+    outgoing = (data.get("limits") or {}).get("outgoing") or {}
+    account = data.get("account") or {}
     return types.TransactionProvider(
         id=data.get("id"),
         name=data.get("name"),
         fee=data.get("fee"),
         min_fee_amount=data.get("minFeeAmount"),
         description=data.get("description"),
+        min_out=outgoing.get("min"),
+        max_out=outgoing.get("max"),
+        saved_account=account.get("value"),
     )
 
 

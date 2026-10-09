@@ -37,6 +37,7 @@ from .settings import (
     load_autodelivery_config,
     load_autoresponse_config,
     load_blacklist_config,
+    save_blacklist_config,
 )
 
 if TYPE_CHECKING:
@@ -175,9 +176,17 @@ class Fixer:
                 f"лотов авто-выдачи: {len(self.autodelivery_config.lots)}, "
                 f"в чёрном списке: {len(self.blacklist_config.usernames)}")
 
-    def is_blacklisted(self, username: str | None) -> bool:
-        """Проверяет, находится ли покупатель в чёрном списке (без учёта регистра)."""
-        return self.blacklist_config.contains(username)
+    def is_blacklisted(self, username: str | None, user_id: str | None = None) -> bool:
+        """Покупатель в чёрном списке — по нику или по ID (ID запоминается при первой встрече,
+        чтобы смена ника не помогала обойти список)."""
+        if not self.blacklist_config.contains(username, user_id):
+            return False
+        if self.blacklist_config.remember_id(username, user_id):
+            try:
+                save_blacklist_config(self.blacklist_config)
+            except Exception as exc:
+                logger.warning("Не удалось сохранить ID покупателя из ЧС: {}", exc)
+        return True
 
     def apply_autodelivery_config(self) -> None:
         """Синхронизирует склады `AutoDeliveryManager` с текущим `autodelivery_config`."""
@@ -310,12 +319,8 @@ class Fixer:
             self._playerok_connected = True
             logger.success("Playerok API подключён")
 
-            # Уведомляем админов об успешном подключении
-            if self.notifier is not None:
-                try:
-                    await self.notifier.notify_playerok_connected(self.account.username, balance)
-                except Exception as exc:
-                    logger.warning("Не удалось отправить уведомление о подключении: {}", exc)
+            # Отдельного уведомления «Playerok подключён» нет: результат подключения и так
+            # виден — сообщение с кнопкой превращается в главное меню (см. cb_connect_playerok).
 
             return {"ok": True, "message": f"Подключён как {self.account.username}",
                     "username": self.account.username}

@@ -132,7 +132,6 @@ def run_first_setup() -> MainSettings:
     modules = {
         "autodelivery": Confirm.ask("Авто-выдача товаров?", default=True),
         "autoresponse": Confirm.ask("Автоответчик на команды?", default=True),
-        "greeting": Confirm.ask("Приветствие новых покупателей?", default=False),
         "autoraise": Confirm.ask("Автоподнятие лотов (тратит баланс!)?", default=False),
         "autorestore": Confirm.ask("Автовосстановление лотов после продажи?", default=False),
         "online": Confirm.ask("Вечный онлайн?", default=True),

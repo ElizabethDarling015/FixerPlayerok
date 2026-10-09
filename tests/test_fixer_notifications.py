@@ -78,7 +78,7 @@ async def test_item_paid_with_delivery_notification():
     await notifier.on_event(ItemPaidEvent(None, make_chat(), None, deal))
 
     assert len(bot.sent) == 2
-    assert "оплачен" in bot.sent[0][1].lower()
+    assert "новая сделка" in bot.sent[0][1].lower()
     assert "4" in bot.sent[1][1]
 
 

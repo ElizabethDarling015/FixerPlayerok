@@ -4,6 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from playerokapi.plugins import PluginManager
+from playerokapi.types import AccountBalance
 
 from fixer.localization import L10n
 from fixer.settings import AutoDeliveryConfig, AutoResponseConfig, BlacklistConfig, MainSettings
@@ -28,7 +29,11 @@ class FakeFixerAccount:
     def __init__(self):
         self.id = "me-id"
         self.username = "seller"
-        self.profile = SimpleNamespace(balance=SimpleNamespace(value=100, available=100), is_online=True)
+        # Настоящий AccountBalance: у него есть format_balance(), который зовут меню, сводка и уведомления.
+        self.profile = SimpleNamespace(
+            balance=AccountBalance(id=None, value=100, frozen=0, available=100, withdrawable=100, pending_income=0),
+            is_online=True, support_chat_id="support-chat", system_chat_id="system-chat",
+        )
         self.sent_messages: list[tuple[str, str]] = []
 
     def send_message(self, chat_id, text=None, **kwargs):
@@ -60,8 +65,9 @@ def make_fixer(settings: MainSettings | None = None) -> SimpleNamespace:
         notifier=None,
         modules=[],
         uptime="00:00:01",
+        playerok_connected=True,
     )
-    fixer.is_blacklisted = lambda username: fixer.blacklist_config.contains(username)
+    fixer.is_blacklisted = lambda username, user_id=None: fixer.blacklist_config.contains(username, user_id)
     return fixer
 
 

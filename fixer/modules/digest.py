@@ -1,8 +1,9 @@
 """
-Ежедневная сводка: учёт продаж + отчёт админам в Telegram раз в день.
+Сводка дня и статистика продаж.
 
-Продажи (событие «лот оплачен») записываются в SQLite (`storage/stats.sqlite3`) по дням,
-поэтому статистика переживает перезапуски. Раз в день, во время из `[digest] time`
+Цифры берутся из истории транзакций Playerok (продажи, см. `fixer/sales_stats.py`), а не
+из счётчика бота: поэтому они не обнуляются после перезапуска и учитывают продажи, пока
+бот был выключен, а возвраты в продажи не попадают. Раз в день, во время из `[digest] time`
 главного конфига, сводка отправляется всем администраторам; кнопка «Сводка сейчас»
 в главном меню панели строит её в любой момент.
 """
@@ -10,85 +11,51 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import os
-import sqlite3
-import threading
-from zoneinfo import ZoneInfo
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
-from playerokapi.common.enums import EventTypes
-
+from ..sales_stats import SalesHistory, fmt_rub, seller_tz, sum_totals, totals_by_day
 from .base import BaseModule
-
-DB_FILE = os.path.join("storage", "stats.sqlite3")
 
 
 class DigestModule(BaseModule):
     name = "digest"
 
-    def __init__(self, fixer, db_path: str = DB_FILE):
+    def __init__(self, fixer):
         super().__init__(fixer)
-        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-        self._lock = threading.Lock()
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        with self._lock, self._conn:
-            self._conn.execute(
-                "CREATE TABLE IF NOT EXISTS sales ("
-                "day TEXT PRIMARY KEY, count INTEGER NOT NULL, revenue REAL NOT NULL)"
-            )
+        self.history = SalesHistory()
 
     # ------------------------------------------------------------------
-    # Статистика продаж
+    # Статистика продаж (из Playerok)
     # ------------------------------------------------------------------
+
+    def _tz(self):
+        return seller_tz(self.fixer.settings)
 
     def _now(self) -> datetime.datetime:
         """Текущее время в часовом поясе продавца (`[digest] timezone`), иначе — сервера."""
-        tz_name = self.fixer.settings.digest.timezone
-        return datetime.datetime.now(ZoneInfo(tz_name) if tz_name else None)
+        return datetime.datetime.now(self._tz())
 
-    def _today(self) -> str:
-        return self._now().date().isoformat()
-
-    def record_sale(self, price: float | None) -> None:
-        """Учитывает одну продажу (продажи записываются всегда, даже при выключенной сводке)."""
-        with self._lock, self._conn:
-            self._conn.execute(
-                "INSERT INTO sales (day, count, revenue) VALUES (?, 1, ?) "
-                "ON CONFLICT(day) DO UPDATE SET count = count + 1, revenue = revenue + excluded.revenue",
-                (self._today(), float(price or 0)),
-            )
-
-    def get_day_stats(self, day: str | None = None) -> tuple[int, float]:
-        """Возвращает (число продаж, выручка) за день (по умолчанию — за сегодня)."""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT count, revenue FROM sales WHERE day = ?", (day or self._today(),)
-            ).fetchone()
-        return (row[0], row[1]) if row else (0, 0.0)
-
-    def get_last_days(self, days: int) -> list[tuple[str, int, float]]:
-        """
-        Продажи за последние `days` дней (включая сегодня): список `(день, продаж, выручка)`,
-        отсортированный от новых к старым. Дни без продаж не включаются.
-        """
-        since = (self._now().date() - datetime.timedelta(days=days - 1)).isoformat()
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT day, count, revenue FROM sales WHERE day >= ? ORDER BY day DESC", (since,)
-            ).fetchall()
-        return [(row[0], row[1], row[2]) for row in rows]
+    async def get_days(self, days: int) -> tuple[dict, datetime.date]:
+        """Итоги по дням за последние `days` дней (включая сегодня) и сегодняшняя дата."""
+        today = self._now().date()
+        since = today - datetime.timedelta(days=days - 1)
+        account = self.fixer.account
+        if account is None:
+            raise RuntimeError("Playerok не подключён")
+        sales = await asyncio.to_thread(self.history.get, account, since, self._tz())
+        return totals_by_day(sales), today
 
     # ------------------------------------------------------------------
     # Текст сводки
     # ------------------------------------------------------------------
 
-    def build_digest(self) -> str:
-        """Строит текст сводки: продажи за сегодня, баланс, остатки складов, аптайм."""
+    async def build_digest(self) -> str:
+        """Сводка за сегодня: продажи, выручка, возвраты, баланс (+ склады авто-выдачи, если есть)."""
         l10n = self.fixer.l10n
-        count, revenue = self.get_day_stats()
+        days, today = await self.get_days(1)
+        t = sum_totals(days, today)
 
         account = self.fixer.account
         profile = getattr(account, "profile", None)
@@ -99,13 +66,15 @@ class DigestModule(BaseModule):
         if manager is not None:
             for name in sorted(manager.stock_paths):
                 stock_lines.append(l10n("digest_stock_line", name=name, stock=manager.get_stock_size(name)))
-        stocks = "\n".join(stock_lines) if stock_lines else l10n("digest_no_stocks")
+        stocks = l10n("digest_stocks_block", stocks="\n".join(stock_lines)) if stock_lines else ""
 
         return l10n(
             "digest_text",
             date=self._now().strftime("%d.%m.%Y"),
-            sales=count,
-            revenue=f"{revenue:g}",
+            sales=t.count,
+            revenue=fmt_rub(t.gross),
+            net=fmt_rub(t.net),
+            refunds=t.refunds,
             balance=balance,
             stocks=stocks,
             uptime=self.fixer.uptime,
@@ -114,13 +83,6 @@ class DigestModule(BaseModule):
     # ------------------------------------------------------------------
     # Жизненный цикл
     # ------------------------------------------------------------------
-
-    async def on_event(self, event) -> None:
-        if event.type is not EventTypes.ITEM_PAID:
-            return
-        deal = getattr(event, "deal", None)
-        price = deal.item.price if deal is not None and deal.item is not None else None
-        self.record_sale(price)
 
     async def on_start(self) -> None:
         self.fixer.spawn(self._schedule_loop())
@@ -157,7 +119,7 @@ class DigestModule(BaseModule):
         if not self.enabled or self.fixer.notifier is None:
             return
         try:
-            text = await asyncio.to_thread(self.build_digest)
+            text = await self.build_digest()
             
             # Создаём клавиатуру с кнопкой "Закрыть" для сводки
             builder = InlineKeyboardBuilder()
@@ -173,10 +135,3 @@ class DigestModule(BaseModule):
             raise
         except Exception:
             logger.exception("Не удалось отправить ежедневую сводку")
-
-    async def on_stop(self) -> None:
-        with self._lock:
-            try:
-                self._conn.close()
-            except Exception:
-                pass

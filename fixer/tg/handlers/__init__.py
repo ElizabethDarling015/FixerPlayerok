@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from . import autodelivery, autoresponse, blacklist_panel, chats, menu, notifications, plugins_panel, proxy, replies, stats, system
+from . import (autodelivery, autoresponse, blacklist_panel, chats, deal_actions, last_deals, menu, notifications,
+               plugins_panel, proxy, replies, stats, system, withdrawal)
 
 def setup_routers(dispatcher: Dispatcher) -> None:
     """Подключает все роутеры панели. `replies` — последним (catch-all для reply-сообщений)."""
@@ -17,6 +18,9 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     dispatcher.include_router(autoresponse.router)
     dispatcher.include_router(blacklist_panel.router)
     dispatcher.include_router(notifications.router)
+    dispatcher.include_router(deal_actions.router)
+    dispatcher.include_router(last_deals.router)
+    dispatcher.include_router(withdrawal.router)
     dispatcher.include_router(stats.router)
     dispatcher.include_router(system.router)
     dispatcher.include_router(proxy.router)

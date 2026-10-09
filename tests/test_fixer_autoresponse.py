@@ -11,48 +11,33 @@ def make_module(commands: dict[str, str]) -> tuple[AutoResponseModule, object]:
     return AutoResponseModule(fixer), fixer
 
 
-async def test_replies_to_known_command():
+async def test_buyer_commands_get_no_automatic_reply():
+    """Автоответчик больше не отвечает покупателям сам: это библиотека шаблонов продавца."""
     module, fixer = make_module({"!цена": "Цена — 100 руб."})
-    event = NewMessageEvent(None, make_chat("chat-1"), make_chat_message("!цена"))
-    await module.on_event(event)
-    assert fixer.account.sent_messages == [("chat-1", "Цена — 100 руб.")]
-
-
-async def test_command_matching_is_case_insensitive_and_prefix():
-    module, fixer = make_module({"!Цена": "100"})
-    event = NewMessageEvent(None, make_chat(), make_chat_message("!цена на аккаунт?"))
-    await module.on_event(event)
-    assert len(fixer.account.sent_messages) == 1
-
-
-async def test_ignores_unknown_text_and_own_messages():
-    module, fixer = make_module({"!цена": "100"})
-    await module.on_event(NewMessageEvent(None, make_chat(), make_chat_message("привет")))
-    # Своё сообщение (user.id == account.id) не должно вызывать ответ.
-    own = make_chat_message("!цена", user_id=fixer.account.id)
-    await module.on_event(NewMessageEvent(None, make_chat(), own))
+    for text in ("!цена", "!Цена на аккаунт?", "!команды", "привет"):
+        await module.on_event(NewMessageEvent(None, make_chat("chat-1"), make_chat_message(text)))
     assert fixer.account.sent_messages == []
 
 
-async def test_disabled_module_does_nothing():
-    module, fixer = make_module({"!цена": "100"})
-    fixer.settings.modules.autoresponse = False
-    await module.on_event(NewMessageEvent(None, make_chat(), make_chat_message("!цена")))
-    assert fixer.account.sent_messages == []
+def test_quick_command_matches_case_insensitive_prefix():
+    from fixer.tg.handlers.chats import _match_quick_command
+    _, fixer = make_module({"!Цена": "100 руб.", "!помощь": "..."})
+    assert _match_quick_command(fixer, "!!цена") == ("!Цена", "100 руб.")
+    assert _match_quick_command(fixer, "  !!ЦЕНА на аккаунт") == ("!Цена", "100 руб.")
+    assert _match_quick_command(fixer, "!цена") is None       # одинарный «!» — обычный текст
+    assert _match_quick_command(fixer, "!!неизвестная") is None
 
 
-async def test_variables_substitution():
-    module, fixer = make_module({"!привет": "Привет, $username! Чат: $chat_id"})
-    event = NewMessageEvent(None, make_chat("c-7"), make_chat_message("!привет", username="buyer99"))
-    await module.on_event(event)
-    chat_id, text = fixer.account.sent_messages[0]
-    assert text == "Привет, buyer99! Чат: c-7"
+def test_quick_command_variables_substitution():
+    from fixer.tg.handlers.chats import _format_quick_response
+    text = _format_quick_response("Привет, $username! Чат: $chat_id, $date $time", username="buyer99", chat_id="c-7")
+    assert text.startswith("Привет, buyer99! Чат: c-7, ")
+    assert "$date" not in text and "$time" not in text
 
 
-async def test_builtin_commands_list():
+def test_builtin_commands_list_reply():
     module, fixer = make_module({"!цена": "100", "!помощь": "..."})
-    await module.on_event(NewMessageEvent(None, make_chat(), make_chat_message("!команды")))
-    _, text = fixer.account.sent_messages[0]
+    text = module.build_reply("!команды", username="u", chat_id="c")
     assert "!цена" in text and "!помощь" in text
 
 

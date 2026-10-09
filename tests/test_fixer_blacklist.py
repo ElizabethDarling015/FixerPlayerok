@@ -1,13 +1,12 @@
-"""Тесты чёрного списка покупателей: конфиг, игнор в модулях, уведомление, панель."""
+"""Тесты чёрного списка покупателей: конфиг, уведомление, панель."""
 from types import SimpleNamespace
 
-from fixer.modules.autoresponse import AutoResponseModule
 from fixer.settings import BlacklistConfig, load_blacklist_config, save_blacklist_config
 from fixer.tg.handlers.blacklist_panel import build_blacklist_menu
 from fixer.tg.notifications import Notifier
-from playerokapi.updater.events import ItemPaidEvent, NewMessageEvent
+from playerokapi.updater.events import ItemPaidEvent
 
-from fixer_helpers import FakeTgBot, make_fixer, make_chat, make_chat_message
+from fixer_helpers import FakeTgBot, make_fixer, make_chat
 
 
 # ----------------------------------------------------------------------
@@ -42,36 +41,6 @@ def test_load_missing_file_is_empty(tmp_path):
 # Игнор в модулях
 # ----------------------------------------------------------------------
 
-async def test_autoresponse_ignores_blacklisted():
-    fixer = make_fixer()
-    fixer.autoresponse_config.commands["!тест"] = "ответ"
-    fixer.blacklist_config.usernames.append("cheater")
-    module = AutoResponseModule(fixer)
-
-    event = NewMessageEvent(None, make_chat(), make_chat_message("!тест", username="Cheater"))
-    await module.on_event(event)
-    assert fixer.account.sent_messages == []
-
-    # Обычному покупателю модуль отвечает как раньше.
-    event = NewMessageEvent(None, make_chat(), make_chat_message("!тест", username="honest"))
-    await module.on_event(event)
-    assert len(fixer.account.sent_messages) == 1
-
-
-async def test_greeting_ignores_blacklisted(tmp_path):
-    from fixer.modules.greeting import GreetingModule
-
-    fixer = make_fixer()
-    fixer.settings.modules.greeting = True
-    fixer.blacklist_config.usernames.append("cheater")
-    module = GreetingModule(fixer, db_path=str(tmp_path / "greeting.sqlite3"))
-
-    await module.on_event(NewMessageEvent(None, make_chat("c1"), make_chat_message("привет", username="cheater")))
-    assert fixer.account.sent_messages == []
-    # Чат не помечен — если покупателя уберут из ЧС, приветствие ещё сработает.
-    assert not module.is_greeted("c1")
-
-
 # ----------------------------------------------------------------------
 # Уведомление о сделке с ЧС-покупателем
 # ----------------------------------------------------------------------
@@ -93,7 +62,7 @@ async def test_blacklist_deal_warning():
 
     await notifier.on_event(ItemPaidEvent(None, make_chat(), None, make_deal("cheater")))
     texts = [text for _, text in bot.sent]
-    assert any("чёрного списка" in text.lower() for text in texts)
+    assert any("🚫" in text for text in texts)
 
 
 async def test_blacklist_warning_toggle_off():
@@ -105,7 +74,7 @@ async def test_blacklist_warning_toggle_off():
 
     await notifier.on_event(ItemPaidEvent(None, make_chat(), None, make_deal("cheater")))
     texts = [text for _, text in bot.sent]
-    assert not any("чёрного списка" in text.lower() for text in texts)
+    assert not any("🚫" in text for text in texts)
 
 
 async def test_no_warning_for_regular_buyer():
@@ -116,7 +85,7 @@ async def test_no_warning_for_regular_buyer():
 
     await notifier.on_event(ItemPaidEvent(None, make_chat(), None, make_deal("honest")))
     texts = [text for _, text in bot.sent]
-    assert not any("чёрного списка" in text.lower() for text in texts)
+    assert not any("🚫" in text for text in texts)
 
 
 # ----------------------------------------------------------------------

@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import os
+import time
 from dataclasses import dataclass
 
 from loguru import logger
@@ -34,7 +37,15 @@ from playerokapi.common.enums import (
     PriorityTypes,
 )
 
+from ..settings import STORAGE_DIR
+from ..tg import reactions
 from .base import BaseModule
+
+#: Лоты, восстановленные бесплатно (🤔): вдруг премиум докупят на сайте — тогда реакция станет ⚡.
+PREMIUM_WATCH_FILE = os.path.join(STORAGE_DIR, "premium_watch.json")
+#: Как часто проверять и сколько следить.
+PREMIUM_WATCH_INTERVAL = 30 * 60
+PREMIUM_WATCH_PERIOD = 24 * 3600
 
 
 class RestoreError(Exception):
@@ -100,6 +111,8 @@ class AutoRestoreModule(BaseModule):
             logger.exception("Автовосстановление лота {!r} не удалось", item_name)
             if self.fixer.notifier is not None:
                 with contextlib.suppress(Exception):
+                    await self.fixer.notifier.react_deal(deal.id, reactions.RESTORE_FAILED)
+                with contextlib.suppress(Exception):
                     await self.fixer.notifier.notify_restore_failed(item_name, str(exc))
             return
 
@@ -109,8 +122,14 @@ class AutoRestoreModule(BaseModule):
             result.item.id,
             result.used_priority.name,
         )
+        if result.fallback_from_premium:
+            self.watch_premium(deal.id, result.item.id)
         if self.fixer.notifier is None:
             return
+        with contextlib.suppress(Exception):
+            await self.fixer.notifier.react_deal(
+                deal.id, reactions.RESTORED_FREE if result.fallback_from_premium else reactions.RESTORED,
+            )
         with contextlib.suppress(Exception):
             if result.fallback_from_premium:
                 await self.fixer.notifier.notify_restore_premium_fallback(
@@ -118,6 +137,77 @@ class AutoRestoreModule(BaseModule):
                 )
             else:
                 await self.fixer.notifier.notify_restore_ok(item_name, result.item.id)
+
+    # ------------------------------------------------------------------
+    # 🤔 → ⚡: премиум докупили на сайте
+    # ------------------------------------------------------------------
+
+    async def on_start(self) -> None:
+        self.fixer.spawn(self._premium_watch_loop())
+
+    @staticmethod
+    def _load_watch() -> list[dict]:
+        with contextlib.suppress(Exception):
+            if os.path.isfile(PREMIUM_WATCH_FILE):
+                with open(PREMIUM_WATCH_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        return []
+
+    @staticmethod
+    def _save_watch(entries: list[dict]) -> None:
+        try:
+            os.makedirs(os.path.dirname(PREMIUM_WATCH_FILE) or ".", exist_ok=True)
+            with open(PREMIUM_WATCH_FILE, "w", encoding="utf-8") as f:
+                json.dump(entries, f)
+        except Exception as exc:
+            logger.debug("Не удалось сохранить список лотов под наблюдением: {}", exc)
+
+    def watch_premium(self, deal_id: str, item_id: str, now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        entries = [e for e in self._load_watch() if e.get("item_id") != item_id]
+        entries.append({"deal_id": deal_id, "item_id": item_id, "until": now + PREMIUM_WATCH_PERIOD})
+        self._save_watch(entries)
+
+    async def check_premium_watch(self, now: float | None = None) -> None:
+        """Один проход: у бесплатно восстановленных лотов появился премиум → реакция ⚡.
+        Через сутки лот снимается с наблюдения. Без связи с Playerok — пропуск до следующего раза."""
+        entries = self._load_watch()
+        if not entries:
+            return
+        now = time.time() if now is None else now
+        account = self.fixer.account
+        offline = reactions.is_offline(self.fixer)
+        keep: list[dict] = []
+        for entry in entries:
+            if now >= entry.get("until", 0):
+                continue
+            if offline:
+                keep.append(entry)
+                continue
+            try:
+                item = await asyncio.to_thread(account.get_item, id=entry["item_id"])
+            except Exception as exc:
+                logger.debug("Проверка премиума лота {} не удалась: {}", entry.get("item_id"), exc)
+                keep.append(entry)
+                continue
+            if getattr(item, "priority", None) is PriorityTypes.PREMIUM:
+                logger.info("Лоту {} докупили премиум — реакция ⚡", entry.get("item_id"))
+                if self.fixer.notifier is not None:
+                    with contextlib.suppress(Exception):
+                        await self.fixer.notifier.react_deal(entry.get("deal_id"), reactions.RESTORED)
+                continue
+            keep.append(entry)
+        self._save_watch(keep)
+
+    async def _premium_watch_loop(self) -> None:
+        while True:
+            await asyncio.sleep(PREMIUM_WATCH_INTERVAL)
+            try:
+                await self.check_premium_watch()
+            except Exception:
+                logger.exception("Проверка премиума восстановленных лотов упала")
 
     # ------------------------------------------------------------------
     # Синхронная часть (выполняется в to_thread)

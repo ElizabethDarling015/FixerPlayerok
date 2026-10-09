@@ -17,7 +17,7 @@ import uuid
 from curl_cffi import requests as curl_requests
 
 from . import parser, types
-from .common.enums import MessageTemplateTypes, PriorityTypes
+from .common.enums import ItemStatuses, MessageTemplateTypes, PriorityTypes
 from .common.exceptions import (
     BotCheckDetectedException,
     NotInitiatedError,
@@ -1084,7 +1084,12 @@ class Account:
         """
         if not self.id:
             raise NotInitiatedError()
-        return self.get_items(user_id=self.id, status=status, count=count, after_cursor=after_cursor)
+        if status is None:
+            # Без фильтра по статусу Playerok отвечает 403 (FORBIDDEN): в выборку попали бы
+            # чужие для продавца статусы. Сайт для списка своих лотов шлёт ровно этот набор.
+            status = [ItemStatuses.APPROVED, ItemStatuses.PENDING_MODERATION, ItemStatuses.PENDING_APPROVAL]
+        return self.get_items(user_id=self.id, status=status, count=count, after_cursor=after_cursor,
+                              with_official=False)
 
     def get_items(self, user_id: str | None = None, game_id: str | None = None, category_id: str | None = None,
                   status=None, count: int = 20, after_cursor: str | None = None,
@@ -1268,15 +1273,22 @@ class Account:
 
     def get_transactions(self, count: int = 20, after_cursor: str | None = None,
                          filter: dict | None = None) -> types.TransactionList | None:
-        """Список транзакций аккаунта (`transactions`)."""
+        """Список транзакций аккаунта (`transactions`).
+
+        Запрос — как у сайта: persisted-хэш и обязательный `userId` в фильтре (без него сервер
+        ничего не отдаёт). Выплаты — `filter={"operation": ["WITHDRAW"]}`.
+        """
+        flt = dict(filter or {})
+        if self.id and "userId" not in flt:
+            flt["userId"] = self.id
         variables: dict = {
             "pagination": {"first": count},
-            "filter": filter or {},
+            "filter": flt,
             "hasSupportAccess": False,
         }
         if after_cursor:
             variables["pagination"]["after"] = after_cursor
-        data = self._query("transactions", variables, idempotent=True)
+        data = self._persisted_query("transactions", variables)
         return parser.transaction_list(data.get("transactions"))
 
     def get_transaction(self, transaction_id: str) -> types.Transaction | None:
@@ -1293,15 +1305,49 @@ class Account:
         data = self._query("payouts", variables, idempotent=True)
         return parser.payout_list(data.get("payouts"))
 
-    def request_withdrawal(self, value: int, provider_id: str = "LOCAL",
-                           **extra_input) -> types.Transaction | None:
-        """Запрос вывода средств (`requestWithdrawal`)."""
-        input_data = {"value": value, "providerId": provider_id, **extra_input}
+    def request_withdrawal(self, provider: str, account: str, value: int,
+                           sbp_bank_member_id: str | None = None,
+                           payment_method_id: str | None = None) -> types.Transaction | None:
+        """
+        Создаёт заявку на вывод средств (`requestWithdrawal`) — тем же запросом, что сайт.
+
+        :param provider: способ вывода: ``SBP``, ``BANK_CARD_RU``, ``USDT``…
+        :param account: реквизиты: телефон (СБП), ID привязанной карты, адрес USDT (TRC20).
+        :param value: сумма в рублях (целое).
+        :param sbp_bank_member_id: ID банка СБП (только для ``SBP``).
+        :param payment_method_id: платёжный метод (для провайдеров, где он есть).
+        """
+        input_data = {
+            "provider": provider,
+            "account": account,
+            "value": int(value),
+            "providerData": {"paymentMethodId": payment_method_id, "sbpBankMemberId": sbp_bank_member_id},
+        }
         data = self._query("requestWithdrawal", {"input": input_data})
         result = parser.transaction(data.get("requestWithdrawal"))
         if result:
-            logger.info("Запрошен вывод %s (provider=%s) → tx %s", value, provider_id, result.id)
+            logger.info("Заявка на вывод %s ₽ (%s) создана → транзакция %s", value, provider, result.id)
         return result
+
+    def get_withdrawal_providers(self) -> list[types.TransactionProvider]:
+        """Способы вывода с комиссией, лимитами и сохранёнными на сайте реквизитами."""
+        data = self._persisted_query("transactionProviders", {"filter": {"direction": "OUT"}})
+        return [p for p in (parser.transaction_provider(x) for x in data.get("transactionProviders") or []) if p]
+
+    def get_sbp_banks(self) -> list[types.SbpBank]:
+        """Банки — участники СБП (в том порядке, в каком их показывает сайт)."""
+        data = self._persisted_query("SbpBankMembers", {})
+        return [types.SbpBank(id=b["id"], name=b.get("name") or b["id"])
+                for b in data.get("sbpBankMembers") or [] if b and b.get("id")]
+
+    def get_exchange_rate(self, pair: str = "USDT_RUB") -> float | None:
+        """Курс обмена (например, сколько рублей за 1 USDT)."""
+        data = self._persisted_query("getExchangeRates", {"pair": pair})
+        rate = data.get("getExchangeRates")
+        try:
+            return float(rate) if rate is not None else None
+        except (TypeError, ValueError):
+            return None
 
     def create_payout(self, **input_data) -> types.Payout | None:
         """Создаёт payout (`createPayout`) — поля зависят от провайдера."""
@@ -1316,13 +1362,12 @@ class Account:
 
     def get_verified_cards(self, count: int = 20, after_cursor: str | None = None,
                            filter: dict | None = None) -> types.VerifiedCardList | None:
-        """Список верифицированных карт (`verifiedCards`)."""
-        variables: dict = {"pagination": {"first": count}}
+        """Список привязанных к аккаунту карт (`verifiedCards`) — запрос как в playerok-universal."""
+        variables: dict = {"pagination": {"first": min(count, 24), "after": after_cursor},
+                           "sort": {"direction": "ASC"}, "field": "createdAt"}
         if filter is not None:
             variables["filter"] = filter
-        if after_cursor:
-            variables["pagination"]["after"] = after_cursor
-        data = self._query("verifiedCards", variables, idempotent=True)
+        data = self._persisted_query("verifiedCards", variables)
         return parser.verified_card_list(data.get("verifiedCards"))
 
     def set_chosen_card(self, card_id: str) -> bool:

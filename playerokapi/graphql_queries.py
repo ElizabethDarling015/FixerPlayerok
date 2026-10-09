@@ -13,6 +13,14 @@ Playerok использует Apollo Persisted Queries: большинство `
 """
 
 PERSISTED_QUERIES: dict[str, str] = {
+    # Вывод средств (HAR со страницы кошелька): способы вывода с лимитами, банки СБП, курс USDT.
+    'transactionProviders': '31960e5dd929834c1f85bc685db80657ff576373076f016b2578c0a34e6e9f42',
+    'SbpBankMembers': 'ef7902598e855fa15fb5e3112156ac226180f0b009a36606fc80a18f00b80c63',
+    'getExchangeRates': '34a9cb09dafc690be8086c4f8a04accbc67642a5ed7fd196158b6181f92c6c92',
+    # Привязанные карты — хэш из playerok-universal (рабочий бот).
+    'verifiedCards': 'eb338d8432981307a2b3d322b3310b2447cab3a6acf21aba4b8773b97e72d1aa',
+    # Как у сайта (HAR со страницы кошелька): история транзакций, в т.ч. выплат (operation=WITHDRAW).
+    'transactions': 'b719e7bbf1933fbeaafd6cea612354a5ac270224133ae8677df285a6e20595d3',
     'viewerBalance': 'a11039bbf514e8b9cb9901efbd81553574fab3bdcb75713afec40fb8de676d10',
     'user': '48cadfa521497f9445eaa9abda29a4251149636d9393f536165889a61e332384',
     'userChats': 'c1ddbcd7c8b87160ac25e0734f9dc32fc945287b056f4b14abf1473bfb1ad11a',
@@ -10150,3 +10158,11 @@ fragment MinimalGameCategory on GameCategory {
   name
 }
 """,
+
+# Полный текст для APQ-фолбэка `transactions` (хэш — в PERSISTED_QUERIES, как у сайта).
+QUERY_TEXTS.setdefault("transactions", QUERIES["transactions"])
+QUERY_TEXTS.setdefault("verifiedCards", QUERIES["verifiedCards"])
+
+#: Persisted-запросы, для которых известен только хэш (снят с сайта), без полного текста:
+#: APQ-фолбэк для них невозможен — если Playerok сменит хэш, нужен новый HAR.
+HASH_ONLY_QUERIES = frozenset({"transactionProviders", "SbpBankMembers", "getExchangeRates"})

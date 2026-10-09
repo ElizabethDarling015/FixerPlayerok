@@ -28,8 +28,112 @@ STRINGS = {
     "chats_read_late_failed": "❌ Failed to mark chat as read (after {seconds} s), see log.",
     "btn_auto_publish": "📤 Auto-publish",
     "btn_last_deals": "🕒 Recent deals",
+    "wd_offline": (
+        '⚠️ Playerok is not connected.\n'
+        'Withdrawals are available in online mode.'
+    ),
+    "wd_failed": '❌ Failed: {error}',
+    "wd_status_confirmed": '✅ Paid out',
+    "wd_status_processing": '🔄 Processing',
+    "wd_status_pending": '⏳ Queued',
+    "wd_done": (
+        '✅ <b>Withdrawal request created</b>\n'
+        '\n'
+        '💸 Amount: <b>{amount}</b>\n'
+        '📍 To: {destination}\n'
+        '📋 Status: {status}\n'
+        '🆔 <code>{tx_id}</code>\n'
+        '\n'
+        "When Playerok pays it out you'll get a «Payout» notification."
+    ),
+    "wd_sending": '⏳ Creating the withdrawal request…',
+    "wd_btn_go": '✅ Withdraw',
+    "wd_confirm": (
+        '💳 <b>Confirm withdrawal</b>\n'
+        '\n'
+        '💸 Amount: <b>{amount}</b>\n'
+        '📍 To: {destination}\n'
+        '🧾 Playerok fee ≈ {fee} ({fee_rule})\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '⚠️ After you tap «Withdraw» the request goes to Playerok.'
+    ),
+    "wd_usdt_estimate": '🪙 ≈ {usdt} USDT at {rate} ₽ (before fees)',
+    "wd_err_provider_gone": 'This withdrawal method is not available on Playerok right now.',
+    "wd_err_expired": 'Withdrawal data expired — start again: «💳 Withdraw».',
+    "wd_err_balance": 'More than available to withdraw ({available}).',
+    "wd_err_max": 'Above the maximum for this method ({max}).',
+    "wd_err_min": 'Below the minimum for this method ({min}).',
+    "wd_err_amount": 'Type a whole number of rubles, e.g. <code>2000</code>',
+    "wd_btn_cancel": '✖️ Cancel',
+    "wd_btn_all": 'Everything — {amount}',
+    "wd_amount_prompt": (
+        '💳 <b>Withdraw</b> → {destination}\n'
+        '\n'
+        '💰 Available: <b>{available}</b>\n'
+        '📏 Method limits: {min} – {max}\n'
+        '\n'
+        'Type an amount in rubles or tap the button:'
+    ),
+    "wd_err_usdt": "That doesn't look like a TRC20 address: it starts with <code>T</code> and has 34 characters.",
+    "wd_enter_usdt": (
+        '🪙 Type a <b>USDT (TRC20)</b> wallet address — starts with <code>T</code>, 34 characters.\n'
+        '\n'
+        '⚠️ A transfer to a wrong address cannot be returned — double-check it.'
+    ),
+    "wd_no_cards": (
+        '💳 No cards are linked on Playerok.\n'
+        'Link a card in the website wallet and come back.'
+    ),
+    "wd_choose_card": (
+        '💳 <b>Card</b>\n'
+        '\n'
+        'Pick a card linked on Playerok:'
+    ),
+    "wd_err_phone": "That doesn't look like a Russian phone number. Example: <code>+79001234567</code>",
+    "wd_enter_phone": (
+        '📱 No SBP phone number is saved on the website.\n'
+        'Type the phone number linked to the bank (e.g. <code>+79001234567</code>):'
+    ),
+    "wd_err_bank_not_found": 'Bank not found — try another name.',
+    "wd_enter_bank": '🔍 Type part of the bank name:',
+    "wd_choose_bank": (
+        '🏦 <b>Recipient bank (SBP)</b>\n'
+        '\n'
+        'Pick a bank or search by name:'
+    ),
+    "wd_btn_bank_search": '🔍 Find another bank',
+    "wd_btn_repeat": '⚡ Same as last time: {label}',
+    "wd_site_only": '<i>website only</i>',
+    "wd_methods_header": '<b>Methods</b> (fee · limits):',
+    "wd_available": '💰 Available to withdraw: <b>{amount}</b>',
+    "wd_title": '💳 <b>Withdraw funds</b>',
+    "btn_withdraw": '💳 Withdraw',
+    "ld_failed": '⚠️ Could not load deals: {error}',
+    "ld_offline": (
+        '⚠️ Playerok is not connected.\n'
+        'Recent deals are available in online mode.'
+    ),
+    "ld_btn_refresh": '🔄 Refresh',
+    "ld_page": '<i>📄 Page {page}</i>',
+    "ld_empty": 'No sales yet.',
+    "ld_entry": (
+        '📂 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '👤 <b>Buyer:</b> {buyer} | 💰 <b>Price:</b> {price}\n'
+        '{state}'
+    ),
+    "ld_title": '🕒 <b>Recent deals</b>',
+    "ld_review": ' · ⭐ {rating}',
+    "ld_state_unknown": '❔ {status}',
+    "ld_state_problem": '⚠️ Problem in the deal',
+    "ld_state_rolled_back": '↩️ Refunded',
+    "ld_state_auto": '✅ Completed automatically',
+    "ld_state_confirmed": '✅ Completed',
+    "ld_state_sent": '⏳ Not confirmed yet',
+    "ld_state_paid": '💰 Paid, waiting for delivery',
     "alert_in_development": "⏸ The “{section}” section is under development — coming in future updates.",
-    "btn_close": "✖️ Close",
+    "btn_close": "❌ Close",
     "cancelled": "Action cancelled.",
     "stub_message": "⏸ Section has been moved to Settings",
     "btn_cancel": "Cancel",
@@ -48,7 +152,6 @@ STRINGS = {
     "menu_section_autoresponse": "💬 Auto-response",
     "menu_section_blacklist": "🚫 Blacklist",
     "menu_section_notifications": "🔔 Notifications",
-    "menu_section_stub": "⏸ Under development",
     "menu_section_plugins": "🧩 Plugins",
     "menu_section_settings": "⚙️ Settings",
     "menu_btn_digest": "📊 Digest now",
@@ -58,7 +161,6 @@ STRINGS = {
     "module_autoraise": "Auto-raise",
     "module_autoresponse": "Auto-response",
     "module_autorestore": "Auto-restore",
-    "module_greeting": "Greeting",
     "module_online": "Always online",
     "module_digest": "Daily digest",
     "module_toggled_on": "Module \"{module}\" enabled.",
@@ -66,20 +168,29 @@ STRINGS = {
 
     # --- Global toggles ---
     "gl_title": "🎛 <b>Global toggles</b>\n\nTap a module to enable or disable it:",
-    "gl_btn_greeting_text": "✏️ Greeting text",
-    "gl_enter_greeting": (
-        "Send the new greeting text.\n"
-        "Variable <code>$username</code> — buyer's username.\n\n"
-        "Current text:\n<code>{current}</code>"
-    ),
-    "gl_greeting_saved": "✅ Greeting text saved.",
 
     # --- Statistics ---
-    "st_title": "📈 <b>Sales statistics</b> (last 7 days):",
-    "st_line": "• {day}: <b>{count}</b> pcs. for <b>{revenue}</b>",
-    "st_empty": "No sales in the last 7 days.",
-    "st_total_week": "Total for 7 days: <b>{count}</b> pcs. for <b>{revenue}</b>",
-    "st_total_month": "Total for 30 days: <b>{count}</b> pcs. for <b>{revenue}</b>",
+    "st_title": (
+        '📈 <b>Sales statistics</b>\n'
+        '<i>from Playerok, last 7 days</i>\n'
+    ),
+    "digest_stocks_block": (
+        '\n'
+        '\n'
+        '📦 Auto-delivery stock:\n'
+        '{stocks}'
+    ),
+    "st_offline": (
+        '⚠️ Playerok is not connected.\n'
+        'Statistics and the digest are available in online mode.'
+    ),
+    "st_failed": '⚠️ Could not load sales history from Playerok: {error}',
+    "st_refunds_month": '↩️ Refunds in 30 days: <b>{refunds}</b>',
+    "st_line_refunds": ' · ↩️ {refunds}',
+    "st_line": '• {day}: <b>{count}</b> pcs · {gross} (net {net})',
+    "st_empty": 'No sales in the last 7 days.',
+    "st_total_week": '7 days: <b>{count}</b> pcs · <b>{gross}</b> (net {net})',
+    "st_total_month": '30 days: <b>{count}</b> pcs · <b>{gross}</b> (net {net})',
 
     # --- Auto-delivery ---
     "ad_title": "📦 <b>Auto-delivery</b>\n\nLots and stock:",
@@ -130,7 +241,12 @@ STRINGS = {
     "ar_builtin_commands_response": "Available commands:\n{commands}",
 
     # --- Blacklist ---
-    "bl_title": "🚫 <b>Blacklist</b>\n\nThese buyers are ignored by auto-response and greeting, and their purchases trigger a warning.\nTap a username to remove it:",
+    "bl_title": (
+        '🚫 <b>Blacklist</b>\n'
+        '\n'
+        "Purchases by these buyers trigger a warning. After their first deal the bot remembers the buyer's ID, so changing the username won't help.\n"
+        'Tap a username to remove it:'
+    ),
     "bl_empty": "The blacklist is empty.",
     "bl_btn_add": "➕ Add username",
     "bl_enter_username": "Send the Playerok buyer username (case-insensitive):",
@@ -141,21 +257,20 @@ STRINGS = {
 
     # --- Daily digest ---
     "digest_text": (
-        "📊 <b>Digest for {date}</b>\n\n"
-        "🛒 Sales: <b>{sales}</b>\n"
-        "💰 Revenue: <b>{revenue}</b>\n"
-        "💳 Balance: <b>{balance}</b>\n"
-        "⏱ Uptime: <b>{uptime}</b>\n\n"
-        "📦 Stock left:\n{stocks}"
+        '📊 <b>Digest for {date}</b>\n'
+        '\n'
+        '🛒 Sales: <b>{sales}</b>\n'
+        '💰 Revenue: <b>{revenue}</b> (net {net})\n'
+        '↩️ Refunds: <b>{refunds}</b>\n'
+        '💳 Balance: <b>{balance}</b>\n'
+        '⏱ Uptime: <b>{uptime}</b>{stocks}'
     ),
     "digest_stock_line": "• {name} — <b>{stock}</b> pcs.",
-    "digest_no_stocks": "no auto-delivery stocks configured",
     "digest_unavailable": "The digest module is unavailable.",
 
     # --- Notifications ---
     "nt_title": "🔔 <b>Notifications</b>\n\nTap to toggle:",
     "nt_new_deal": "New deal",
-    "nt_item_paid": "Item paid",
     "nt_delivery": "Delivery",
     "nt_new_message": "New messages",
     "nt_new_review": "New reviews",
@@ -178,78 +293,212 @@ STRINGS = {
         "🧩 Modules: {modules}"
     ),
     "notif_new_deal": (
-        "🛒 <b>New deal</b>\n"
-        "📂 <b>Section:</b> {section}\n"
-        "🎁 <b>Item:</b> {item}\n"
-        "👤 <b>Buyer:</b> {buyer}\n"
-        "📋 <b>Status:</b> {status}\n"
-        "💰 <b>Price:</b> {price} ₽\n\n"
-        "💬 <i>Reply to message, sends to chat</i>\n"
-        "🆔 <code>{chat_id}</code>"
+        '🛒 <b>New deal</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '👤 <b>Buyer:</b> {buyer}\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '💰 <b>Price:</b> {price} ₽{autodelivery}\n'
+        '🆔 <code>{chat_id}</code>'
     ),
-    "notif_item_paid": "💸 <b>Item paid</b>\nItem: {item}\nBuyer: {buyer}",
-    "notif_delivery_ok": "📦 <b>Item delivered</b>\nItem: {item}\nStock left: {stock} pcs.",
+    "menu_closed": '✖️ Menu closed.',
+    "payout_line_balance": '💰 <b>Balance:</b> {balance} ₽',
+    "payout_line_date": '🕒 <b>Date:</b> {date}',
+    "payout_line_status": '📋 <b>Status:</b> {status}',
+    "payout_line_method": '🏦 <b>Method:</b> {method}',
+    "payout_line_amount": '💸 <b>Amount:</b> <code>-{amount} ₽</code>',
+    "notif_system_lot": (
+        '\n'
+        '\n'
+        '🎁 <b>Item:</b> {lot}'
+    ),
+    "notif_system_message": (
+        '📢 <b>Playerok notice</b>\n'
+        '\n'
+        '💬 {text}{lot}'
+    ),
+    "notif_place_deal_chat": '🛒 Chat with buyer {buyer}',
+    "notif_staff_finished": (
+        '✅ <b>Chat finished</b>\n'
+        '{place}\n'
+        '👤 {staff}'
+    ),
+    "notif_staff_started": (
+        '👀 <b>Looking at the chat…</b>\n'
+        '{place}\n'
+        '👤 {staff}'
+    ),
+    "notif_support_in_deal_chat": (
+        '🛟 <b>Support in a deal</b>\n'
+        '👤 {staff}\n'
+        '\n'
+        '🛒 <b>Buyer:</b> {buyer}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '\n'
+        '💬 {text}\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '<i>Reply to this message to answer in the deal chat</i>'
+    ),
+    "notif_support_message": (
+        '🛟 <b>Playerok support</b>\n'
+        '👤 {staff}\n'
+        '\n'
+        '💬 {text}\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '<i>Reply to this message to answer support</i>'
+    ),
+    "deal_confirm_offline": '⚠️ Playerok is not connected — delivery cannot be confirmed now.',
+    "deal_confirm_failed": '❌ Could not confirm delivery: {error}',
+    "deal_confirm_test": '✅ Delivery confirmed (test notification — nothing was sent to Playerok).',
+    "deal_confirm_ok": '✅ Delivery confirmed.',
+    "deal_btn_collapse": '➖ Collapse',
+    "deal_btn_confirm": '✅ Confirm delivery',
+    "notif_new_deal_short": (
+        '🛒 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '👤 <b>Bought by:</b> {buyer}\n'
+        '💰 <b>Price:</b> {price}\n'
+        '🆔 <code>{chat_id}</code>'
+    ),
+    "notif_new_deal_autodelivery": (
+        '\n'
+        '🤖 <i>Auto-delivery is active</i>'
+    ),
+    "notif_delivery_ok": (
+        '📦 <b>Item delivered</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '📊 <b>Left in stock:</b> {stock} pcs.'
+    ),
     "notif_new_message": (
-        "💌 <b>{username}</b>\n\n"
-        "🎁 <b>Item:</b> {item}\n\n"
-        "💬 {text}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Reply to message, sends to chat</i>"
+        '💌 <b>Message from {username}!</b>\n'
+        '💬:{text}\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}'
     ),
     "notif_payout": (
-        "💳 <b>Withdrawal from balance</b>\n\n"
-        "💸 <b>Amount:</b> <code>-{amount} ₽</code>\n"
-        "🏦 <b>Method:</b> {method}\n"
-        "📋 <b>Status:</b> {status}\n"
-        "🕒 <b>Date:</b> {date}\n"
-        "💰 <b>Balance:</b> {balance}\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Reply to message, sends to chat</i>"
+        '💳 <b>Payout</b>\n'
+        '\n'
+        '{details}━━━━━━━━━━━━━━━━━━━\n'
+        '💬 {text}'
     ),
     "notif_item_expiring": (
         "⏳ <b>Item will be delisted soon</b>\n\n"
         "🎁 <b>Item:</b> {item}\n"
         "📂 <b>Section:</b> {section}\n"
-        "💰 <b>Price:</b> {price}\n\n"
+        "💰 <b>Price:</b> {price}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Reply to message, sends to chat</i>"
+        "💬 {text}"
     ),
     "notif_item_expiring_plain": (
         "⏳ <b>Item will be delisted soon</b>\n\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💬 {text}\n\n"
-        "<i>Reply to message, sends to chat</i>"
+        "💬 {text}"
     ),
-    "notif_new_review": "⭐ <b>New review</b> ({rating}/5) from {author}:\n{text}",
-    "notif_deal_problem": "⚠️ <b>Deal problem</b>\nItem: {item}\nDeal: <code>{deal_id}</code>",
-    "notif_deal_problem_resolved": "✅ Problem in deal <code>{deal_id}</code> resolved.",
+    "notif_new_review": (
+        '⭐ <b>New review</b>\n'
+        '\n'
+        '👤 <b>Author:</b> {author}\n'
+        '⭐ <b>Rating:</b> {rating}/5\n'
+        '\n'
+        '💬 {text}'
+    ),
+    "notif_deal_problem": (
+        '⚠️ <b>Deal problem</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '🆔 <b>Deal ID:</b> <code>{deal_id}</code>'
+    ),
+    "notif_deal_problem_resolved": (
+        '✅ <b>Problem resolved</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '🆔 <b>Deal ID:</b> <code>{deal_id}</code>'
+    ),
     "notif_deal_confirmed": (
         "🤝 <b>Deal confirmed</b>\n\n"
         "📂 <b>Section:</b> {section}\n"
         "🎁 <b>Item:</b> {item}\n"
-        "👤 <b>Buyer:</b> {buyer}\n\n"
+        "👤 <b>Buyer:</b> {buyer}\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        "💰 <b>Price:</b> {price} ₽\n\n"
+        "💰 <b>Price:</b> {price} ₽\n"
         "🆔 <code>{chat_id}</code>"
     ),
-    "notif_deal_rolled_back": "↩️ <b>Deal rolled back</b>\nItem: {item}",
-    "notif_item_raised": "📈 Item \"{item}\" raised (spent {spent}).",
-    "notif_insufficient_balance": "💸 Not enough balance to raise \"{item}\": need {price}, available {available}.",
-    "notif_error": "🚨 <b>Fixer error</b>:\n<code>{error}</code>",
-    "notif_playerok_connected": "🔌 <b>Playerok connected</b>\n👤 Account: <b>{username}</b>\n💰 Balance: <b>{balance}</b>",
-    "notif_stock_empty": "📭 Stock for \"{item}\" is empty! Refill it to keep auto-delivery working.",
-    "notif_restore_ok": "♻️ Item \"{item}\" restored after sale (new ID: <code>{item_id}</code>).",
-    "notif_restore_fail": "♻️❌ Failed to restore item \"{item}\": {error}",
-    "notif_restore_premium_fallback": (
-        "♻️⚠️ Item \"{item}\" restored for free (new ID: <code>{item_id}</code>). "
-        "Premium status was not paid: {reason}."
+    "notif_deal_rolled_back": (
+        '↩️ <b>Deal refunded</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '🎁 <b>Item:</b> {item}'
     ),
-    "notif_blacklist_deal": "🚫 <b>Deal with a blacklisted buyer!</b>\nBuyer: {buyer}\nItem: {item}\nPlease check the deal manually.",
+    "notif_item_raised": (
+        '📈 <b>Item raised</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '💸 <b>Spent:</b> {spent} ₽'
+    ),
+    "notif_insufficient_balance": (
+        '💸 <b>Not enough balance</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '💰 <b>Needed:</b> {price} ₽\n'
+        '📊 <b>Available:</b> {available} ₽'
+    ),
+    "notif_error": (
+        '🚨 <b>Fixer error</b>\n'
+        '\n'
+        '<pre>{error}</pre>'
+    ),
+    "notif_stock_empty": (
+        '📭 <b>Stock is empty</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '\n'
+        'Refill the stock so auto-delivery keeps working.'
+    ),
+    "notif_restore_ok": (
+        '♻️ <b>Item restored</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '🆔 <b>New ID:</b> <code>{item_id}</code>'
+    ),
+    "notif_restore_fail": (
+        '♻️❌ <b>Restore failed</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '\n'
+        '<pre>{error}</pre>'
+    ),
+    "notif_restore_premium_fallback": (
+        '♻️⚠️ <b>Item restored for free</b>\n'
+        '\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '🆔 <b>New ID:</b> <code>{item_id}</code>\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        'Premium status was not paid: {reason}'
+    ),
+    "notif_blacklist_deal": (
+        '🚫 <b>Deal with a blacklisted buyer</b>\n'
+        '\n'
+        '📂 <b>Section:</b> {section}\n'
+        '👤 <b>Buyer:</b> {buyer}\n'
+        '🎁 <b>Item:</b> {item}\n'
+        '\n'
+        '━━━━━━━━━━━━━━━━━━━\n'
+        '⚠️ Check the deal manually'
+    ),
     "reply_sent": "✅ Sent to the Playerok chat.",
     "reply_failed": "❌ Failed to send: {error}",
     "reply_unknown": "Not sure where to send this: reply to a message notification.",
+    "reply_offline": "🤬 No connection to Playerok — message not sent.",
+    "reply_refused": "🤷 Playerok did not accept the message. Check the log: Settings → 📄 Logs.",
 
     # --- Settings ---
     "settings_title": "⚙️ <b>Settings</b>",
@@ -278,7 +527,7 @@ STRINGS = {
     "sys_btn_tests": "🧪 Tests",
     "test_title": "🧪 <b>Notification Tests</b>",
     "test_user_message": "👤 Message from Test",
-    "test_support_message": "🛠 Message from Admin",
+    "test_support_message": '🛟 Support chat',
     "test_new_deal": "🛒 New Deal",
     "test_deal_confirmed": "🤝 Deal Confirmed",
     "test_new_review": "⭐ New Review",
@@ -286,7 +535,24 @@ STRINGS = {
     "test_error": "🚨 Error",
     "test_payout": "💳 Payout",
     "test_item_expiring": "⏳ Item delisting",
-    "test_photo": "🖼 Item photo",
+    "test_blacklist": '🚫 Blacklisted deal',
+    "test_system_notice": '📢 Playerok notice',
+    "test_staff_event": '👀 Viewing chat',
+    "test_staff_finished": "✅ Chat finished",
+    "test_item_expiring_plain": "⏳ Delisting (no item)",
+    "test_deal_problem": "⚠️ Deal problem",
+    "test_problem_resolved": "✅ Problem resolved",
+    "test_rolled_back": "↩️ Deal refunded",
+    "test_item_raised": "📈 Item raised",
+    "test_no_balance": "💸 Low balance",
+    "test_stock_empty": "📭 Stock empty",
+    "test_restore_ok": "♻️ Item restored",
+    "test_restore_fail": "♻️❌ Restore failed",
+    "test_restore_free": "♻️⚠️ Restored for free",
+    "test_started": "🐦 Bot started",
+    "test_page_1": "📄 <b>Page 1:</b> messages, support, deals",
+    "test_page_2": "📄 <b>Page 2:</b> problems, modules, service",
+    "test_support_in_deal": '🛟 Support in a deal',
 
     # --- Plugins ---
     "pl_title": "🧩 <b>Plugins</b>\n\nLoaded from <code>plugins/</code>:",
@@ -305,4 +571,13 @@ STRINGS = {
     "pl_delete_confirm": "Delete plugin \"{name}\"? Its handlers will be unloaded and the file removed from plugins/.",
     "pl_btn_delete_yes": "Yes, delete",
     "pl_deleted": "🗑 Plugin \"{name}\" deleted.",
+    "sys_btn_clear": '🗑 Clear notifications',
+    "clear_title": '🗑 <b>Clearing notifications</b>',
+    "clear_today": '📅 Last 24 hours',
+    "clear_week": '📅 Last 7 days',
+    "clear_all": '🗑 All notifications',
+    "clear_result": (
+        '🗑 Messages deleted: {removed}\n'
+        '⚠️ Errors: {failed}'
+    ),
 }

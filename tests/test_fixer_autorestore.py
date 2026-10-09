@@ -22,6 +22,10 @@ class FakeNotifier:
         self.restored: list[tuple[str, str]] = []
         self.failed: list[tuple[str, str]] = []
         self.premium_fallback: list[tuple[str, str, str]] = []
+        self.reactions: list[tuple[str, str]] = []
+
+    async def react_deal(self, deal_id, emoji):
+        self.reactions.append((deal_id, emoji))
 
     async def notify_stock_empty(self, item_name):
         self.stock_empty.append(item_name)
@@ -224,3 +228,59 @@ def test_restore_item_requires_game_and_category():
     module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True))
     with pytest.raises(RestoreError, match="игре/категории"):
         module.restore_item(item.id)
+
+
+# ----------------------------------------------------------------------
+# Реакции на уведомление «Новая сделка»: ⚡ / 🤔 / 👎 и наблюдение за премиумом
+# ----------------------------------------------------------------------
+
+async def test_restore_reactions_ok_free_failed():
+    item = make_sold_item(priority=PriorityTypes.DEFAULT)
+    module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True))
+    await module.on_event(make_paid_event(item))
+    assert fixer.notifier.reactions == [("deal-1", "⚡")]
+
+    item = make_sold_item(priority=PriorityTypes.PREMIUM)
+    module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True), balance_available=10)
+    await module.on_event(make_paid_event(item))
+    assert fixer.notifier.reactions == [("deal-1", "🤔")]
+    assert [e["item_id"] for e in module._load_watch()] == ["published-item"]
+
+    item = make_sold_item()
+    item.status = ItemStatuses.APPROVED
+    module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True))
+    await module.on_event(make_paid_event(item))
+    assert fixer.notifier.reactions == [("deal-1", "👎")]
+
+
+async def test_premium_bought_later_turns_reaction_to_lightning():
+    item = make_sold_item()
+    module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True))
+    fixer.playerok_connected = True
+    module.watch_premium("deal-1", "new-1", now=1000)
+
+    # Премиума пока нет — остаётся под наблюдением.
+    fixer.account.get_item = lambda id=None, slug=None: SimpleNamespace(id=id, priority=PriorityTypes.DEFAULT)
+    await module.check_premium_watch(now=2000)
+    assert fixer.notifier.reactions == [] and len(module._load_watch()) == 1
+
+    # Докупили на сайте → ⚡ и наблюдение снято.
+    fixer.account.get_item = lambda id=None, slug=None: SimpleNamespace(id=id, priority=PriorityTypes.PREMIUM)
+    await module.check_premium_watch(now=3000)
+    assert fixer.notifier.reactions == [("deal-1", "⚡")] and module._load_watch() == []
+
+
+async def test_premium_watch_expires_after_a_day_and_waits_when_offline():
+    item = make_sold_item()
+    module, fixer = setup_module_env(item, AutoDeliveryLot(stock_file="s.txt", restore=True))
+    module.watch_premium("deal-1", "new-1", now=0)
+    calls = []
+    fixer.account.get_item = lambda id=None, slug=None: calls.append(id)
+
+    fixer.playerok_connected = False
+    await module.check_premium_watch(now=100)
+    assert calls == [] and len(module._load_watch()) == 1  # без связи — ждём
+
+    fixer.playerok_connected = True
+    await module.check_premium_watch(now=24 * 3600 + 1)
+    assert calls == [] and module._load_watch() == []  # сутки прошли — снят

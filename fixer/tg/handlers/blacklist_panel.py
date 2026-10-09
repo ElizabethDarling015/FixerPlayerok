@@ -59,7 +59,7 @@ async def cb_delete(query: CallbackQuery, fixer) -> None:
         await query.answer(l10n("bl_missing"), show_alert=True)
         return
     username = usernames[index]
-    fixer.blacklist_config.usernames = [u for u in fixer.blacklist_config.usernames if u != username]
+    fixer.blacklist_config.remove(username)
     save_blacklist_config(fixer.blacklist_config)
     await query.answer(l10n("bl_removed", username=username))
     text, markup = build_blacklist_menu(fixer)

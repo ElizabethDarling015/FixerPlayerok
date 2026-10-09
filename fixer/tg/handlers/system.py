@@ -11,14 +11,17 @@ from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
+from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
+                           LinkPreviewOptions)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from ...logging_setup import LOG_FILE
 from ...self_update import DEFAULT_REPO, update_from_github
 from ...settings import CONFIG_DIR, STORAGE_DIR, ConfigError
-from .common import nav_row, safe_edit
+from ..chat_kinds import SUPPORT_TITLE
+from ..notifications import build_new_deal_text, build_payout_details, build_started_text, started_keyboard
+from .common import nav_row, pager_row, safe_edit
 from .menu import build_main_menu
 
 router = Router(name="system")
@@ -53,12 +56,11 @@ def build_system_menu(fixer) -> tuple[str, object]:
 
     builder.button(text=l10n("sys_btn_tests"), callback_data="sys:tests")
     builder.button(text=l10n("sys_btn_update"), callback_data="sys:update")
-    builder.button(text=l10n("btn_close"), callback_data="close")
+    builder.button(text="🌐 Прокси", callback_data="px:menu")
 
     # Кнопка очистки уведомлений (открывает подменю с выбором периода)
     builder.button(text=l10n("sys_btn_clear"), callback_data="sys:clear_confirm")
-    # Было: заглушка для чётной сетки 2x4 ("➖", callback_data="noop") — теперь на её месте прокси.
-    builder.button(text="🌐 Прокси", callback_data="px:menu")
+    builder.button(text=l10n("btn_close"), callback_data="close")
 
     builder.adjust(2)
     builder.row(*nav_row(l10n))
@@ -75,38 +77,80 @@ def build_system_menu(fixer) -> tuple[str, object]:
         f"{conn_hint}\n"
         "• 🧪 Тесты — отправить тестовые уведомления для настройки UI\n"
         "• ⬇️ Обновить с GitHub — скачать последнюю версию и перезапустить бота\n"
-        "• ❌ Закрыть — закрыть это меню\n"
+        "• 🌐 Прокси — подключение Fixer к Playerok через прокси (REST + WebSocket)\n"
         "• 🗑 Очистить — удалить уведомления из Telegram (логи сохранятся)\n"
-        "• 🌐 Прокси — подключение Fixer к Playerok через прокси (REST + WebSocket)"
+        "• ❌ Закрыть — закрыть это меню"
     )
 
     return text, builder.as_markup()
 
 
-def build_tests_menu(fixer) -> tuple[str, object]:
-    """Меню тестов UI для настройки внешнего вида уведомлений."""
-    l10n = fixer.l10n
+#: Кнопки меню «Тесты» по страницам: (ключ локали, callback).
+#: Стр. 1 — сообщения, поддержка и сделки; стр. 2 — проблемы, модули и служебные.
+TEST_PAGES: list[list[tuple[str, str]]] = [
+    [
+        ("test_user_message", "test:user_msg"),
+        ("test_support_message", "test:support_msg"),
+        ("test_support_in_deal", "test:support_in_deal"),
+        ("test_system_notice", "test:system_notice"),
+        ("test_staff_event", "test:staff_event"),
+        ("test_staff_finished", "test:staff_finished"),
+        ("test_payout", "test:payout"),
+        ("test_item_expiring", "test:item_expiring"),
+        ("test_item_expiring_plain", "test:item_expiring_plain"),
+        ("test_new_deal", "test:new_deal"),
+        ("test_deal_confirmed", "test:deal_confirmed"),
+        ("test_delivery_ok", "test:delivery_ok"),
+        ("test_new_review", "test:new_review"),
+    ],
+    [
+        ("test_deal_problem", "test:deal_problem"),
+        ("test_problem_resolved", "test:problem_resolved"),
+        ("test_rolled_back", "test:rolled_back"),
+        ("test_blacklist", "test:blacklist"),
+        ("test_item_raised", "test:item_raised"),
+        ("test_no_balance", "test:no_balance"),
+        ("test_stock_empty", "test:stock_empty"),
+        ("test_restore_ok", "test:restore_ok"),
+        ("test_restore_fail", "test:restore_fail"),
+        ("test_restore_free", "test:restore_free"),
+        ("test_error", "test:error"),
+        ("test_started", "test:started"),
+    ],
+]
+
+
+def _test_page_of(callback: str) -> int:
+    for page, buttons in enumerate(TEST_PAGES):
+        if any(cb == callback for _, cb in buttons):
+            return page
+    return 0
+
+
+def _sample_markup(l10n, callback: str):
+    """Кнопка «Назад» образца — на ту страницу тестов, где он лежит."""
+    page = _test_page_of(callback)
     builder = InlineKeyboardBuilder()
+    builder.button(text=l10n("btn_back"), callback_data=f"sys:tests:{page}" if page else "sys:tests")
+    return builder.as_markup()
 
-    # Добавляем кнопки тестов (8 кнопок — чётное количество, заглушка не нужна)
-    builder.button(text=l10n("test_user_message"), callback_data="test:user_msg")
-    builder.button(text=l10n("test_support_in_deal"), callback_data="test:support_in_deal")
-    builder.button(text=l10n("test_support_message"), callback_data="test:support_msg")
-    builder.button(text=l10n("test_new_deal"), callback_data="test:new_deal")
-    builder.button(text=l10n("test_deal_confirmed"), callback_data="test:deal_confirmed")
-    builder.button(text=l10n("test_new_review"), callback_data="test:new_review")
-    builder.button(text=l10n("test_delivery_ok"), callback_data="test:delivery_ok")
-    builder.button(text=l10n("test_error"), callback_data="test:error")
-    builder.button(text=l10n("test_payout"), callback_data="test:payout")
-    builder.button(text=l10n("test_item_expiring"), callback_data="test:item_expiring")
-    builder.button(text=l10n("test_photo"), callback_data="test:photo")
 
-    # Раскладываем кнопки в 2 колонки
+def build_tests_menu(fixer, page: int = 0) -> tuple[str, object]:
+    """Меню тестов UI для настройки внешнего вида уведомлений (две страницы)."""
+    l10n = fixer.l10n
+    page = max(0, min(page, len(TEST_PAGES) - 1))
+    builder = InlineKeyboardBuilder()
+    for key, callback in TEST_PAGES[page]:
+        builder.button(text=l10n(key), callback_data=callback)
     builder.adjust(2)
+    pager = pager_row("sys:tests", page, len(TEST_PAGES))
+    if pager:
+        builder.row(*pager)
     builder.row(*nav_row(l10n, "sys"))
 
     text = (
         l10n("test_title") + "\n\n"
+        + l10n("test_page_" + str(page + 1)) + "\n\n"
         "Отправьте тестовое уведомление, чтобы увидеть его внешний вид и настроить под себя.\n\n"
         "💡 <i>Совет: редактируйте строки в <code>fixer/locales/ru.py</code> и перезапускайте тесты для живой настройки!</i>"
     )
@@ -242,10 +286,11 @@ async def cb_clear_all(query: CallbackQuery, fixer) -> None:
     await safe_edit(query.message, text, markup)
 
 
-@router.callback_query(F.data == "sys:tests")
+@router.callback_query(F.data.regexp(r"^sys:tests(:\d+)?$"))
 async def cb_tests(query: CallbackQuery, fixer) -> None:
-    """Показать меню тестов UI."""
-    text, markup = build_tests_menu(fixer)
+    """Показать меню тестов UI (страница — после двоеточия)."""
+    page = int(query.data.rsplit(":", 1)[1]) if query.data.count(":") == 2 else 0
+    text, markup = build_tests_menu(fixer, page)
     await safe_edit(query.message, text, markup)
     await query.answer()
 
@@ -256,84 +301,110 @@ async def cb_tests(query: CallbackQuery, fixer) -> None:
 
 @router.callback_query(F.data == "test:user_msg")
 async def cb_test_user_msg(query: CallbackQuery, fixer) -> None:
-    """Тест: сообщение от обычного пользователя."""
+    """Образец: сообщение покупателя."""
     l10n = fixer.l10n
     text = l10n(
         "notif_new_message",
         username="loner42",
-        section="World of Tanks → Аккаунты",
-        text="Здравствуйте! Хочу узнать, можно ли получить скидку при покупке сразу нескольких аккаунтов?",
+        item="🌐 WebStorm — Лицензия навсегда | Lifetime [Автовыдача 24/7]",
+        text="Здравствуйте! Подскажите, лицензия подойдёт для macOS?",
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-    
-    await safe_edit(query.message, text, builder.as_markup())
+    markup = _sample_markup(l10n, "test:user_msg")
+    await safe_edit(query.message, text, markup)
     await query.answer()
-
 
 @router.callback_query(F.data == "test:support_msg")
 async def cb_test_support_msg(query: CallbackQuery, fixer) -> None:
-    """Тест: сообщение из отдельного чата поддержки."""
+    """Образец: сообщение в отдельном чате поддержки."""
     l10n = fixer.l10n
     text = l10n(
-        "notif_new_message",
-        username="🛠 Admin",
-        section="🛠 Служба поддержки",
-        text="Здравствуйте! Чем могу помочь? Опишите вашу проблему, и мы постараемся решить её как можно скорее.",
+        "notif_support_message",
+        staff="🔰 Лилия Д.",
+        text="Здравствуйте!\n\nПередали вашу заявку на рассмотрение.",
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-    
-    await safe_edit(query.message, text, builder.as_markup())
+    markup = _sample_markup(l10n, "test:support_msg")
+    await safe_edit(query.message, text, markup)
     await query.answer()
-
 
 @router.callback_query(F.data == "test:support_in_deal")
 async def cb_test_support_in_deal(query: CallbackQuery, fixer) -> None:
-    """Тест: поддержка в чате сделки (модератор заглянул в спор с покупателем)."""
+    """Образец: сотрудник Playerok пишет в чате сделки с покупателем."""
     l10n = fixer.l10n
     text = l10n(
         "notif_support_in_deal_chat",
-        username="🛠 Нина А.",
-        section="ChatGPT → Аккаунты",
+        staff="⚖️ Виктор Г.",
         buyer="loner42",
         item="🔑 ЧАТГПТ-5.6 PLUS ⭐️ ЛИЧНЫЙ АККАУНТ (1 МЕСЯЦ) ⚡️ АВТОВЫДАЧА",
-        text="Здравствуйте. При продаже игрового аккаунта с полным доступом вы должны предоставить не только данные авторизации, но и все привязки или перепривязать на ресурсы покупателя, если этого сделано не было, то товар не считается предоставленным в полной мере.\n\nПожалуйста, предоставьте покупателю полный доступ к аккаунту в течение 24 часов — в противном случае мы будем вынуждены оформить возврат средств покупателю",
+        text="Здравствуйте! Покупатель сообщил о проблеме. Пожалуйста, предоставьте полный доступ к аккаунту в течение 24 часов.",
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-    
-    await safe_edit(query.message, text, builder.as_markup())
+    markup = _sample_markup(l10n, "test:support_in_deal")
+    await safe_edit(query.message, text, markup)
     await query.answer()
-
 
 @router.callback_query(F.data == "test:new_deal")
 async def cb_test_new_deal(query: CallbackQuery, fixer) -> None:
-    """Тест: новая сделка (объединённое уведомление)."""
+    """Образец: новая сделка — отдельным сообщением, как настоящая: с обложкой лота (берётся
+    обложка первого лота аккаунта) и теми же кнопками («Подтвердить выдачу» в образце ничего
+    не отправляет на Playerok). Если Playerok не подключён — без фото."""
     l10n = fixer.l10n
-    text = l10n(
-        "notif_new_deal",
-        section="DataGrip → Лицензии",
-        item="🗄 DataGrip — Бессрочная лицензия | Lifetime [Автовыдача 24/7]",
-        buyer="loner42",
-        status="PAID",
-        price="1500",
+    text = build_new_deal_text(
+        l10n,
+        section="JetBrains → Подписки",
+        item="🌐 WebStorm — Лицензия навсегда | Lifetime [Автовыдача 24/7]",
+        buyer="homoSanyok",
+        price="330",
         chat_id="123e4567-e89b-42d3-a456-426614174000",
+        autodelivery=False,
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-    
-    await safe_edit(query.message, text, builder.as_markup())
-    await query.answer()
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=l10n("deal_btn_confirm"), callback_data="dl:test"),
+        InlineKeyboardButton(text=l10n("deal_btn_collapse"), callback_data="dl:min"),
+    ]])
+    await _send_sample_with_photo(query, fixer, text, markup)
+    await query.answer("🛒 Отправлено отдельным сообщением")
 
+
+async def _test_photo_url(fixer) -> str | None:
+    """Обложка первого лота аккаунта — для образцов с фото (None, если Playerok не подключён)."""
+    account = getattr(fixer, "account", None)
+    if account is None:
+        return None
+    try:
+        page = await asyncio.to_thread(account.get_my_items, None, 1)
+        for it in (page.items if page and page.items else []):
+            url = _get_test_item_url(it)
+            if url:
+                return url
+    except Exception:
+        return None
+    return None
+
+
+async def _send_sample_with_photo(query: CallbackQuery, fixer, text: str, markup=None) -> None:
+    """Образец отдельным сообщением с обложкой лота; без обложки — текстом."""
+    url = await _test_photo_url(fixer)
+    if url:
+        try:
+            await query.message.answer_photo(url, caption=text, reply_markup=markup)
+            return
+        except Exception as exc:
+            logger.debug("Образец с фото не ушёл: {} — шлю текстом", exc)
+    await query.message.answer(text, reply_markup=markup)
+
+
+async def _photo_sample(query: CallbackQuery, fixer, callback: str, text: str) -> None:
+    """Образец, который в жизни приходит с фото: с обложкой — отдельным сообщением,
+    без неё (Playerok не подключён) — на месте меню с кнопкой «Назад»."""
+    url = await _test_photo_url(fixer)
+    if url:
+        try:
+            await query.message.answer_photo(url, caption=text)
+            await query.answer("📸 Отправлено отдельным сообщением")
+            return
+        except Exception as exc:
+            logger.debug("Образец с фото не ушёл: {} — показываю текстом", exc)
+    await safe_edit(query.message, text, _sample_markup(fixer.l10n, callback))
+    await query.answer()
 
 @router.callback_query(F.data == "test:deal_confirmed")
 async def cb_test_deal_confirmed(query: CallbackQuery, fixer) -> None:
@@ -347,13 +418,7 @@ async def cb_test_deal_confirmed(query: CallbackQuery, fixer) -> None:
         price="1500",
         chat_id="123e4567-e89b-42d3-a456-426614174000",
     )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-    
-    await safe_edit(query.message, text, builder.as_markup())
-    await query.answer()
+    await _photo_sample(query, fixer, "test:deal_confirmed", text)
 
 
 @router.callback_query(F.data == "test:new_review")
@@ -367,11 +432,9 @@ async def cb_test_new_review(query: CallbackQuery, fixer) -> None:
         text="Отличный продавец! Всё получил быстро, товар соответствует описанию. Рекомендую! 👍",
     )
     
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
+    markup = _sample_markup(l10n, "test:new_review")
     
-    await safe_edit(query.message, text, builder.as_markup())
+    await safe_edit(query.message, text, markup)
     await query.answer()
 
 
@@ -386,11 +449,9 @@ async def cb_test_delivery_ok(query: CallbackQuery, fixer) -> None:
         stock="42",
     )
     
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
+    markup = _sample_markup(l10n, "test:delivery_ok")
     
-    await safe_edit(query.message, text, builder.as_markup())
+    await safe_edit(query.message, text, markup)
     await query.answer()
 
 
@@ -403,35 +464,27 @@ async def cb_test_error(query: CallbackQuery, fixer) -> None:
         error="ConnectionError: Не удалось подключиться к серверу Playerok (timeout after 15s)",
     )
     
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
+    markup = _sample_markup(l10n, "test:error")
     
-    await safe_edit(query.message, text, builder.as_markup())
+    await safe_edit(query.message, text, markup)
     await query.answer()
 
 
 @router.callback_query(F.data == "test:payout")
 async def cb_test_payout(query: CallbackQuery, fixer) -> None:
-    """Тест: выплата с баланса (с суммой и остатком)."""
+    """Образец: выплата с баланса (неизвестные поля в настоящем уведомлении не выводятся)."""
     l10n = fixer.l10n
+    details = build_payout_details(
+        l10n, amount=5100, method="СБП", status="✅ Успешно", date="19.08.2026, 11:58", balance=15230,
+    )
     text = l10n(
         "notif_payout",
-        amount="5 100",
-        method="СБП",
-        status="✅ Успешно",
-        date="19.08.2026, 11:58",
-        balance="15 230",
+        details=details,
         text="Ваша выплата успешно проведена.\nСумма отправлена на указанные реквизиты",
     )
-
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
-
-    await safe_edit(query.message, text, builder.as_markup())
+    markup = _sample_markup(l10n, "test:payout")
+    await safe_edit(query.message, text, markup)
     await query.answer()
-
 
 @router.callback_query(F.data == "test:item_expiring")
 async def cb_test_item_expiring(query: CallbackQuery, fixer) -> None:
@@ -444,45 +497,147 @@ async def cb_test_item_expiring(query: CallbackQuery, fixer) -> None:
         price="299 ₽",
         text="Ваш товар будет снят с продажи через 7 дней по истечении срока выставления.\n\nОбновите статус товара, чтобы продлить срок выставления",
     )
+    await _photo_sample(query, fixer, "test:item_expiring", text)
 
-    builder = InlineKeyboardBuilder()
-    builder.button(text=l10n("btn_back"), callback_data="sys:tests")
-    builder.adjust(1)
 
-    await safe_edit(query.message, text, builder.as_markup())
+@router.callback_query(F.data == "test:staff_event")
+async def cb_test_staff_event(query: CallbackQuery, fixer) -> None:
+    """Образец: сотрудник открыл чат («Смотрим чат…»); «Чат завершён» выглядит так же."""
+    l10n = fixer.l10n
+    text = l10n("notif_staff_started", staff="⚖️ Виктор Г.", place=html.escape(SUPPORT_TITLE))
+    markup = _sample_markup(l10n, "test:staff_event")
+    await safe_edit(query.message, text, markup)
     await query.answer()
 
 
-@router.callback_query(F.data == "test:photo")
-async def cb_test_photo(query: CallbackQuery, fixer) -> None:
-    """Тест: уведомление с фото лота (берётся обложка первого лота аккаунта)."""
+@router.callback_query(F.data == "test:system_notice")
+async def cb_test_system_notice(query: CallbackQuery, fixer) -> None:
+    """Образец: уведомление площадки из чата «Уведомления Playerok»."""
     l10n = fixer.l10n
-    account = getattr(fixer, "account", None)
-    url = None
-    if account is not None:
-        try:
-            page = await asyncio.to_thread(account.get_my_items, None, 1)
-            for it in (page.items if page and page.items else []):
-                url = _get_test_item_url(it)
-                if url:
-                    break
-        except Exception:
-            url = None
-    if not url:
-        await query.answer("❌ Нет фото: Playerok не подключён или у лотов нет картинок", show_alert=True)
-        return
-
-    caption = l10n(
-        "notif_new_deal",
-        section="Adobe → Софт",
-        item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия | Автовыдача",
-        buyer="loner42",
-        status="PAID",
-        price="299",
-        chat_id="123e4567-e89b-42d3-a456-426614174000",
+    lot = l10n("notif_system_lot",
+               lot='<a href="https://playerok.com/products/example">📊 DataSpell — Лицензия навсегда | Lifetime</a>')
+    text = l10n(
+        "notif_system_message",
+        text="Ваш товар заблокирован.\nПричина: ваше объявление о товаре размещено не в той категории.",
+        lot=lot,
     )
-    await query.message.answer_photo(url, caption=caption)
-    await query.answer("📸 Отправлено отдельным сообщением")
+    markup = _sample_markup(l10n, "test:system_notice")
+    await query.message.edit_text(text, reply_markup=markup,
+                                  link_preview_options=LinkPreviewOptions(is_disabled=True))
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:blacklist")
+async def cb_test_blacklist(query: CallbackQuery, fixer) -> None:
+    """Образец: покупка покупателем из чёрного списка."""
+    l10n = fixer.l10n
+    text = l10n("notif_blacklist_deal", section="JetBrains → Подписки", buyer="cheater",
+                item="🌐 WebStorm — Лицензия навсегда | Lifetime")
+    markup = _sample_markup(l10n, "test:blacklist")
+    await safe_edit(query.message, text, markup)
+    await query.answer()
+
+
+
+# ------------------------------------------------------------------
+# Образцы второй страницы и недостающие с первой
+# ------------------------------------------------------------------
+
+async def _show_sample(query: CallbackQuery, fixer, callback: str, text: str, markup=None) -> None:
+    await safe_edit(query.message, text, markup or _sample_markup(fixer.l10n, callback))
+    await query.answer()
+
+
+@router.callback_query(F.data == "test:staff_finished")
+async def cb_test_staff_finished(query: CallbackQuery, fixer) -> None:
+    """Образец: сотрудник завершил чат."""
+    text = fixer.l10n("notif_staff_finished", staff="⚖️ Виктор Г.", place=html.escape(SUPPORT_TITLE))
+    await _show_sample(query, fixer, "test:staff_finished", text)
+
+
+@router.callback_query(F.data == "test:item_expiring_plain")
+async def cb_test_item_expiring_plain(query: CallbackQuery, fixer) -> None:
+    """Образец: «лот скоро снимут», когда бот не смог определить, какой это лот."""
+    text = fixer.l10n(
+        "notif_item_expiring_plain",
+        text="Ваш товар будет снят с продажи через 7 дней по истечении срока выставления.",
+    )
+    await _show_sample(query, fixer, "test:item_expiring_plain", text)
+
+
+@router.callback_query(F.data == "test:deal_problem")
+async def cb_test_deal_problem(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_deal_problem", section="JetBrains → Подписки",
+                      item="🌐 WebStorm — Лицензия навсегда | Lifetime",
+                      deal_id="1f1c3b0d-05ec-6c10-17d6-9d024a8906ae")
+    await _show_sample(query, fixer, "test:deal_problem", text)
+
+
+@router.callback_query(F.data == "test:problem_resolved")
+async def cb_test_problem_resolved(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_deal_problem_resolved", section="JetBrains → Подписки",
+                      deal_id="1f1c3b0d-05ec-6c10-17d6-9d024a8906ae")
+    await _show_sample(query, fixer, "test:problem_resolved", text)
+
+
+@router.callback_query(F.data == "test:rolled_back")
+async def cb_test_rolled_back(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_deal_rolled_back", section="JetBrains → Подписки",
+                      item="🌐 WebStorm — Лицензия навсегда | Lifetime")
+    await _show_sample(query, fixer, "test:rolled_back", text)
+
+
+@router.callback_query(F.data == "test:item_raised")
+async def cb_test_item_raised(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_item_raised", item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия", spent="15")
+    await _show_sample(query, fixer, "test:item_raised", text)
+
+
+@router.callback_query(F.data == "test:no_balance")
+async def cb_test_no_balance(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_insufficient_balance", item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия",
+                      price="15", available="7.5")
+    await _show_sample(query, fixer, "test:no_balance", text)
+
+
+@router.callback_query(F.data == "test:stock_empty")
+async def cb_test_stock_empty(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_stock_empty", item="Ключ активации Windows 11")
+    await _show_sample(query, fixer, "test:stock_empty", text)
+
+
+@router.callback_query(F.data == "test:restore_ok")
+async def cb_test_restore_ok(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_restore_ok", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
+                      item_id="9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d")
+    await _show_sample(query, fixer, "test:restore_ok", text)
+
+
+@router.callback_query(F.data == "test:restore_fail")
+async def cb_test_restore_fail(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_restore_fail", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
+                      error="Playerok: превышен лимит активных лотов в категории")
+    await _show_sample(query, fixer, "test:restore_fail", text)
+
+
+@router.callback_query(F.data == "test:restore_free")
+async def cb_test_restore_free(query: CallbackQuery, fixer) -> None:
+    text = fixer.l10n("notif_restore_premium_fallback", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
+                      item_id="9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
+                      reason="недостаточно средств на балансе")
+    await _show_sample(query, fixer, "test:restore_free", text)
+
+
+@router.callback_query(F.data == "test:started")
+async def cb_test_started(query: CallbackQuery, fixer) -> None:
+    """Образец: «FixerPlayerok запущен» — отдельным сообщением, как настоящее (с кнопкой «Главное меню»)."""
+    l10n = fixer.l10n
+    text = build_started_text(
+        l10n, username="seller", balance="15 230 ₽", missed_deals=2, unread_messages=3,
+        modules="autodelivery, autoraise, digest", connected=True,
+    )
+    await query.message.answer(text, reply_markup=started_keyboard(l10n))
+    await query.answer("🐦 Отправлено отдельным сообщением")
 
 
 def _get_test_item_url(item) -> str | None:
