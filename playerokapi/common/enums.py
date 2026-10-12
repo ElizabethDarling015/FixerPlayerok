@@ -264,6 +264,8 @@ class ItemStatuses(Enum):
     """Продан."""
     DRAFT = 7
     """Черновик (создан, но не выставлен на продажу)."""
+    DISCONTINUED = 8
+    """Снят с продажи продавцом («Снять с продажи»); вернуть — `Account.republish_item`."""
 
 
 class PriorityTypes(Enum):

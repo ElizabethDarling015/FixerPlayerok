@@ -442,3 +442,11 @@ async def test_buyer_message_sent_without_photo():
     bot.send_photo = send_photo
     await notifier.on_event(NewMessageEvent(None, the_chat, msg("привет", user("b", "Solomon3333"), item=item)))
     assert len(bot.sent) == 1 and photos == []
+
+
+async def test_html_entities_are_shown_as_characters():
+    notifier, fixer, bot = make_notifier()
+    staff = user("s", "📦 Анна Р.", "SUPPORT")
+    await notifier.on_event(NewMessageEvent(None, chat("support-chat"), msg("пишите &mdash; поможем", staff)))
+    (_, text), = bot.sent
+    assert "пишите — поможем" in text and "&amp;mdash;" not in text and "&mdash;" not in text

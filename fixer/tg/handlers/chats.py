@@ -295,7 +295,7 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
             if msg.text and msg.text in _SYSTEM_MARKERS:
                 msg_text = f"<i>{_SYSTEM_MARKERS[msg.text]}</i>"
             elif msg.text:
-                msg_text = html.escape(msg.text)
+                msg_text = html.escape(html.unescape(msg.text))
             elif msg.images or msg.file:
                 msg_text = "<i>(изображение)</i>"
                 for img in (msg.images or []):

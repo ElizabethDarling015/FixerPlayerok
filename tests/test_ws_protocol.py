@@ -196,3 +196,16 @@ def test_no_ack_raises():
     finally:
         runner_module.websocket.create_connection = original
     assert fake_ws.closed
+
+
+def test_message_repeated_after_newer_one_is_not_notified_twice():
+    """Сообщение поддержки → «Чат завершён» → снова то же сообщение: уведомление одно."""
+    frames = [
+        json.dumps({"type": "connection_ack"}),
+        chat_updated_frame("support", "msg-1", "Здравствуйте!"),
+        chat_updated_frame("support", "msg-2", "Чат завершён"),
+        chat_updated_frame("support", "msg-1", "Здравствуйте!"),
+    ]
+    runner, _ = run_ws_session(frames)
+    messages = [e.message.id for e in drain_events(runner) if isinstance(e, events.NewMessageEvent)]
+    assert messages == ["msg-1", "msg-2"]

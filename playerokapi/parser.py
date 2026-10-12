@@ -453,6 +453,10 @@ def my_item(data: dict | None) -> types.MyItem | None:
         created_at=data.get("createdAt"),
     )
     item.deals_counter = data.get("dealsCounter")
+    item.keep_in_sale = data.get("keepInSale")
+    item.keep_in_sale_available = data.get("keepInSaleAvailable")
+    item.pause_available = data.get("pauseAvailable")
+    item.republish_available = data.get("republishAvailable")
     item.may_be_published = data.get("mayBePublished")
     item.post_moderation_checked_at = data.get("postModerationCheckedAt")
     item.is_automated = data.get("isAutomated")
@@ -464,7 +468,7 @@ def item_profile(data: dict | None) -> types.ItemProfile | None:
     """Собирает `ItemProfile` (краткий профиль лота для списков)."""
     if not data:
         return None
-    return types.ItemProfile(
+    profile = types.ItemProfile(
         id=data.get("id"),
         slug=data.get("slug"),
         priority=PriorityTypes.__members__.get(data.get("priority")),
@@ -481,6 +485,13 @@ def item_profile(data: dict | None) -> types.ItemProfile | None:
         fee_multiplier=data.get("feeMultiplier"),
         created_at=data.get("createdAt"),
     )
+    # Поля списка «Мои товары» (раньше не разбирались — раздел лота брался из полной сделки).
+    profile.game = game_profile(data.get("game"))
+    profile.category = game_category(data.get("category"))
+    profile.keep_in_sale = data.get("keepInSale")
+    profile.status_expiration_date = data.get("statusExpirationDate")
+    profile.deals_counter = data.get("dealsCounter")
+    return profile
 
 
 def review(data: dict | None) -> types.Review | None:

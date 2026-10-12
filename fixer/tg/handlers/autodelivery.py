@@ -93,14 +93,11 @@ def build_lot_view(fixer, index: int) -> tuple[str, object] | None:
         name=html.escape(name),
         stock_file=html.escape(lot.stock_file),
         stock=manager.get_stock_size(name) if manager else "?",
-        restore=on_off(l10n, lot.restore),
         deactivate=on_off(l10n, lot.deactivate_when_empty),
     )
     builder = InlineKeyboardBuilder()
     builder.button(text=l10n("ad_btn_view_stock"), callback_data=f"ad:view:{index}")
     builder.button(text=l10n("ad_btn_add_stock"), callback_data=f"ad:stock:{index}")
-    builder.button(text=l10n("ad_btn_toggle_restore", state=on_off(l10n, lot.restore)),
-                   callback_data=f"ad:restore:{index}")
     builder.button(text=l10n("ad_btn_toggle_deactivate", state=on_off(l10n, lot.deactivate_when_empty)),
                    callback_data=f"ad:deact:{index}")
     builder.button(text=l10n("ad_btn_delete_lot"), callback_data=f"ad:del:{index}")
@@ -181,20 +178,6 @@ async def cb_view_stock(query: CallbackQuery, fixer) -> None:
 # ----------------------------------------------------------------------
 # Флаги и удаление
 # ----------------------------------------------------------------------
-
-@router.callback_query(F.data.startswith("ad:restore:"))
-async def cb_toggle_restore(query: CallbackQuery, fixer) -> None:
-    index = int(query.data.rsplit(":", 1)[1])
-    found = _lot_by_index(fixer, index)
-    if found is None:
-        await query.answer(fixer.l10n("ad_lot_missing"), show_alert=True)
-        return
-    _, lot = found
-    lot.restore = not lot.restore
-    _save_and_apply(fixer)
-    await safe_edit(query.message, *build_lot_view(fixer, index))
-    await query.answer()
-
 
 @router.callback_query(F.data.startswith("ad:deact:"))
 async def cb_toggle_deactivate(query: CallbackQuery, fixer) -> None:

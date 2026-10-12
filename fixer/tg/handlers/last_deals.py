@@ -7,6 +7,8 @@
 Откуда данные:
 
 * список — тот же запрос, что страница «Мои продажи» на сайте (`deals`, direction = OUT);
+* дата сделки в списке тоже не приходит — берём её из полной сделки один раз и запоминаем
+  навсегда (storage/deal_dates.json): дата не меняется, повторно не запрашиваем;
 * раздел (игра → категория) в списке сделок не приходит — берём его из списка своих лотов
   (один запрос, кэш уведомлений на 10 минут), а для лотов, которых там нет, — из полной
   сделки (кэш на час). Повторное открытие раздела почти не стоит запросов.
@@ -15,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
+import os
 from contextlib import suppress
 
 from aiogram import F, Router
@@ -24,6 +28,8 @@ from loguru import logger
 
 from playerokapi.common.enums import ItemDealDirections
 
+from ...sales_stats import _parse_dt, seller_tz
+from ...settings import STORAGE_DIR
 from .common import nav_row, safe_edit
 
 router = Router(name="last_deals")
@@ -31,6 +37,9 @@ router = Router(name="last_deals")
 DEALS_PER_PAGE = 8
 #: Разделитель между сделками — такой же, как в уведомлениях.
 SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
+DATES_FILE = os.path.join(STORAGE_DIR, "deal_dates.json")
+#: Сколько дат сделок помнить (старые отрезаются).
+DATES_LIMIT = 2000
 #: Курсоры страниц (tg_user_id -> курсоры): в callback_data (64 байта) они не помещаются.
 _cursors: dict[int, list[str | None]] = {}
 
@@ -68,8 +77,16 @@ def deal_state(l10n, deal) -> str:
     return state
 
 
-def build_last_deals(l10n, deals, sections: dict, page: int, has_next: bool) -> tuple[str, object]:
-    """Текст и кнопки раздела. `sections` — id сделки → раздел."""
+def format_deal_date(iso: str | None, tz=None) -> str | None:
+    """ISO-дата Playerok (UTC) → «12.10.2026, 09:46» в часовом поясе продавца."""
+    dt = _parse_dt(iso)
+    return dt.astimezone(tz).strftime("%d.%m.%Y, %H:%M") if dt is not None else None
+
+
+def build_last_deals(l10n, deals, sections: dict, page: int, has_next: bool,
+                     dates: dict | None = None) -> tuple[str, object]:
+    """Текст и кнопки раздела. `sections` — id сделки → раздел, `dates` — id → «дд.мм.гггг, чч:мм»."""
+    dates = dates or {}
     text = l10n("ld_title")
     if not deals:
         text += "\n\n" + l10n("ld_empty")
@@ -85,6 +102,7 @@ def build_last_deals(l10n, deals, sections: dict, page: int, has_next: bool) -> 
                 buyer=html.escape(getattr(getattr(deal, "user", None), "username", None) or "?"),
                 price=html.escape(f"{price} ₽" if price is not None else "?"),
                 state=deal_state(l10n, deal),
+                date=l10n("ld_date", date=dates[deal.id]) if dates.get(deal.id) else "",
             ))
         text += "\n\n" + f"\n{SEPARATOR}\n".join(blocks)
         if page > 0 or has_next:
@@ -131,6 +149,49 @@ async def _sections_for(fixer, deals) -> dict:
     return sections
 
 
+def _load_dates() -> dict[str, str]:
+    with suppress(Exception):
+        if os.path.isfile(DATES_FILE):
+            with open(DATES_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    return {}
+
+
+def _save_dates(dates: dict[str, str]) -> None:
+    while len(dates) > DATES_LIMIT:
+        dates.pop(next(iter(dates)))
+    with suppress(Exception):
+        os.makedirs(os.path.dirname(DATES_FILE) or ".", exist_ok=True)
+        with open(DATES_FILE, "w", encoding="utf-8") as f:
+            json.dump(dates, f)
+
+
+async def _dates_for(fixer, deals) -> dict[str, str]:
+    """Дата создания каждой сделки (ISO). Недостающие — из полной сделки, затем в файл."""
+    known = _load_dates()
+    notifier = getattr(fixer, "notifier", None)
+    changed = False
+    for deal in deals:
+        if not deal.id or deal.id in known:
+            continue
+        iso = getattr(deal, "created_at", None)
+        if not iso:
+            try:
+                full = (await notifier._get_deal(deal.id) if notifier is not None
+                        else await asyncio.to_thread(fixer.account.get_deal, deal.id))
+                iso = getattr(full, "created_at", None)
+            except Exception as exc:
+                logger.debug("[last_deals] Дата сделки {} не загрузилась: {}", deal.id, exc)
+        if iso:
+            known[deal.id] = iso
+            changed = True
+    if changed:
+        _save_dates(known)
+    return {deal.id: known[deal.id] for deal in deals if deal.id in known}
+
+
 @router.callback_query(F.data.regexp(r"^last_deals(:\d+)?$"))
 async def cb_last_deals(query: CallbackQuery, fixer) -> None:
     l10n = fixer.l10n
@@ -163,5 +224,7 @@ async def cb_last_deals(query: CallbackQuery, fixer) -> None:
         else:
             cursors[page + 1] = nxt
     sections = await _sections_for(fixer, deals)
-    text, markup = build_last_deals(l10n, deals, sections, page, has_next)
+    tz = seller_tz(fixer.settings)
+    dates = {deal_id: format_deal_date(iso, tz) for deal_id, iso in (await _dates_for(fixer, deals)).items()}
+    text, markup = build_last_deals(l10n, deals, sections, page, has_next, dates)
     await safe_edit(query.message, text, markup)

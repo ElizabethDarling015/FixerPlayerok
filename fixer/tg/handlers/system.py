@@ -111,9 +111,7 @@ TEST_PAGES: list[list[tuple[str, str]]] = [
         ("test_item_raised", "test:item_raised"),
         ("test_no_balance", "test:no_balance"),
         ("test_stock_empty", "test:stock_empty"),
-        ("test_restore_ok", "test:restore_ok"),
-        ("test_restore_fail", "test:restore_fail"),
-        ("test_restore_free", "test:restore_free"),
+        ("test_item_expired", "test:item_expired"),
         ("test_error", "test:error"),
         ("test_started", "test:started"),
     ],
@@ -602,30 +600,18 @@ async def cb_test_no_balance(query: CallbackQuery, fixer) -> None:
 
 @router.callback_query(F.data == "test:stock_empty")
 async def cb_test_stock_empty(query: CallbackQuery, fixer) -> None:
-    text = fixer.l10n("notif_stock_empty", item="Ключ активации Windows 11")
+    # Вторая часть — когда у лота включено «Снять с продажи при пустом складе».
+    text = (fixer.l10n("notif_stock_empty", item="Ключ активации Windows 11")
+            + "\n\n" + fixer.l10n("notif_stock_empty_paused"))
     await _show_sample(query, fixer, "test:stock_empty", text)
 
 
-@router.callback_query(F.data == "test:restore_ok")
-async def cb_test_restore_ok(query: CallbackQuery, fixer) -> None:
-    text = fixer.l10n("notif_restore_ok", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
-                      item_id="9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d")
-    await _show_sample(query, fixer, "test:restore_ok", text)
-
-
-@router.callback_query(F.data == "test:restore_fail")
-async def cb_test_restore_fail(query: CallbackQuery, fixer) -> None:
-    text = fixer.l10n("notif_restore_fail", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
-                      error="Playerok: превышен лимит активных лотов в категории")
-    await _show_sample(query, fixer, "test:restore_fail", text)
-
-
-@router.callback_query(F.data == "test:restore_free")
-async def cb_test_restore_free(query: CallbackQuery, fixer) -> None:
-    text = fixer.l10n("notif_restore_premium_fallback", item="🌐 WebStorm — Лицензия навсегда | Lifetime",
-                      item_id="9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
-                      reason="недостаточно средств на балансе")
-    await _show_sample(query, fixer, "test:restore_free", text)
+@router.callback_query(F.data == "test:item_expired")
+async def cb_test_item_expired(query: CallbackQuery, fixer) -> None:
+    """Образец: лот истёк (в настоящем уведомлении — кнопки «Выставить заново» и «Закрыть»)."""
+    text = fixer.l10n("notif_item_expired", item="🌟 GEMINI AI PRO | 18 МЕСЯЦЕВ", section="Gemini → Подписки",
+                      price="222")
+    await _show_sample(query, fixer, "test:item_expired", text)
 
 
 @router.callback_query(F.data == "test:started")

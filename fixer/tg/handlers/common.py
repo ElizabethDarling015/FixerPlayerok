@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import suppress
 
 from aiogram.exceptions import TelegramBadRequest
+from loguru import logger
 from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -72,3 +73,40 @@ def cancel_markup(l10n):
 
 def on_off(l10n, value: bool) -> str:
     return "🟢" if value else "🔴"
+
+
+# ----------------------------------------------------------------------
+# Диалог в одном сообщении: ваш ввод удаляется, ответ — в сообщении бота
+# ----------------------------------------------------------------------
+
+async def remember_panel(state, message: Message) -> None:
+    """Запоминает сообщение бота, в котором идёт диалог (в FSM-данных, ключ ``panel``)."""
+    await state.update_data(panel=[message.chat.id, message.message_id])
+
+
+async def show_in_panel(message: Message, state, text: str, reply_markup=None) -> None:
+    """Удаляет ваше сообщение и показывает `text` в запомненном сообщении бота.
+
+    Если сообщение бота неизвестно или его уже нельзя изменить — присылает новое и
+    запоминает его, чтобы дальше работать в нём."""
+    with suppress(Exception):
+        await message.delete()
+    panel = (await state.get_data()).get("panel")
+    if panel:
+        try:
+            await message.bot.edit_message_text(text, chat_id=panel[0], message_id=panel[1],
+                                                reply_markup=reply_markup)
+            return
+        except TelegramBadRequest as exc:
+            if "not modified" in str(exc):
+                return
+            logger.debug("Сообщение диалога не изменить ({}) — шлю новое", exc)
+        except Exception as exc:
+            logger.debug("Сообщение диалога не изменить ({}) — шлю новое", exc)
+    sent = await message.answer(text, reply_markup=reply_markup)
+    await remember_panel(state, sent)
+
+
+def with_error(error: str, text: str) -> str:
+    """Ошибка строкой над экраном: «⚠️ …»."""
+    return f"⚠️ {error}\n\n{text}"

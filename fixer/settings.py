@@ -66,9 +66,9 @@ class ModulesSettings(BaseModel):
     autodelivery: bool = True
     autoraise: bool = False
     autoresponse: bool = True
-    autorestore: bool = False
     online: bool = True
     digest: bool = True
+    night: bool = False
 
 
 class AutoRaiseSettings(BaseModel):
@@ -121,6 +121,36 @@ class DigestSettings(BaseModel):
         return value
 
 
+def _check_hhmm(value: str) -> str:
+    parts = value.strip().split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts) \
+            or not (0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59):
+        raise ValueError("время должно быть в формате ЧЧ:ММ, например '22:00'")
+    return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+
+
+DEFAULT_NIGHT_TEXT = (
+    "🌙 Спасибо за покупку, $username!\n"
+    "Сейчас у меня ночь: товар выдаётся автоматически, а на вопросы отвечу утром, после 09:00."
+)
+
+
+class NightSettings(BaseModel):
+    """Секция `[night]` — ночное сообщение покупателю после оплаты.
+
+    Окно — по часовому поясу продавца (`[digest] timezone`); может переходить через полночь
+    (22:00 → 09:00). В тексте можно использовать $username и $item."""
+
+    start: str = "22:00"
+    end: str = "09:00"
+    text: str = DEFAULT_NIGHT_TEXT
+
+    @field_validator("start", "end")
+    @classmethod
+    def _time_format(cls, value: str) -> str:
+        return _check_hhmm(value)
+
+
 class NotificationsSettings(BaseModel):
     """Секция `[notifications]` — какие уведомления слать в Telegram."""
 
@@ -137,6 +167,7 @@ class NotificationsSettings(BaseModel):
     insufficient_balance: bool = True
     errors: bool = True
     stock_empty: bool = True
+    item_expired: bool = True
     blacklist: bool = True
 
 
@@ -153,6 +184,7 @@ class MainSettings(BaseSettings):
     autodelivery: AutoDeliverySettings = AutoDeliverySettings()
     online: OnlineSettings = OnlineSettings()
     digest: DigestSettings = DigestSettings()
+    night: NightSettings = NightSettings()
     notifications: NotificationsSettings = NotificationsSettings()
 
     @field_validator("language")
@@ -196,7 +228,8 @@ class AutoDeliveryLot(BaseModel):
     """Один лот авто-выдачи (`[lots."Название"]` в autodelivery.toml)."""
 
     stock_file: str = Field(min_length=1)
-    restore: bool = False
+    #: Снять лот с продажи на Playerok, когда склад закончился (иначе с «Оставлять в продаже»
+    #: лот продолжит продаваться без товара).
     deactivate_when_empty: bool = False
 
 

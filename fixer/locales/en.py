@@ -26,7 +26,68 @@ STRINGS = {
     "chats_read_slow": "⚠️ Playerok did not respond in time ({seconds} s), waiting…",
     "chats_read_late_ok": "✅ Responded, took {seconds} s.",
     "chats_read_late_failed": "❌ Failed to mark chat as read (after {seconds} s), see log.",
-    "btn_auto_publish": "📤 Auto-publish",
+    "btn_items": "🛍 Items",
+    "it_title": "🛍 <b>Items</b>\nOn sale: <b>{on_sale}</b> · In moderation: <b>{moderation}</b>\n\nChoose a section:",
+    "it_empty": "No active items.",
+    "it_btn_inactive": "⏸ Paused and blocked",
+    "it_btn_refresh": "🔄 Refresh",
+    "it_section_title": "📂 <b>{section}</b> — items: <b>{count}</b>\n\n🔁 — auto-relist is on",
+    "it_inactive_title": "⏸ <b>Paused and blocked</b>\n⏸ Paused by you: <b>{discontinued}</b>\n⛔ Blocked: <b>{blocked}</b>\n🔴 Declined: <b>{declined}</b>\n🟠 Expired: <b>{expired}</b>",
+    "it_inactive_empty": "No such items.",
+    "it_card_title": "🎁 <b>{name}</b>",
+    "it_card_section": "📂 {section}",
+    "it_card_price": "💰 <b>{price} ₽</b> · {status} · {priority}",
+    "it_card_until": "🗓 On sale until {until}",
+    "it_card_stats": "👁 Views: {views} · 🛒 Sales: {deals}",
+    "it_card_reason": "⚠️ <b>Reason:</b> {reason}",
+    "it_card_comment": "💬 <b>Comment:</b>\n<blockquote expandable>{comment}</blockquote>",
+    "it_card_no_comment": "💬 No comment",
+    "it_card_keep": "🔁 Auto-relist: {state}",
+    "it_card_autodelivery": "📦 Auto-delivery: {state}",
+    "it_autodelivery_on": "on, {stock} in stock",
+    "it_on": "on",
+    "it_off": "off",
+    "it_premium": "🚀 Premium",
+    "it_free": "Regular",
+    "it_status_approved": "On sale",
+    "it_status_pending_moderation": "In moderation",
+    "it_status_pending_approval": "Awaiting review",
+    "it_status_expired": "Expired",
+    "it_status_declined": "Declined",
+    "it_status_blocked": "Blocked",
+    "it_status_discontinued": "Paused",
+    "it_status_sold": "Sold",
+    "it_status_draft": "Draft",
+    "it_btn_keep": "🔁 Auto-relist: {state}",
+    "it_btn_comment": "💬 Comment",
+    "it_btn_price": "💰 Price",
+    "it_btn_raise": "⬆️ Raise",
+    "it_btn_pause": "⏸ Pause",
+    "it_btn_resume": "▶️ Resume",
+    "it_btn_publish": "🔄 Relist",
+    "it_btn_site": "🌐 Open on site",
+    "it_btn_pay": "✅ {label} · {price} ₽",
+    "it_raise_confirm": "⬆️ <b>Raise to top</b>\n🎁 {name}\n\nPaid from the Playerok balance. The 30-day listing period restarts.",
+    "it_publish_confirm": "🔄 <b>Relist</b>\n🎁 {name}\n\nChoose a status. A paid one is charged to the Playerok balance.",
+    "it_no_statuses": "Playerok offered no options — try on the site.",
+    "it_pending_expired": "The payment screen is outdated — open the item again.",
+    "it_raised": "✅ Item raised, {price} ₽ charged.",
+    "it_published": "✅ Item relisted, {price} ₽ charged.",
+    "it_keep_on": "🔁 Auto-relist on",
+    "it_keep_off": "🔁 Auto-relist off",
+    "it_paused": "⏸ Item paused",
+    "it_resumed": "▶️ Item is on sale again",
+    "it_enter_comment": "💬 Send the new <b>comment</b> — the buyer gets it after paying.\n\nAfter a comment change the item briefly goes to moderation.",
+    "it_enter_price": "💰 Send the new <b>price</b> in rubles (number only).",
+    "it_bad_price": "Send the price as a number, e.g. 330.",
+    "it_bad_comment": "Send the comment text (not empty and not a command).",
+    "it_comment_saved": "✅ Comment saved. The item briefly went to moderation.",
+    "it_price_saved": "✅ Price changed: {price} ₽.",
+    "it_offline": "⚠️ Playerok is not connected — «Items» works online only.",
+    "it_forbidden": "❌ Playerok does not allow this for an item in this status.",
+    "it_failed": "❌ Failed: {error}",
+    "it_load_failed": "🛍 <b>Items</b>\n\n❌ Could not load items: {error}",
+    "it_not_found": "Item not found — it may have been deleted.",
     "btn_last_deals": "🕒 Recent deals",
     "wd_offline": (
         '⚠️ Playerok is not connected.\n'
@@ -121,8 +182,9 @@ STRINGS = {
         '📂 <b>Section:</b> {section}\n'
         '🎁 <b>Item:</b> {item}\n'
         '👤 <b>Buyer:</b> {buyer} | 💰 <b>Price:</b> {price}\n'
-        '{state}'
+        '{state}{date}'
     ),
+    "ld_date": '\n🗓 {date}',
     "ld_title": '🕒 <b>Recent deals</b>',
     "ld_review": ' · ⭐ {rating}',
     "ld_state_unknown": '❔ {status}',
@@ -132,7 +194,6 @@ STRINGS = {
     "ld_state_confirmed": '✅ Completed',
     "ld_state_sent": '⏳ Not confirmed yet',
     "ld_state_paid": '💰 Paid, waiting for delivery',
-    "alert_in_development": "⏸ The “{section}” section is under development — coming in future updates.",
     "btn_close": "❌ Close",
     "cancelled": "Action cancelled.",
     "stub_message": "⏸ Section has been moved to Settings",
@@ -160,9 +221,16 @@ STRINGS = {
     "module_autodelivery": "Auto-delivery",
     "module_autoraise": "Auto-raise",
     "module_autoresponse": "Auto-response",
-    "module_autorestore": "Auto-restore",
     "module_online": "Always online",
     "module_digest": "Daily digest",
+    "module_night": 'Night message',
+    "night_btn_text": '✏️ Text',
+    "night_btn_reset": '↩️ Default text',
+    "night_tz_server": 'server time zone — set [digest] timezone',
+    "night_text_view": '🌙 <b>Night message</b>\n\nA buyer who pays between <b>{start}</b> and <b>{end}</b> ({tz}) gets this message in the deal chat (a couple of seconds after the item):\n\n<blockquote>{text}</blockquote>\n\nSend the new text as a message. You can use <code>$username</code> (buyer nickname) and <code>$item</code> (item name).',
+    "night_text_saved": '✅ Night message text saved.',
+    "night_text_empty": 'Send the message text (not empty and not a command).',
+    "night_text_too_long": 'Too long: {limit} characters max.',
     "module_toggled_on": "Module \"{module}\" enabled.",
     "module_toggled_off": "Module \"{module}\" disabled.",
 
@@ -201,16 +269,14 @@ STRINGS = {
         "📦 Lot <b>{name}</b>\n"
         "Stock file: <code>{stock_file}</code>\n"
         "In stock: <b>{stock}</b> pcs.\n"
-        "Auto-restore: {restore}\n"
-        "Deactivate when empty: {deactivate}"
+        "Take off sale when stock is empty: {deactivate}"
     ),
     "ad_btn_view_stock": "👀 View stock",
     "ad_stock_view_title": "📦 <b>Stock \"{name}\"</b> — items: <b>{total}</b>",
     "ad_stock_view_empty": "The stock is empty.",
     "ad_stock_more": "… and {count} more items",
     "ad_btn_add_stock": "➕ Add stock",
-    "ad_btn_toggle_restore": "♻️ Restore: {state}",
-    "ad_btn_toggle_deactivate": "🛑 Deactivate: {state}",
+    "ad_btn_toggle_deactivate": "🛑 Off sale when empty: {state}",
     "ad_btn_delete_lot": "🗑 Delete lot",
     "ad_enter_lot_name": "Send the <b>exact lot name</b> (as on Playerok):",
     "ad_enter_stock_file": "Send the stock file path (e.g. <code>storage/stock/my_lot.txt</code>) or \"-\" to create one automatically:",
@@ -462,28 +528,10 @@ STRINGS = {
         '\n'
         'Refill the stock so auto-delivery keeps working.'
     ),
-    "notif_restore_ok": (
-        '♻️ <b>Item restored</b>\n'
-        '\n'
-        '🎁 <b>Item:</b> {item}\n'
-        '🆔 <b>New ID:</b> <code>{item_id}</code>'
-    ),
-    "notif_restore_fail": (
-        '♻️❌ <b>Restore failed</b>\n'
-        '\n'
-        '🎁 <b>Item:</b> {item}\n'
-        '\n'
-        '<pre>{error}</pre>'
-    ),
-    "notif_restore_premium_fallback": (
-        '♻️⚠️ <b>Item restored for free</b>\n'
-        '\n'
-        '🎁 <b>Item:</b> {item}\n'
-        '🆔 <b>New ID:</b> <code>{item_id}</code>\n'
-        '\n'
-        '━━━━━━━━━━━━━━━━━━━\n'
-        'Premium status was not paid: {reason}'
-    ),
+    "notif_stock_empty_paused": "⏸ The item was paused so nobody buys it without stock. Restock and resume it in «🛍 Items».",
+    "notif_item_expired": "⌛ <b>Item delisted: listing period ended</b>\n\n📂 <b>Section:</b> {section}\n🎁 <b>Item:</b> {item}\n💰 <b>Price:</b> {price} ₽\n━━━━━━━━━━━━━━━━━━━\nRelist with the button below — I'll show the price first.",
+    "nt_item_expired": "Item expired",
+    "test_item_expired": "⌛ Item expired",
     "notif_blacklist_deal": (
         '🚫 <b>Deal with a blacklisted buyer</b>\n'
         '\n'
@@ -546,9 +594,6 @@ STRINGS = {
     "test_item_raised": "📈 Item raised",
     "test_no_balance": "💸 Low balance",
     "test_stock_empty": "📭 Stock empty",
-    "test_restore_ok": "♻️ Item restored",
-    "test_restore_fail": "♻️❌ Restore failed",
-    "test_restore_free": "♻️⚠️ Restored for free",
     "test_started": "🐦 Bot started",
     "test_page_1": "📄 <b>Page 1:</b> messages, support, deals",
     "test_page_2": "📄 <b>Page 2:</b> problems, modules, service",

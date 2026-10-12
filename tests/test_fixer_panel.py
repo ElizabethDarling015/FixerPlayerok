@@ -24,7 +24,7 @@ def test_main_menu_contains_status_and_sections():
     assert "Online" in text  # строка подключения
     # Тумблеры модулей и разделы автовыдачи/автоответчика/уведомлений — в «Настройках».
     assert not any(cb.startswith("mod:") for cb in callbacks)
-    for section in ("chats", "bl", "pl", "st", "sys", "digest:now"):
+    for section in ("chats", "it", "last_deals", "wd", "bl", "pl", "st", "sys", "digest:now"):
         assert section in callbacks
 
 

@@ -84,7 +84,9 @@ import pytest  # noqa: E402
 @pytest.fixture(autouse=True)
 def _isolated_reaction_storage(tmp_path, monkeypatch):
     """Реакции сделок и наблюдение за премиумом — во временной папке, не в storage/."""
-    from fixer.modules import autorestore
     from fixer.tg import reactions
+    from fixer.modules import showcase
+    from fixer.tg.handlers import last_deals
+    monkeypatch.setattr(showcase, "EXPIRED_SEEN_FILE", str(tmp_path / "expired_seen.json"))
+    monkeypatch.setattr(last_deals, "DATES_FILE", str(tmp_path / "deal_dates.json"))
     monkeypatch.setattr(reactions, "DEAL_REACTIONS_FILE", str(tmp_path / "deal_reactions.json"))
-    monkeypatch.setattr(autorestore, "PREMIUM_WATCH_FILE", str(tmp_path / "premium_watch.json"))

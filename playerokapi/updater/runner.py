@@ -33,6 +33,7 @@ import queue
 import threading
 import time
 import uuid
+from collections import deque
 
 import websocket
 
@@ -125,6 +126,10 @@ class Runner:
         self._stop_event = threading.Event()
         self._known_chats: dict[str, int] = {}
         self._known_last_message_ids: dict[str, str] = {}
+        #: Недавние id сообщений по чатам. Одного «последнего id» мало: если обновления чата
+        #: приходят не по порядку (сообщение → «Чат завершён» → снова то же сообщение),
+        #: сообщение уведомлялось дважды.
+        self._seen_message_ids: dict[str, deque] = {}
         self._known_deals: dict[str, str | None] = {}
         self._known_deal_problems: dict[str, bool] = {}
         self._known_reviews: set[str] = set()
@@ -536,6 +541,7 @@ class Runner:
             self._known_chats[chat.id] = chat.unread_messages_counter or 0
             if chat.last_message and chat.last_message.id:
                 self._known_last_message_ids[chat.id] = chat.last_message.id
+                self._mark_message_seen(chat.id, chat.last_message.id)
 
     def _ws_loop(self) -> None:
         reconnect_delay = 1.0
@@ -734,6 +740,8 @@ class Runner:
         if self._known_last_message_ids.get(chat_obj.id) == message.id:
             return
         self._known_last_message_ids[chat_obj.id] = message.id
+        if not self._mark_message_seen(chat_obj.id, message.id):
+            return  # уже было — пришло повторно после более нового сообщения
 
         author = message.user.username if message.user else None
         author_id = message.user.id if message.user else "?"
@@ -748,6 +756,17 @@ class Runner:
             # запускаем фоновый поиск в истории через пул воркеров.
             self._executor.submit(self._search_paid_marker_in_history, chat_obj)
     
+    #: Сколько последних id сообщений помнить на чат.
+    SEEN_MESSAGES_PER_CHAT = 50
+
+    def _mark_message_seen(self, chat_id: str, message_id: str) -> bool:
+        """Запоминает id сообщения; False — если оно уже встречалось в этом чате."""
+        seen = self._seen_message_ids.setdefault(chat_id, deque(maxlen=self.SEEN_MESSAGES_PER_CHAT))
+        if message_id in seen:
+            return False
+        seen.append(message_id)
+        return True
+
     @staticmethod
     def _parse_iso(iso_dt: str | None):
         """Парсит ISO-дату из API Playerok в datetime (UTC-aware)."""

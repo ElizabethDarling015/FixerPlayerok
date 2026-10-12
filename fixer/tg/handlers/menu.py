@@ -11,7 +11,7 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
@@ -21,7 +21,7 @@ from .common import nav_row, on_off, safe_edit
 router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
-MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "autorestore", "online", "digest")
+MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "online", "digest", "night")
 
 #: Файл-флаг: каким чатам уже установили reply-клавиатуру (для миграции).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
@@ -115,7 +115,7 @@ def build_main_menu(fixer) -> tuple[str, object]:
     # Ряд 1: Чаты с покупателями (во всю ширину)
     builder.button(text=l10n("btn_chats"), callback_data="chats")
     # Ряд 2: заготовки будущих разделов
-    builder.button(text=l10n("btn_auto_publish"), callback_data="auto_publish")
+    builder.button(text=l10n("btn_items"), callback_data="it")
     builder.button(text=l10n("btn_last_deals"), callback_data="last_deals")
     # Ряд 3: ЧС + вывод средств
     builder.button(text=l10n("menu_section_blacklist"), callback_data="bl")
@@ -134,9 +134,16 @@ def build_toggles_menu(fixer) -> tuple[str, object]:
     l10n = fixer.l10n
     builder = InlineKeyboardBuilder()
     for name in MODULE_NAMES:
+        if name == "night":
+            continue  # своим рядом — вместе с кнопкой текста
         enabled = getattr(fixer.settings.modules, name)
         builder.button(text=f"{on_off(l10n, enabled)} {l10n('module_' + name)}", callback_data=f"mod:{name}")
     builder.adjust(2)
+    builder.row(
+        InlineKeyboardButton(text=f"{on_off(l10n, fixer.settings.modules.night)} {l10n('module_night')}",
+                             callback_data="mod:night"),
+        InlineKeyboardButton(text=l10n("night_btn_text"), callback_data="night:text"),
+    )
     builder.row(*nav_row(l10n, "sys"))
     return l10n("gl_title"), builder.as_markup()
 
@@ -172,17 +179,6 @@ async def cb_menu(query: CallbackQuery, fixer) -> None:
     text, markup = build_main_menu(fixer)
     await safe_edit(query.message, text, markup)
     await query.answer()
-
-@router.callback_query(F.data == "auto_publish")
-async def cb_in_development(query: CallbackQuery, fixer) -> None:
-    """Заглушка для кнопок будущих разделов («Чаты» обрабатывает раздел chats)."""
-    l10n = fixer.l10n
-    section_key = {
-        "auto_publish": "btn_auto_publish",
-    }[query.data]
-    # Берём текст кнопки без эмодзи для алерта
-    section = l10n(section_key).split(" ", 1)[-1]
-    await query.answer(l10n("alert_in_development", section=section), show_alert=True)
 
 @router.callback_query(F.data.startswith("mod:"))
 async def cb_toggle_module(query: CallbackQuery, fixer) -> None:

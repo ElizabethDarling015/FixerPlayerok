@@ -108,14 +108,21 @@ def test_autoresponse_blank_response_rejected(tmp_path):
 
 def test_autodelivery_roundtrip(tmp_path):
     config = AutoDeliveryConfig(lots={
-        "Лот с пробелами": AutoDeliveryLot(stock_file="storage/stock/a.txt", restore=True,
-                                            deactivate_when_empty=True),
+        "Лот с пробелами": AutoDeliveryLot(stock_file="storage/stock/a.txt", deactivate_when_empty=True),
     })
     path = tmp_path / "ad.toml"
     save_autodelivery_config(config, str(path))
     loaded = load_autodelivery_config(str(path))
-    assert loaded.lots["Лот с пробелами"].restore is True
     assert loaded.lots["Лот с пробелами"].deactivate_when_empty is True
+
+
+def test_old_restore_options_in_configs_are_ignored(tmp_path):
+    """Старое автовосстановление удалено: прежние ключи в конфигах не ломают запуск."""
+    path = tmp_path / "ad.toml"
+    path.write_text('[lots."Лот"]\nstock_file = "a.txt"\nrestore = true\n', encoding="utf-8")
+    assert load_autodelivery_config(str(path)).lots["Лот"].stock_file == "a.txt"
+    from fixer.settings import ModulesSettings
+    assert not hasattr(ModulesSettings(**{"autorestore": True}), "autorestore")
 
 
 def test_autodelivery_requires_stock_file(tmp_path):

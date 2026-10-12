@@ -898,7 +898,8 @@ class Account:
     def update_item(self, item_id: str, name: str | None = None, price: int | None = None,
                      description: str | None = None, data_fields: dict[str, str] | None = None,
                      options: dict[str, str] | None = None, comment: str | None = None,
-                     added_attachments: list[str | bytes] | None = None) -> types.MyItem | types.Item | None:
+                     added_attachments: list[str | bytes] | None = None,
+                     keep_in_sale: bool | None = None) -> types.MyItem | types.Item | None:
         """
         Обновляет уже созданный лот.
 
@@ -909,6 +910,8 @@ class Account:
         :param data_fields: Новые значения полей данных лота `{id_поля: значение}`, опционально.
         :param options: Новые значения опций (атрибутов) лота `{id_опции: значение}`, опционально.
         :param comment: Новый комментарий продавца к лоту, опционально.
+        :param keep_in_sale: «Оставлять в продаже» — после продажи лот остаётся на витрине
+            (Playerok сам делает проданную копию), опционально.
         :param added_attachments: Пути к новым файлам изображений на диске либо готовые байты изображений
             (добавляются к уже имеющимся изображениям лота).
         :return: Обновлённый лот.
@@ -922,6 +925,8 @@ class Account:
             input_data["description"] = description
         if comment is not None:
             input_data["comment"] = comment
+        if keep_in_sale is not None:
+            input_data["keepInSale"] = bool(keep_in_sale)
         if data_fields:
             input_data["dataFields"] = [{"id": k, "value": v} for k, v in data_fields.items()]
         if options:
@@ -1029,38 +1034,54 @@ class Account:
         raw_list = data.get("itemPriorityStatuses") or []
         return [status for status in (parser.item_priority_status(s) for s in raw_list) if status]
 
+    @staticmethod
+    def _priority_input(item_id: str, priority_status_id: str | None, provider_id: str,
+                        keep_in_sale: bool | None) -> dict:
+        """Ввод `PublishItemInput` в формате сайта (HAR 12.10.2026)."""
+        provider = provider_id.name if hasattr(provider_id, "name") else provider_id
+        input_data: dict = {
+            "itemId": item_id,
+            "priorityStatuses": [priority_status_id] if priority_status_id else [],
+            "transactionProviderId": provider,
+            "transactionProviderData": {"paymentMethodId": None},
+        }
+        if keep_in_sale is not None:
+            input_data["keepInSale"] = bool(keep_in_sale)
+        return input_data
+
     def publish_item(self, item_id: str, priority_status_id: str | None = None,
-                      provider_id: str = "LOCAL") -> types.MyItem | types.Item | None:
+                     provider_id: str = "LOCAL", keep_in_sale: bool | None = None) -> types.MyItem | types.Item | None:
         """
-        Публикует лот (отправляет на модерацию), опционально оплачивая статус приоритета.
+        Публикует лот: новый, истёкший или проданный (отправляет на модерацию), с оплатой
+        статуса приоритета, если он платный.
 
         :param item_id: ID лота.
         :param priority_status_id: ID статуса приоритета (см. `get_item_priority_statuses`).
-            Если не указан — используется бесплатный (стандартный) приоритет.
-        :param provider_id: ID провайдера оплаты статуса приоритета (см. `common.enums.TransactionProviderIds`).
-            По умолчанию `"LOCAL"` — оплата с баланса аккаунта на сайте.
+            Для премиум-лота Playerok предлагает только премиум (платный) статус.
+        :param provider_id: ID провайдера оплаты (`"LOCAL"` — с баланса аккаунта на сайте).
+        :param keep_in_sale: «Оставлять в продаже», опционально (сайт шлёт всегда).
         :return: Опубликованный (или отправленный на модерацию) лот.
         """
-        input_data: dict = {"id": item_id, "providerId": provider_id}
-        if priority_status_id:
-            input_data["priorityStatusId"] = priority_status_id
+        input_data = self._priority_input(item_id, priority_status_id, provider_id, keep_in_sale)
         data = self._query("publishItem", {"input": input_data, "showForbiddenImage": True})
         return self._resolve_items(data.get("publishItem"))
 
     def increase_item_priority_status(self, item_id: str, priority_status_id: str,
-                                       provider_id: str = "LOCAL") -> types.MyItem | types.Item | None:
+                                       provider_id: str = "LOCAL",
+                                       keep_in_sale: bool | None = None) -> types.MyItem | types.Item | None:
         """
-        Поднимает лот в списке — покупает более высокий статус приоритета для уже опубликованного лота.
+        Поднимает лот («Поднять в топ»): оплачивает премиум-статус для опубликованного лота.
+        Срок выставления при этом начинается заново (30 дней).
 
         :param item_id: ID лота.
         :param priority_status_id: ID статуса приоритета (см. `get_item_priority_statuses`).
-        :param provider_id: ID провайдера оплаты (см. `common.enums.TransactionProviderIds`).
-            По умолчанию `"LOCAL"` — оплата с баланса аккаунта на сайте.
+        :param provider_id: ID провайдера оплаты (`"LOCAL"` — с баланса аккаунта на сайте).
+        :param keep_in_sale: «Оставлять в продаже», опционально.
         :return: Лот с обновлённым статусом приоритета.
         """
         if self._runner is not None:
             self._runner._dispatch_hook("PRE_LOTS_RAISE", item_id=item_id)
-        input_data = {"id": item_id, "priorityStatusId": priority_status_id, "providerId": provider_id}
+        input_data = self._priority_input(item_id, priority_status_id, provider_id, keep_in_sale)
         data = self._query("increaseItemPriorityStatus",
                            {"input": input_data, "showForbiddenImage": True})
         result = self._resolve_items(data.get("increaseItemPriorityStatus"))
@@ -1070,6 +1091,23 @@ class Account:
         if self._runner is not None:
             self._runner._dispatch_hook("POST_LOTS_RAISE", item_id=item_id, item=result)
         return result
+
+    def _item_rest_action(self, item_id: str, action: str) -> dict:
+        """POST https://playerok.com/rest-api/public/item/<id>/<action> — без тела (как сайт)."""
+        url = f"https://playerok.com/rest-api/public/item/{item_id}/{action}"
+        response = self.request("post", url=url, idempotent=False)
+        data = response.json()
+        if not isinstance(data, dict) or not data.get("success"):
+            raise RuntimeError(f"Playerok не выполнил {action}: {data!r}")
+        return data
+
+    def discontinue_item(self, item_id: str) -> dict:
+        """«Снять с продажи». Ответ: `{"success", "status": "DISCONTINUED", "pauseAvailable", …}`."""
+        return self._item_rest_action(item_id, "discontinue")
+
+    def republish_item(self, item_id: str) -> dict:
+        """Вернуть снятый лот в продажу (бесплатно). Ответ: `{"success", "status": "APPROVED", …}`."""
+        return self._item_rest_action(item_id, "republish")
 
     def get_my_items(self, status=None, count: int = 20, after_cursor: str | None = None) -> types.ItemProfileList | None:
         """

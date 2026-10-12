@@ -8,6 +8,8 @@
   и USDT TRC20 (адрес). Остальные способы показываются, но выводить ими — на сайте.
 * Ничего не отправляется без отдельного нажатия «✅ Вывести» на экране подтверждения.
   Данные заявки при этом сразу стираются — повторное нажатие не создаст вторую заявку.
+* Весь диалог идёт в одном сообщении бота: ваши сообщения (телефон, банк, адрес, сумма)
+  бот удаляет, а следующий шаг или ошибку («⚠️ …» над экраном) показывает в том же сообщении.
 * Последний способ и банк/карта/адрес запоминаются в `storage/withdrawal.json` — кнопка
   «⚡ Как в прошлый раз» ведёт сразу к вводу суммы. Телефон там не хранится: его отдаёт Playerok.
 """
@@ -27,7 +29,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from loguru import logger
 
 from ...settings import STORAGE_DIR
-from .common import nav_row, safe_edit
+from .common import nav_row, remember_panel, safe_edit, show_in_panel, with_error
 
 router = Router(name="withdrawal")
 
@@ -235,6 +237,19 @@ def build_confirm_screen(l10n, data: dict, amount: int, provider, usdt_rate=None
 
 
 # ----------------------------------------------------------------------
+# Одно сообщение на весь диалог
+# ----------------------------------------------------------------------
+
+_remember_panel = remember_panel
+_panel = show_in_panel
+_with_error = with_error
+
+
+def _cancel_kb(l10n):
+    return _kb([[_btn(l10n("wd_btn_cancel"), "wd")]])
+
+
+# ----------------------------------------------------------------------
 # Хендлеры
 # ----------------------------------------------------------------------
 
@@ -257,6 +272,7 @@ async def _show_main(query: CallbackQuery, fixer, state: FSMContext) -> None:
         return
     withdrawable = await _withdrawable(fixer)
     await state.update_data(providers_seen=True)
+    await _remember_panel(state, query.message)
     text, markup = build_main_screen(l10n, providers, withdrawable, load_remembered())
     await safe_edit(query.message, text, markup)
 
@@ -270,11 +286,18 @@ async def cb_main(query: CallbackQuery, fixer, state: FSMContext) -> None:
 
 
 async def _go_amount(target: Message, fixer, state: FSMContext, data: dict, edit: bool = True) -> None:
-    """Сохраняет выбор в FSM и показывает ввод суммы."""
+    """Сохраняет выбор в FSM и показывает ввод суммы.
+
+    `edit=True` — `target` это сообщение диалога (нажата кнопка); `False` — это ваше
+    сообщение (его удалим, экран покажем в сообщении диалога)."""
     providers = await _providers(fixer)
     provider = providers.get(data["provider"])
     if provider is None:
-        await target.answer(fixer.l10n("wd_err_provider_gone"))
+        error = fixer.l10n("wd_err_provider_gone")
+        if edit:
+            await safe_edit(target, error, _kb([[_btn(fixer.l10n("btn_back"), "wd")]]))
+        else:
+            await _panel(target, state, error, _kb([[_btn(fixer.l10n("btn_back"), "wd")]]))
         return
     data = {**data, "min_out": provider.min_out, "max_out": provider.max_out}
     withdrawable = await _withdrawable(fixer)
@@ -282,9 +305,10 @@ async def _go_amount(target: Message, fixer, state: FSMContext, data: dict, edit
     await state.update_data(order=data)
     text, markup = build_amount_screen(fixer.l10n, data, withdrawable)
     if edit:
+        await _remember_panel(state, target)
         await safe_edit(target, text, markup)
     else:
-        await target.answer(text, reply_markup=markup)
+        await _panel(target, state, text, markup)
 
 
 @router.callback_query(F.data.startswith("wd:m:"))
@@ -292,6 +316,7 @@ async def cb_method(query: CallbackQuery, fixer, state: FSMContext) -> None:
     if not await _require_online(fixer, query):
         return
     await _answer(query)
+    await _remember_panel(state, query.message)
     l10n = fixer.l10n
     pid = query.data.split(":", 2)[2]
     providers = await _providers(fixer)
@@ -330,7 +355,7 @@ async def cb_method(query: CallbackQuery, fixer, state: FSMContext) -> None:
         await safe_edit(query.message, l10n("wd_enter_usdt"), _kb([[_btn(l10n("wd_btn_cancel"), "wd")]]))
 
 
-async def _show_banks(message: Message, fixer, edit: bool = True) -> None:
+async def _show_banks(message: Message, fixer, edit: bool = True, state: FSMContext | None = None) -> None:
     l10n = fixer.l10n
     try:
         banks = await asyncio.to_thread(fixer.account.get_sbp_banks)
@@ -342,24 +367,26 @@ async def _show_banks(message: Message, fixer, edit: bool = True) -> None:
     if edit:
         await safe_edit(message, text, markup)
     else:
-        await message.answer(text, reply_markup=markup)
+        await _panel(message, state, text, markup)
 
 
 @router.message(WithdrawStates.phone, F.text)
 async def msg_phone(message: Message, fixer, state: FSMContext) -> None:
+    l10n = fixer.l10n
     phone = normalize_phone(message.text)
     if phone is None:
-        await message.answer(fixer.l10n("wd_err_phone"))
+        await _panel(message, state, _with_error(l10n("wd_err_phone"), l10n("wd_enter_phone")), _cancel_kb(l10n))
         return
     data = (await state.get_data()).get("order") or {}
     await state.update_data(order={**data, "provider": "SBP", "account": phone})
     await state.set_state(None)
-    await _show_banks(message, fixer, edit=False)
+    await _show_banks(message, fixer, edit=False, state=state)
 
 
 @router.callback_query(F.data == "wd:bsearch")
 async def cb_bank_search(query: CallbackQuery, fixer, state: FSMContext) -> None:
     await _answer(query)
+    await _remember_panel(state, query.message)
     await state.set_state(WithdrawStates.bank_search)
     await safe_edit(query.message, fixer.l10n("wd_enter_bank"), _kb([[_btn(fixer.l10n("wd_btn_cancel"), "wd")]]))
 
@@ -371,15 +398,17 @@ async def msg_bank_search(message: Message, fixer, state: FSMContext) -> None:
     try:
         banks = await asyncio.to_thread(fixer.account.get_sbp_banks)
     except Exception as exc:
-        await message.answer(l10n("wd_failed", error=html.escape(str(exc)[:200])))
+        await _panel(message, state, _with_error(l10n("wd_failed", error=html.escape(str(exc)[:200])),
+                                                 l10n("wd_enter_bank")), _cancel_kb(l10n))
         return
     found = [b for b in banks if needle in b.name.casefold()][:TOP_BANKS]
     if not found:
-        await message.answer(l10n("wd_err_bank_not_found"))
+        await _panel(message, state, _with_error(l10n("wd_err_bank_not_found"), l10n("wd_enter_bank")),
+                     _cancel_kb(l10n))
         return
     await state.set_state(None)
     text, markup = build_banks_screen(l10n, found, l10n("wd_choose_bank"))
-    await message.answer(text, reply_markup=markup)
+    await _panel(message, state, text, markup)
 
 
 @router.callback_query(F.data.startswith("wd:b:"))
@@ -413,9 +442,10 @@ async def cb_card(query: CallbackQuery, fixer, state: FSMContext) -> None:
 
 @router.message(WithdrawStates.usdt_address, F.text)
 async def msg_usdt(message: Message, fixer, state: FSMContext) -> None:
+    l10n = fixer.l10n
     address = message.text.strip()
     if not _USDT_RE.match(address):
-        await message.answer(fixer.l10n("wd_err_usdt"))
+        await _panel(message, state, _with_error(l10n("wd_err_usdt"), l10n("wd_enter_usdt")), _cancel_kb(l10n))
         return
     await _go_amount(message, fixer, state, {"provider": "USDT", "account": address}, edit=False)
 
@@ -447,13 +477,17 @@ async def _to_confirm(target: Message, fixer, state: FSMContext, amount: int, ed
     l10n = fixer.l10n
     data = (await state.get_data()).get("order") or {}
     if not data.get("provider"):
-        await target.answer(l10n("wd_err_expired"))
+        expired = l10n("wd_err_expired")
+        back = _kb([[_btn(l10n("btn_back"), "wd")]])
+        await (safe_edit(target, expired, back) if edit else _panel(target, state, expired, back))
         return
     withdrawable = await _withdrawable(fixer)
     error = _amount_error(data, amount, withdrawable)
     if error:
-        await target.answer(l10n(error, min=money(data.get("min_out")), max=money(data.get("max_out")),
-                                 available=money(withdrawable)))
+        screen, markup = build_amount_screen(l10n, data, withdrawable)
+        text = _with_error(l10n(error, min=money(data.get("min_out")), max=money(data.get("max_out")),
+                                available=money(withdrawable)), screen)
+        await (safe_edit(target, text, markup) if edit else _panel(target, state, text, markup))
         return
     providers = await _providers(fixer)
     provider = providers.get(data["provider"])
@@ -467,7 +501,7 @@ async def _to_confirm(target: Message, fixer, state: FSMContext, amount: int, ed
     if edit:
         await safe_edit(target, text, markup)
     else:
-        await target.answer(text, reply_markup=markup)
+        await _panel(target, state, text, markup)
 
 
 @router.callback_query(F.data.startswith("wd:all:"))
@@ -482,7 +516,9 @@ async def cb_all(query: CallbackQuery, fixer, state: FSMContext) -> None:
 async def msg_amount(message: Message, fixer, state: FSMContext) -> None:
     digits = re.sub(r"[\s₽рруб.]", "", message.text or "", flags=re.IGNORECASE)
     if not digits.isdigit():
-        await message.answer(fixer.l10n("wd_err_amount"))
+        data = (await state.get_data()).get("order") or {}
+        screen, markup = build_amount_screen(fixer.l10n, data, await _withdrawable(fixer))
+        await _panel(message, state, _with_error(fixer.l10n("wd_err_amount"), screen), markup)
         return
     await _to_confirm(message, fixer, state, int(digits), edit=False)
 

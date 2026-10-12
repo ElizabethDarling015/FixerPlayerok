@@ -26,7 +26,68 @@ STRINGS = {
     "chats_read_slow": "⚠️ Playerok не ответил вовремя (за {seconds} с), жду ответа…",
     "chats_read_late_ok": "✅ Ответил, время выполнения {seconds} с.",
     "chats_read_late_failed": "❌ Не удалось отметить чат прочитанным (через {seconds} с), см. лог.",
-    "btn_auto_publish": "📤 Автовыставление",
+    "btn_items": "🛍 Товары",
+    "it_title": "🛍 <b>Товары</b>\nВ продаже: <b>{on_sale}</b> · На модерации: <b>{moderation}</b>\n\nВыберите раздел:",
+    "it_empty": "Активных лотов нет.",
+    "it_btn_inactive": "⏸ Снятые и заблокированные",
+    "it_btn_refresh": "🔄 Обновить",
+    "it_section_title": "📂 <b>{section}</b> — лотов: <b>{count}</b>\n\n🔁 — включено автовыставление",
+    "it_inactive_title": "⏸ <b>Снятые и заблокированные</b>\n⏸ Сняты вами: <b>{discontinued}</b>\n⛔ Заблокированы: <b>{blocked}</b>\n🔴 Отклонены: <b>{declined}</b>\n🟠 Истёк срок: <b>{expired}</b>",
+    "it_inactive_empty": "Таких лотов нет.",
+    "it_card_title": "🎁 <b>{name}</b>",
+    "it_card_section": "📂 {section}",
+    "it_card_price": "💰 <b>{price} ₽</b> · {status} · {priority}",
+    "it_card_until": "🗓 В продаже до {until}",
+    "it_card_stats": "👁 Просмотров: {views} · 🛒 Продаж: {deals}",
+    "it_card_reason": "⚠️ <b>Причина:</b> {reason}",
+    "it_card_comment": "💬 <b>Комментарий:</b>\n<blockquote expandable>{comment}</blockquote>",
+    "it_card_no_comment": "💬 Комментария нет",
+    "it_card_keep": "🔁 Автовыставление: {state}",
+    "it_card_autodelivery": "📦 Автовыдача: {state}",
+    "it_autodelivery_on": "вкл, на складе {stock} шт.",
+    "it_on": "вкл",
+    "it_off": "выкл",
+    "it_premium": "🚀 Премиум",
+    "it_free": "Обычный",
+    "it_status_approved": "В продаже",
+    "it_status_pending_moderation": "На модерации",
+    "it_status_pending_approval": "Ждёт проверки",
+    "it_status_expired": "Истёк срок",
+    "it_status_declined": "Отклонён",
+    "it_status_blocked": "Заблокирован",
+    "it_status_discontinued": "Снят с продажи",
+    "it_status_sold": "Продан",
+    "it_status_draft": "Черновик",
+    "it_btn_keep": "🔁 Автовыставление: {state}",
+    "it_btn_comment": "💬 Комментарий",
+    "it_btn_price": "💰 Цена",
+    "it_btn_raise": "⬆️ Поднять",
+    "it_btn_pause": "⏸ Снять с продажи",
+    "it_btn_resume": "▶️ Вернуть в продажу",
+    "it_btn_publish": "🔄 Выставить заново",
+    "it_btn_site": "🌐 Открыть на сайте",
+    "it_btn_pay": "✅ {label} · {price} ₽",
+    "it_raise_confirm": "⬆️ <b>Поднять в топ</b>\n🎁 {name}\n\nДеньги спишутся с баланса Playerok. Срок выставления начнётся заново (30 дней).",
+    "it_publish_confirm": "🔄 <b>Выставить заново</b>\n🎁 {name}\n\nВыберите статус. Платный списывается с баланса Playerok.",
+    "it_no_statuses": "Playerok не предложил ни одного варианта — попробуйте на сайте.",
+    "it_pending_expired": "Экран оплаты устарел — откройте лот заново.",
+    "it_raised": "✅ Лот поднят, списано {price} ₽.",
+    "it_published": "✅ Лот выставлен, списано {price} ₽.",
+    "it_keep_on": "🔁 Автовыставление включено",
+    "it_keep_off": "🔁 Автовыставление выключено",
+    "it_paused": "⏸ Лот снят с продажи",
+    "it_resumed": "▶️ Лот снова в продаже",
+    "it_enter_comment": "💬 Пришлите новый <b>комментарий</b> — его получит покупатель после оплаты.\n\nПосле правки комментария лот ненадолго уходит на модерацию.",
+    "it_enter_price": "💰 Пришлите новую <b>цену</b> в рублях (только число).",
+    "it_bad_price": "Нужна цена числом, например 330.",
+    "it_bad_comment": "Пришлите текст комментария (не пустой и не команду).",
+    "it_comment_saved": "✅ Комментарий сохранён. Лот ненадолго ушёл на модерацию.",
+    "it_price_saved": "✅ Цена изменена: {price} ₽.",
+    "it_offline": "⚠️ Playerok не подключён — раздел «Товары» доступен в онлайн-режиме.",
+    "it_forbidden": "❌ Playerok не разрешает это действие для лота в таком статусе.",
+    "it_failed": "❌ Не получилось: {error}",
+    "it_load_failed": "🛍 <b>Товары</b>\n\n❌ Не удалось загрузить лоты: {error}",
+    "it_not_found": "Лот не найден — возможно, он удалён.",
     "btn_last_deals": "🕒 Последние сделки",
     "wd_offline": (
         '⚠️ Playerok не подключён.\n'
@@ -121,8 +182,9 @@ STRINGS = {
         '📂 <b>Раздел:</b> {section}\n'
         '🎁 <b>Лот:</b> {item}\n'
         '👤 <b>Покупатель:</b> {buyer} | 💰 <b>Цена:</b> {price}\n'
-        '{state}'
+        '{state}{date}'
     ),
+    "ld_date": '\n🗓 {date}',
     "ld_title": '🕒 <b>Последние сделки</b>',
     "ld_review": ' · ⭐ {rating}',
     "ld_state_unknown": '❔ {status}',
@@ -132,7 +194,6 @@ STRINGS = {
     "ld_state_confirmed": '✅ Завершено',
     "ld_state_sent": '⏳ Не подтвердил',
     "ld_state_paid": '💰 Оплачено, ждёт выдачи',
-    "alert_in_development": "⏸ Раздел «{section}» в разработке — появится в следующих обновлениях.",
     "btn_close": "❌ Закрыть",
     "cancelled": "Действие отменено.",
     "stub_message": "⏸ Раздел перенесён в Настройки",
@@ -160,9 +221,16 @@ STRINGS = {
     "module_autodelivery": "Авто-выдача",
     "module_autoraise": "Автоподнятие",
     "module_autoresponse": "Автоответчик",
-    "module_autorestore": "Автовосстановление",
     "module_online": "Вечный онлайн",
     "module_digest": "Сводка дня",
+    "module_night": 'Ночное сообщение',
+    "night_btn_text": '✏️ Текст',
+    "night_btn_reset": '↩️ Текст по умолчанию',
+    "night_tz_server": 'пояс сервера — задайте [digest] timezone',
+    "night_text_view": '🌙 <b>Ночное сообщение</b>\n\nПокупатель, оплативший лот с <b>{start}</b> до <b>{end}</b> ({tz}), получит в чате сделки это сообщение (через пару секунд после товара):\n\n<blockquote>{text}</blockquote>\n\nПришлите новый текст сообщением. Можно вставить <code>$username</code> — ник покупателя и <code>$item</code> — название лота.',
+    "night_text_saved": '✅ Текст ночного сообщения сохранён.',
+    "night_text_empty": 'Пришлите текст сообщения (не пустой и не команду).',
+    "night_text_too_long": 'Слишком длинно: не больше {limit} символов.',
     "module_toggled_on": "Модуль «{module}» включён.",
     "module_toggled_off": "Модуль «{module}» выключен.",
 
@@ -201,16 +269,14 @@ STRINGS = {
         "📦 Лот <b>{name}</b>\n"
         "Склад: <code>{stock_file}</code>\n"
         "Остаток: <b>{stock}</b> шт.\n"
-        "Автовосстановление: {restore}\n"
-        "Деактивация при пустом складе: {deactivate}"
+        "Снять с продажи, когда склад пуст: {deactivate}"
     ),
     "ad_btn_view_stock": "👀 Показать склад",
     "ad_stock_view_title": "📦 <b>Склад «{name}»</b> — позиций: <b>{total}</b>",
     "ad_stock_view_empty": "Склад пуст.",
     "ad_stock_more": "… и ещё {count} позиций",
     "ad_btn_add_stock": "➕ Пополнить склад",
-    "ad_btn_toggle_restore": "♻️ Восстановление: {state}",
-    "ad_btn_toggle_deactivate": "🛑 Деактивация: {state}",
+    "ad_btn_toggle_deactivate": "🛑 Снять с продажи при пустом складе: {state}",
     "ad_btn_delete_lot": "🗑 Удалить лот",
     "ad_enter_lot_name": "Отправьте <b>точное название лота</b> (как на Playerok):",
     "ad_enter_stock_file": "Отправьте путь к файлу-складу (например <code>storage/stock/my_lot.txt</code>) или «-», чтобы создать его автоматически:",
@@ -451,23 +517,10 @@ STRINGS = {
         "🎁 <b>Лот:</b> {item}\n\n"
         "Пополните склад, чтобы авто-выдача продолжила работать."
     ),
-    "notif_restore_ok": (
-        "♻️ <b>Лот восстановлен</b>\n\n"
-        "🎁 <b>Лот:</b> {item}\n"
-        "🆔 <b>Новый ID:</b> <code>{item_id}</code>"
-    ),
-    "notif_restore_fail": (
-        "♻️❌ <b>Ошибка восстановления</b>\n\n"
-        "🎁 <b>Лот:</b> {item}\n\n"
-        "<pre>{error}</pre>"
-    ),
-    "notif_restore_premium_fallback": (
-        "♻️⚠️ <b>Лот восстановлен бесплатно</b>\n\n"
-        "🎁 <b>Лот:</b> {item}\n"
-        "🆔 <b>Новый ID:</b> <code>{item_id}</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "Премиум-статус не оплатился: {reason}"
-    ),
+    "notif_stock_empty_paused": "⏸ Лот снят с продажи, чтобы его не покупали без товара. Пополните склад и верните лот в «🛍 Товарах».",
+    "notif_item_expired": "⌛ <b>Лот снят: истёк срок выставления</b>\n\n📂 <b>Раздел:</b> {section}\n🎁 <b>Лот:</b> {item}\n💰 <b>Цена:</b> {price} ₽\n━━━━━━━━━━━━━━━━━━━\nВыставить заново можно кнопкой ниже — сначала покажу цену.",
+    "nt_item_expired": "Лот истёк",
+    "test_item_expired": "⌛ Лот истёк",
     "notif_blacklist_deal": (
         "🚫 <b>Сделка с покупателем из ЧС</b>\n\n"
         "📂 <b>Раздел:</b> {section}\n"
@@ -537,9 +590,6 @@ STRINGS = {
     "test_item_raised": "📈 Лот поднят",
     "test_no_balance": "💸 Не хватает баланса",
     "test_stock_empty": "📭 Склад пуст",
-    "test_restore_ok": "♻️ Лот восстановлен",
-    "test_restore_fail": "♻️❌ Ошибка восстановл.",
-    "test_restore_free": "♻️⚠️ Восст. бесплатно",
     "test_started": "🐦 Бот запущен",
     "test_page_1": "📄 <b>Страница 1:</b> сообщения, поддержка, сделки",
     "test_page_2": "📄 <b>Страница 2:</b> проблемы, модули, служебные",

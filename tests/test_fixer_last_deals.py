@@ -116,3 +116,30 @@ def test_own_items_requested_like_the_site():
     flt = account._persisted_query.call_args.args[1]["filter"]
     assert flt == {"userId": "u1", "status": ["APPROVED", "PENDING_MODERATION", "PENDING_APPROVAL"],
                    "withOfficial": False}
+
+
+def test_deal_date_line_in_seller_timezone():
+    from zoneinfo import ZoneInfo
+    l10n = make_fixer().l10n
+    date = last_deals.format_deal_date("2026-10-12T04:46:00.000Z", ZoneInfo("Asia/Yekaterinburg"))
+    assert date == "12.10.2026, 09:46"
+    text, _ = last_deals.build_last_deals(l10n, [deal(1)], {}, 0, False, {"d1": date})
+    assert text.splitlines()[-1] == "🗓 12.10.2026, 09:46"
+    text, _ = last_deals.build_last_deals(l10n, [deal(1)], {}, 0, False)
+    assert "🗓" not in text  # даты нет — строки нет
+
+
+def test_deal_dates_requested_once_and_remembered():
+    fixer = make_fixer()
+    fixer.notifier = None
+    calls = []
+
+    def get_deal(deal_id):
+        calls.append(deal_id)
+        return SimpleNamespace(id=deal_id, created_at="2026-10-12T04:46:00.000Z")
+
+    fixer.account.get_deal = get_deal
+    first = asyncio.run(last_deals._dates_for(fixer, [deal(1), deal(2)]))
+    again = asyncio.run(last_deals._dates_for(fixer, [deal(1), deal(2)]))
+    assert first == again == {"d1": "2026-10-12T04:46:00.000Z", "d2": "2026-10-12T04:46:00.000Z"}
+    assert calls == ["d1", "d2"]  # второй раз — из файла, без запросов

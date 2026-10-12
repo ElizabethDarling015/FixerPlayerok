@@ -133,7 +133,6 @@ def run_first_setup() -> MainSettings:
         "autodelivery": Confirm.ask("Авто-выдача товаров?", default=True),
         "autoresponse": Confirm.ask("Автоответчик на команды?", default=True),
         "autoraise": Confirm.ask("Автоподнятие лотов (тратит баланс!)?", default=False),
-        "autorestore": Confirm.ask("Автовосстановление лотов после продажи?", default=False),
         "online": Confirm.ask("Вечный онлайн?", default=True),
         "digest": Confirm.ask("Ежедневная сводка в Telegram?", default=True),
     }

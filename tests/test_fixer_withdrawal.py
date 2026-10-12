@@ -90,16 +90,39 @@ class FakeState:
         return dict(self.data)
 
 
+class FakeBot:
+    """Правки сообщения диалога по id (как bot.edit_message_text)."""
+
+    def __init__(self):
+        self.messages: dict[int, "FakeMessage"] = {}
+
+    async def edit_message_text(self, text, chat_id=None, message_id=None, reply_markup=None, **_):
+        self.messages[message_id].edits.append((text, reply_markup))
+
+
+BOT = FakeBot()
+_ids = iter(range(100, 10_000))
+
+
 class FakeMessage:
-    def __init__(self, text=None):
+    def __init__(self, text=None, bot=None):
         self.text = text
         self.edits, self.sent = [], []
+        self.deleted = False
+        self.bot = bot or BOT
+        self.chat = SimpleNamespace(id=1)
+        self.message_id = next(_ids)
+        self.bot.messages[self.message_id] = self
 
     async def edit_text(self, text, reply_markup=None, **_):
         self.edits.append((text, reply_markup))
 
     async def answer(self, text, reply_markup=None, **_):
         self.sent.append((text, reply_markup))
+        return FakeMessage(bot=self.bot)
+
+    async def delete(self):
+        self.deleted = True
 
 
 class FakeQuery:
@@ -146,8 +169,12 @@ def test_full_sbp_flow_requires_confirmation(setup):
     run(wd.cb_method(FakeQuery("wd:m:SBP", q.message), fixer, state))
     run(wd.cb_bank(FakeQuery("wd:b:100000000111", q.message), fixer, state))
     assert state.state == wd.WithdrawStates.amount
-    run(wd.msg_amount(FakeMessage("2000"), fixer, state))
+    typed = FakeMessage("2000")
+    run(wd.msg_amount(typed, fixer, state))
     assert calls == []  # до подтверждения — ничего не отправлено
+    # Ваше сообщение удалено, подтверждение — в том же сообщении бота, нового нет.
+    assert typed.deleted and typed.sent == []
+    assert "2 000 ₽" in q.message.edits[-1][0]
 
     run(wd.cb_go(FakeQuery("wd:go", q.message), fixer, state))
     assert calls == [("SBP", "+79191234522", 2000, "100000000111")]
@@ -172,12 +199,26 @@ def test_remembered_choice_skips_to_amount(setup):
 
 def test_amount_over_balance_rejected(setup):
     fixer, state, calls = setup
-    run(wd.cb_method(FakeQuery("wd:m:SBP"), fixer, state))
-    run(wd.cb_bank(FakeQuery("wd:b:100000000111"), fixer, state))
+    panel = FakeMessage()
+    run(wd.cb_method(FakeQuery("wd:m:SBP", panel), fixer, state))
+    run(wd.cb_bank(FakeQuery("wd:b:100000000111", panel), fixer, state))
     msg = FakeMessage("5000")
     run(wd.msg_amount(msg, fixer, state))
-    assert "Больше, чем доступно" in msg.sent[-1][0]
-    assert calls == []
+    text = panel.edits[-1][0]
+    assert text.startswith("⚠️ Больше, чем доступно")
+    assert "Напишите сумму" in text  # под ошибкой — тот же экран ввода суммы
+    assert msg.deleted and msg.sent == [] and calls == []
+    assert state.state == wd.WithdrawStates.amount  # можно ввести сумму ещё раз
+
+
+def test_phone_error_shown_in_same_message(setup):
+    fixer, state, calls = setup
+    panel = FakeMessage()
+    run(wd.cb_main(FakeQuery("wd", panel), fixer, state))
+    run(state.set_state(wd.WithdrawStates.phone))
+    msg = FakeMessage("123")
+    run(wd.msg_phone(msg, fixer, state))
+    assert msg.deleted and msg.sent == [] and panel.edits[-1][0].startswith("⚠️")
 
 
 def test_offline_alert(setup):

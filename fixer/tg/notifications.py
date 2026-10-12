@@ -310,6 +310,13 @@ def started_keyboard(l10n) -> InlineKeyboardMarkup:
     ])
 
 
+def item_expired_keyboard(l10n, item_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=l10n("it_btn_publish"), callback_data=f"it:pub:{item_id}")],
+        [InlineKeyboardButton(text=l10n("btn_close"), callback_data="close")],
+    ])
+
+
 def close_keyboard(l10n) -> InlineKeyboardMarkup:
     """Одна кнопка «Закрыть» — удаляет уведомление (поддержка, администрация, площадка)."""
     return InlineKeyboardMarkup(inline_keyboard=[[
@@ -628,7 +635,7 @@ class Notifier:
         """Уведомление о выплате: сумма/способ/статус/дата — только те, что удалось получить."""
         l10n = self.fixer.l10n
         info = await self._fetch_latest_payout()
-        text = _esc(_clean_payout_text(message.text or "")) or "…"
+        text = _esc(_clean_payout_text(html.unescape(message.text or ""))) or "…"
         remember = chat.id if chat is not None else None
 
         balance = None
@@ -729,7 +736,7 @@ class Notifier:
         """Уведомление о скором снятии лота — с названием, разделом и ценой."""
         l10n = self.fixer.l10n
         item = await self._resolve_expiring_item(message, chat)
-        text = _esc((message.text or "").strip()) or "…"
+        text = _esc(html.unescape((message.text or "").strip())) or "…"
         remember = chat.id if chat is not None else None
 
         if item is None:
@@ -872,7 +879,9 @@ class Notifier:
     @staticmethod
     def _message_text(message) -> str:
         if message.text:
-            return _esc(message.text)
+            # Playerok иногда присылает HTML-сущности (&mdash;, &nbsp;) — раскрываем их до
+            # экранирования, иначе в Telegram видно «&mdash;» буквами.
+            return _esc(html.unescape(message.text))
         if getattr(message, "images", None) or getattr(message, "file", None):
             return "🖼 <i>Фото</i>"
         return "…"
@@ -1223,23 +1232,20 @@ class Notifier:
         if self._toggles.errors:
             await self._send_all(self.fixer.l10n("notif_error", error=_esc(error_text)))
 
-    async def notify_stock_empty(self, item_name: str) -> None:
+    async def notify_stock_empty(self, item_name: str, paused: bool = False) -> None:
         if self._toggles.stock_empty:
-            await self._send_all(self.fixer.l10n("notif_stock_empty", item=_esc(item_name)))
+            l10n = self.fixer.l10n
+            text = l10n("notif_stock_empty", item=_esc(item_name))
+            if paused:
+                text += "\n\n" + l10n("notif_stock_empty_paused")
+            await self._send_all(text, reply_markup=close_keyboard(l10n))
 
-    async def notify_restore_ok(self, item_name: str, new_item_id: str) -> None:
-        await self._send_all(self.fixer.l10n("notif_restore_ok", item=_esc(item_name),
-                                                item_id=_esc(new_item_id)))
-
-    async def notify_restore_failed(self, item_name: str, error_text: str) -> None:
-        await self._send_all(self.fixer.l10n("notif_restore_fail", item=_esc(item_name),
-                                                error=_esc(error_text)))
-
-    async def notify_restore_premium_fallback(self, item_name: str, new_item_id: str,
-                                              reason: str) -> None:
-        await self._send_all(self.fixer.l10n(
-            "notif_restore_premium_fallback",
-            item=_esc(item_name),
-            item_id=_esc(new_item_id),
-            reason=_esc(reason or "неизвестная причина"),
-        ))
+    async def notify_item_expired(self, item) -> None:
+        """Лот снят с продажи по истечении срока — с кнопкой «Выставить заново» (через экран с ценой)."""
+        if not self._toggles.item_expired:
+            return
+        l10n = self.fixer.l10n
+        from ..storefront import section_of
+        text = l10n("notif_item_expired", item=_esc(getattr(item, "name", None) or "?"),
+                    section=_esc(section_of(item)), price=_esc(getattr(item, "price", None) or "?"))
+        await self._send_all(text, reply_markup=item_expired_keyboard(l10n, item.id))
