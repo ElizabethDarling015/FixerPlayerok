@@ -366,16 +366,30 @@ async def cb_keep(query: CallbackQuery, fixer) -> None:
     if await _offline(query, fixer):
         return
     item_id = query.data[5:]
+    l10n = fixer.l10n
     try:
         item = await _load_item(fixer, item_id)
-        new_value = not bool(getattr(item, "keep_in_sale", False))
-        await asyncio.to_thread(fixer.account.update_item, item_id, keep_in_sale=new_value)
+        current = getattr(item, "keep_in_sale", None)
+        if current is None:
+            # Playerok не прислал состояние — переключать вслепую нельзя.
+            with suppress(Exception):
+                await query.answer(l10n("it_keep_unknown"), show_alert=True)
+            return
+        result = await asyncio.to_thread(fixer.account.update_item, item_id, keep_in_sale=not current)
     except Exception as exc:
         await _fail(query, fixer, exc)
         return
     cache.invalidate()
+    # Что на самом деле стало на Playerok — по ответу сервера, а не по нажатию.
+    actual = getattr(result, "keep_in_sale", None)
+    if actual is None:
+        alert = l10n("it_keep_sent")
+    else:
+        alert = l10n("it_keep_on" if actual else "it_keep_off")
+        if actual == current:
+            alert = l10n("it_keep_not_changed")
     with suppress(Exception):
-        await query.answer(fixer.l10n("it_keep_on" if new_value else "it_keep_off"))
+        await query.answer(alert, show_alert=actual is None or actual == current)
     await show_card(query.message, fixer, item_id)
 
 

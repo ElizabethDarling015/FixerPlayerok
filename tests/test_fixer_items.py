@@ -88,7 +88,13 @@ def fixer_with_item(item):
     account = fixer.account
     account.calls = []
     account.get_item = lambda id=None, slug=None: item
-    account.update_item = lambda item_id, **kw: account.calls.append(("update", item_id, kw))
+    def update_item(item_id, **kw):
+        account.calls.append(("update", item_id, kw))
+        if "keep_in_sale" in kw:
+            item.keep_in_sale = kw["keep_in_sale"]
+        return item
+
+    account.update_item = update_item
     account.get_item_priority_statuses = lambda item_id, price: [
         SimpleNamespace(id="prem", price=9, type=PriorityTypes.PREMIUM),
         SimpleNamespace(id="free", price=0, type=PriorityTypes.DEFAULT),
@@ -98,11 +104,34 @@ def fixer_with_item(item):
     return fixer
 
 
-async def test_keep_in_sale_toggle_updates_playerok():
+async def test_keep_in_sale_toggle_updates_playerok_and_reports_real_state():
     item = lot(1, keep=True)
     fixer = fixer_with_item(item)
-    await items_panel.cb_keep(FakeQuery("it:k:it-1"), fixer)
+    query = FakeQuery("it:k:it-1")
+    await items_panel.cb_keep(query, fixer)
     assert fixer.account.calls == [("update", "it-1", {"keep_in_sale": False})]
+    assert query.alerts[-1] == "🔁 Автовыставление выключено"
+    query = FakeQuery("it:k:it-1")
+    await items_panel.cb_keep(query, fixer)  # второе нажатие — обратно
+    assert fixer.account.calls[-1] == ("update", "it-1", {"keep_in_sale": True})
+    assert query.alerts[-1] == "🔁 Автовыставление включено"
+
+
+async def test_keep_toggle_refuses_when_state_unknown():
+    """Ответ Playerok без keepInSale (как было со старым запросом) — не переключаем вслепую."""
+    item = lot(1, keep=None)
+    fixer = fixer_with_item(item)
+    query = FakeQuery("it:k:it-1")
+    await items_panel.cb_keep(query, fixer)
+    assert fixer.account.calls == [] and "ничего не меняю" in query.alerts[-1]
+
+
+def test_item_queries_ask_for_keep_in_sale():
+    from playerokapi.graphql_queries import QUERY_TEXTS
+    assert isinstance(QUERY_TEXTS["items"], str)  # раньше по ошибке был кортеж
+    for field in ("keepInSale", "pauseAvailable", "republishAvailable", "keepInSaleAvailable"):
+        assert field in QUERY_TEXTS["item"], field
+    assert "... on MyItemProfile" in QUERY_TEXTS["items"] and "keepInSale" in QUERY_TEXTS["items"]
 
 
 async def test_raise_needs_confirmation_and_offers_only_premium():
