@@ -8,6 +8,7 @@ import asyncio
 import html
 import json
 import math
+import re
 import time
 from contextlib import suppress
 from datetime import datetime
@@ -190,6 +191,15 @@ def _format_quick_response(template: str, username: str, chat_id: str) -> str:
         time=now.strftime("%H:%M"),
     )
 
+_URL_RE = re.compile(r"(https?://[^\s<>\"]+)")
+
+
+def mono_links(escaped_text: str) -> str:
+    """Ссылки в (уже экранированном) тексте — моноширинным: копируются нажатием,
+    и Telegram не делает из них превью-карточку."""
+    return _URL_RE.sub(r"<code>\1</code>", escaped_text)
+
+
 def _fmt_time(iso_dt: str | None) -> str:
     """ISO-время Playerok (UTC) → локальное: сегодня — ЧЧ:ММ, старше — ДД.ММ ЧЧ:ММ."""
     if not iso_dt:
@@ -295,7 +305,7 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
             if msg.text and msg.text in _SYSTEM_MARKERS:
                 msg_text = f"<i>{_SYSTEM_MARKERS[msg.text]}</i>"
             elif msg.text:
-                msg_text = html.escape(html.unescape(msg.text))
+                msg_text = mono_links(html.escape(html.unescape(msg.text)))
             elif msg.images or msg.file:
                 msg_text = "<i>(изображение)</i>"
                 for img in (msg.images or []):

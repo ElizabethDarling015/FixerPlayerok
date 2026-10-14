@@ -118,7 +118,6 @@ STRINGS = {
         '💸 Amount: <b>{amount}</b>\n'
         '📍 To: {destination}\n'
         '🧾 Playerok fee ≈ {fee} ({fee_rule})\n'
-        '\n'
         '━━━━━━━━━━━━━━━━━━━\n'
         '⚠️ After you tap «Withdraw» the request goes to Playerok.'
     ),

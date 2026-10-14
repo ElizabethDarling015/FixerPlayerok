@@ -96,3 +96,17 @@ async def test_slow_failure_updates_same_note():
     note, = q.message.sent
     await _wait_background()
     assert note.edits[0].split("\n")[1].startswith("❌ Не удалось")
+
+
+def test_links_in_chat_history_are_monospace():
+    from fixer.tg.handlers.chats import mono_links
+    text = mono_links("macos: https://www.mediafire.com/file/7ex/LightBurn.dmg/file - ок, и &amp; ещё")
+    assert text == "macos: <code>https://www.mediafire.com/file/7ex/LightBurn.dmg/file</code> - ок, и &amp; ещё"
+    assert mono_links("без ссылок") == "без ссылок"
+
+
+def test_bot_disables_link_previews_everywhere():
+    import inspect
+
+    from fixer.tg import bot
+    assert "link_preview_is_disabled=True" in inspect.getsource(bot.setup_telegram)

@@ -20,7 +20,8 @@ def setup_telegram(fixer):
     bot = Bot(
         token=fixer.settings.telegram.token,
         session=ProxySwitchableSession(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        # Превью ссылок («карточка» сайта под сообщением) боту нигде не нужно — выключено везде.
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True),
     )
     # Прокси именно для Telegram-сессии (CLI-флаг --proxyN -> активный для Telegram
     # из БД) — НЕ тот же резолвер, что у Account/Runner: Playerok и Telegram теперь
