@@ -204,3 +204,11 @@ def test_locales_have_same_placeholders():
 
     for key in ru.STRINGS:
         assert placeholders(ru.STRINGS[key]) == placeholders(en.STRINGS[key]), key
+
+
+def test_no_blank_line_before_separator():
+    """Перед линией ━━━ нигде нет пустой строки (ни в ru, ни в en)."""
+    from fixer.locales import en, ru
+    for strings in (ru.STRINGS, en.STRINGS):
+        offenders = [key for key, text in strings.items() if "\n\n━" in text]
+        assert not offenders, offenders

@@ -405,7 +405,6 @@ STRINGS = {
         '🎁 <b>Item:</b> {item}\n'
         '\n'
         '💬 {text}\n'
-        '\n'
         '━━━━━━━━━━━━━━━━━━━\n'
         '<i>Reply to this message to answer in the deal chat</i>'
     ),
@@ -414,7 +413,6 @@ STRINGS = {
         '👤 {staff}\n'
         '\n'
         '💬 {text}\n'
-        '\n'
         '━━━━━━━━━━━━━━━━━━━\n'
         '<i>Reply to this message to answer support</i>'
     ),
@@ -463,7 +461,7 @@ STRINGS = {
         "💬 {text}"
     ),
     "notif_item_expiring_plain": (
-        "⏳ <b>Item will be delisted soon</b>\n\n"
+        "⏳ <b>Item will be delisted soon</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         "💬 {text}"
     ),
@@ -540,7 +538,6 @@ STRINGS = {
         '📂 <b>Section:</b> {section}\n'
         '👤 <b>Buyer:</b> {buyer}\n'
         '🎁 <b>Item:</b> {item}\n'
-        '\n'
         '━━━━━━━━━━━━━━━━━━━\n'
         '⚠️ Check the deal manually'
     ),
