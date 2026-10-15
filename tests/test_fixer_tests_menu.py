@@ -37,6 +37,9 @@ class FakeMessage:
     async def answer(self, text, reply_markup=None, **_):
         self.sent.append((text, reply_markup))
 
+    async def answer_photo(self, photo, caption=None, reply_markup=None, **_):
+        self.sent.append((caption, reply_markup))
+
 
 class FakeQuery:
     def __init__(self, data):
@@ -90,3 +93,42 @@ async def test_sample_renders_and_back_returns_to_its_page(callback):
     if query.message.edited:  # образец на месте меню — «Назад» ведёт на его страницу
         page = 1 if any(cb == callback for _, cb in TEST_PAGES[1]) else 0
         assert _callbacks(markup) == ["sys:tests:1" if page else "sys:tests"]
+
+
+@pytest.mark.parametrize("callback", ["test:new_deal", "test:started", "test:deal_confirmed", "test:item_expiring"])
+async def test_samples_sent_separately_have_close_button(callback, monkeypatch):
+    """Образцы, которые приходят отдельным сообщением, можно удалить кнопкой «❌ Закрыть»."""
+    async def photo(_fixer):
+        return "https://img/cover.png"
+
+    monkeypatch.setattr(system, "_test_photo_url", photo)
+    query = FakeQuery(callback)
+    await _handlers()[callback](query, make_fixer())
+    assert query.message.sent, callback
+    _, markup = query.message.sent[-1]
+    assert _callbacks(markup)[-1] == "close"
+
+
+def test_real_notifications_have_no_test_close_button():
+    from fixer.tg.notifications import new_deal_keyboard, started_keyboard
+    l10n = make_fixer().l10n
+    assert "close" not in _callbacks(new_deal_keyboard(l10n, "deal-1"))
+    assert "close" not in _callbacks(started_keyboard(l10n))
+
+
+async def test_collapsed_sample_keeps_only_close():
+    from types import SimpleNamespace
+
+    from fixer.tg.handlers import deal_actions
+    edits = []
+
+    class Msg:
+        photo, caption = None, None
+        text = "🛒 Новая сделка\n📂 Раздел: X\n🎁 Лот: Y\n👤 Покупатель: Z\n💰 Цена: 1 ₽\n🆔 id"
+        reply_markup = system.with_test_close(make_fixer().l10n, None)
+
+        async def edit_text(self, text, reply_markup=None, **_):
+            edits.append(reply_markup)
+
+    await deal_actions.collapse(SimpleNamespace(message=Msg()), make_fixer())
+    assert _callbacks(edits[-1]) == ["close"]

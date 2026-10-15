@@ -362,6 +362,14 @@ async def cb_test_new_deal(query: CallbackQuery, fixer) -> None:
     await query.answer("🛒 Отправлено отдельным сообщением")
 
 
+def with_test_close(l10n, markup=None) -> InlineKeyboardMarkup:
+    """Кнопки образца + «❌ Закрыть» последним рядом. Только для тестовых уведомлений,
+    которые приходят отдельным сообщением: у настоящих этой кнопки нет."""
+    rows = [list(row) for row in (markup.inline_keyboard if markup is not None else [])]
+    rows.append([InlineKeyboardButton(text=l10n("btn_close"), callback_data="close")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _test_photo_url(fixer) -> str | None:
     """Обложка первого лота аккаунта — для образцов с фото (None, если Playerok не подключён)."""
     account = getattr(fixer, "account", None)
@@ -379,7 +387,9 @@ async def _test_photo_url(fixer) -> str | None:
 
 
 async def _send_sample_with_photo(query: CallbackQuery, fixer, text: str, markup=None) -> None:
-    """Образец отдельным сообщением с обложкой лота; без обложки — текстом."""
+    """Образец отдельным сообщением с обложкой лота; без обложки — текстом.
+    Внизу — «❌ Закрыть», чтобы тестовое сообщение можно было удалить."""
+    markup = with_test_close(fixer.l10n, markup)
     url = await _test_photo_url(fixer)
     if url:
         try:
@@ -396,7 +406,7 @@ async def _photo_sample(query: CallbackQuery, fixer, callback: str, text: str) -
     url = await _test_photo_url(fixer)
     if url:
         try:
-            await query.message.answer_photo(url, caption=text)
+            await query.message.answer_photo(url, caption=text, reply_markup=with_test_close(fixer.l10n))
             await query.answer("📸 Отправлено отдельным сообщением")
             return
         except Exception as exc:
@@ -622,7 +632,7 @@ async def cb_test_started(query: CallbackQuery, fixer) -> None:
         l10n, username="seller", balance="15 230 ₽", missed_deals=2, unread_messages=3,
         modules="autodelivery, autoraise, digest", connected=True,
     )
-    await query.message.answer(text, reply_markup=started_keyboard(l10n))
+    await query.message.answer(text, reply_markup=with_test_close(l10n, started_keyboard(l10n)))
     await query.answer("🐦 Отправлено отдельным сообщением")
 
 

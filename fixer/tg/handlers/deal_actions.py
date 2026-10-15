@@ -17,7 +17,7 @@ from contextlib import suppress
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, LinkPreviewOptions
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, LinkPreviewOptions
 from loguru import logger
 
 from playerokapi.common.enums import ItemDealStatuses
@@ -61,6 +61,15 @@ async def _answer(query: CallbackQuery, text: str | None = None, alert: bool = F
         await query.answer(text, show_alert=alert)
 
 
+def _close_only(message):
+    """Ряд с «Закрыть» из клавиатуры сообщения (есть только у тестовых образцов), иначе None."""
+    markup = getattr(message, "reply_markup", None)
+    for row in (getattr(markup, "inline_keyboard", None) or []):
+        if any(getattr(button, "callback_data", None) == "close" for button in row):
+            return InlineKeyboardMarkup(inline_keyboard=[list(row)])
+    return None
+
+
 async def collapse(query: CallbackQuery, fixer) -> None:
     """Сжимает уведомление и убирает кнопки (картинка, если была, остаётся)."""
     message = query.message
@@ -69,11 +78,13 @@ async def collapse(query: CallbackQuery, fixer) -> None:
         return
     source = message.caption if message.caption is not None else (message.text or "")
     short = build_collapsed_text(fixer.l10n, source)
+    # У тестового образца была «❌ Закрыть» — после сворачивания оставляем только её.
+    keep = _close_only(message)
     try:
         if message.photo or message.caption is not None:
-            await message.edit_caption(caption=short, reply_markup=None)
+            await message.edit_caption(caption=short, reply_markup=keep)
         else:
-            await message.edit_text(short, reply_markup=None,
+            await message.edit_text(short, reply_markup=keep,
                                     link_preview_options=LinkPreviewOptions(is_disabled=True))
     except TelegramBadRequest as exc:
         # Уже свёрнуто (повторное нажатие) — не ошибка.
