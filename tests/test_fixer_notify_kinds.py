@@ -450,3 +450,22 @@ async def test_html_entities_are_shown_as_characters():
     await notifier.on_event(NewMessageEvent(None, chat("support-chat"), msg("пишите &mdash; поможем", staff)))
     (_, text), = bot.sent
     assert "пишите — поможем" in text and "&amp;mdash;" not in text and "&mdash;" not in text
+
+
+async def test_expiring_lot_found_in_chat_history():
+    """В обновлении чата у сообщения «будет снят» лота нет — бот берёт его из истории чата
+    и присылает полный вариант: лот, раздел, цена (как на скриншоте «как должно быть»)."""
+    notifier, fixer, bot = make_notifier()
+    text = ("Ваш товар будет снят с продажи через 7 дней по истечении срока выставления.\n\n"
+            "Обновите статус товара, чтобы продлить срок выставления")
+    linked = SimpleNamespace(id="it-ps", slug="dc321bb5e387-phpstorm", name="🐘 PhpStorm")
+    history_msg = SimpleNamespace(id="m1", text=text, item=linked)
+    fixer.account.get_chat_messages = lambda chat_id, count=50, after_cursor=None: SimpleNamespace(
+        messages=[history_msg])
+    full = SimpleNamespace(id="it-ps", slug="dc321bb5e387-phpstorm", name="🐘 PhpStorm — Бессрочная лицензия",
+                           price=330, game=SimpleNamespace(name="JetBrains"),
+                           category=SimpleNamespace(name="Другое"), attachments=[], attachment=None)
+    fixer.account.get_item = lambda id=None, slug=None: full if slug == "dc321bb5e387-phpstorm" else None
+    await notifier.on_event(NewMessageEvent(None, chat("system-chat"), msg(text, None)))
+    (_, sent), = bot.sent
+    assert "🐘 PhpStorm — Бессрочная лицензия" in sent and "JetBrains → Другое" in sent and "330 ₽" in sent

@@ -679,7 +679,14 @@ class Notifier:
                 except Exception as exc:
                     logger.debug("Не удалось достать лот по ссылке (slug={}): {}", slug, exc)
 
+        # В обновлении чата у «последнего сообщения» лота нет, а в истории сообщений он есть
+        # (поле item) — берём это сообщение из истории и по нему полную карточку лота.
         account = self.fixer.account
+        if account is not None and chat is not None and getattr(chat, "id", None):
+            found = await self._expiring_item_from_history(chat.id, message)
+            if found is not None:
+                return found
+
         if account is not None and chat is not None and getattr(chat, "id", None):
             try:
                 full_chat = await self._get_chat(chat.id)
@@ -689,6 +696,32 @@ class Notifier:
                     return item
             except Exception as exc:
                 logger.debug("Не удалось достать лот из чата {}: {}", chat.id, exc)
+        return None
+
+    async def _expiring_item_from_history(self, chat_id: str, message):
+        """Лот из истории чата уведомлений: то же сообщение (по id), иначе самое свежее
+        «будет снят с продажи» с лотом. Возвращает полную карточку лота (раздел, цена, обложка)."""
+        try:
+            history = await asyncio.to_thread(self.fixer.account.get_chat_messages, chat_id, 10)
+        except Exception as exc:
+            logger.debug("Не удалось получить историю чата {}: {}", chat_id, exc)
+            return None
+        messages = list(history.messages) if history and history.messages else []
+        wanted_id = getattr(message, "id", None)
+        candidates = [m for m in messages if wanted_id and getattr(m, "id", None) == wanted_id]
+        if not candidates:
+            candidates = [m for m in messages if _is_item_expiring_message(getattr(m, "text", None))]
+        for candidate in candidates:
+            linked = getattr(candidate, "item", None)
+            if linked is None or not (getattr(linked, "id", None) or getattr(linked, "slug", None)):
+                continue
+            try:
+                full = (await self._get_item(slug=linked.slug) if getattr(linked, "slug", None)
+                        else await self._get_item(item_id=linked.id))
+            except Exception as exc:
+                logger.debug("Не удалось загрузить лот {}: {}", getattr(linked, "id", None), exc)
+                full = None
+            return full or linked
         return None
 
     async def _find_my_item_by_name(self, name: str | None):
