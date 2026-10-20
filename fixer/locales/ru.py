@@ -407,6 +407,7 @@ STRINGS = {
     ),
     "deal_confirm_offline": '⚠️ Playerok не подключён — подтвердить выдачу сейчас нельзя.',
     "deal_confirm_failed": '❌ Не удалось подтвердить выдачу: {error}',
+    "deal_confirm_not_ready": '⏳ Playerok ещё не видит эту сделку. Нажмите «Подтвердить выдачу» ещё раз через минуту.',
     "deal_confirm_test": '✅ Выдача подтверждена (это тестовое уведомление — на Playerok ничего не отправлено).',
     "deal_confirm_ok": '✅ Выдача подтверждена.',
     "deal_btn_collapse": '➖ Свернуть',

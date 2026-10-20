@@ -285,6 +285,45 @@ async def test_confirm_error_keeps_buttons():
     assert query.message.edits == []
 
 
+def _not_found_error():
+    from playerokapi.common.exceptions import RequestPlayerokError
+    response = SimpleNamespace(status_code=404, url="https://playerok.com/graphql", json=lambda: {
+        "errors": [{"message": "Не удалось найти в базе данных запись с указанным айди",
+                    "extensions": {"code": "NOT_FOUND"}}]})
+    return RequestPlayerokError(response)
+
+
+async def test_confirm_retries_when_new_deal_not_found_yet(monkeypatch):
+    """Сразу после появления сделки Playerok отвечает 404 — бот сам повторяет и подтверждает."""
+    monkeypatch.setattr(deal_actions, "NOT_FOUND_RETRY_DELAYS", (0, 0))
+    fixer = make_fixer()
+    calls = []
+
+    def update(deal_id, status):
+        calls.append(deal_id)
+        if len(calls) < 3:
+            raise _not_found_error()
+    fixer.account.update_deal = update
+    query = FakeQuery("dl:ok:deal-1", FakeMessage())
+    await deal_actions.cb_confirm(query, fixer)
+    assert calls == ["deal-1"] * 3
+    assert query.answers[0] == ("✅ Выдача подтверждена.", True)
+
+
+async def test_confirm_not_found_after_retries_explains_and_keeps_buttons(monkeypatch):
+    monkeypatch.setattr(deal_actions, "NOT_FOUND_RETRY_DELAYS", (0, 0))
+    fixer = make_fixer()
+
+    def update(deal_id, status):
+        raise _not_found_error()
+    fixer.account.update_deal = update
+    query = FakeQuery("dl:ok:deal-1", FakeMessage())
+    await deal_actions.cb_confirm(query, fixer)
+    text, alert = query.answers[0]
+    assert alert and text.startswith("⏳") and "ещё раз" in text
+    assert query.message.edits == []
+
+
 async def test_close_falls_back_when_message_too_old():
     message = FakeMessage()
     query = FakeQuery("close", message)

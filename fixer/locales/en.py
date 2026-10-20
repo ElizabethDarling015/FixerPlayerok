@@ -418,6 +418,7 @@ STRINGS = {
     ),
     "deal_confirm_offline": '⚠️ Playerok is not connected — delivery cannot be confirmed now.',
     "deal_confirm_failed": '❌ Could not confirm delivery: {error}',
+    "deal_confirm_not_ready": "⏳ Playerok doesn't see this deal yet. Press «Confirm delivery» again in a minute.",
     "deal_confirm_test": '✅ Delivery confirmed (test notification — nothing was sent to Playerok).',
     "deal_confirm_ok": '✅ Delivery confirmed.',
     "deal_btn_collapse": '➖ Collapse',

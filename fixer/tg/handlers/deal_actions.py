@@ -21,8 +21,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, LinkPreviewOption
 from loguru import logger
 
 from playerokapi.common.enums import ItemDealStatuses
+from playerokapi.common.exceptions import RequestPlayerokError
 
 router = Router(name="deal_actions")
+
+#: Паузы (сек.) перед повторами «Подтвердить выдачу», если Playerok ответил 404: сразу после
+#: появления сделки он несколько секунд не находит её для изменения, потом — находит.
+NOT_FOUND_RETRY_DELAYS = (3, 5)
 
 #: Строка уведомления → поле свёрнутого вида (по эмодзи в начале строки — не зависит от языка).
 _FIELDS = {"📂": "section", "🎁": "item", "👤": "buyer", "💰": "price", "🆔": "chat_id"}
@@ -104,6 +109,27 @@ async def cb_confirm_test(query: CallbackQuery, fixer) -> None:
     await collapse(query, fixer)
 
 
+def _is_not_found(exc: Exception) -> bool:
+    """404 «Не удалось найти в базе данных запись с указанным айди» от Playerok."""
+    if not isinstance(exc, RequestPlayerokError):
+        return False
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 404 or (exc.error_code or "").upper() == "NOT_FOUND"
+
+
+async def _confirm_with_retry(fixer, deal_id: str) -> None:
+    """updateDeal → SENT; на 404 (сделка только что появилась) — ещё пара попыток с паузой."""
+    for delay in (*NOT_FOUND_RETRY_DELAYS, None):
+        try:
+            await asyncio.to_thread(fixer.account.update_deal, deal_id, ItemDealStatuses.SENT)
+            return
+        except Exception as exc:
+            if delay is None or not _is_not_found(exc):
+                raise
+            logger.info("[deal] Сделка {} ещё не найдена Playerok — повтор через {} с", deal_id, delay)
+            await asyncio.sleep(delay)
+
+
 @router.callback_query(F.data.startswith("dl:ok:"))
 async def cb_confirm(query: CallbackQuery, fixer) -> None:
     l10n = fixer.l10n
@@ -112,8 +138,12 @@ async def cb_confirm(query: CallbackQuery, fixer) -> None:
         await _answer(query, l10n("deal_confirm_offline"), alert=True)
         return
     try:
-        await asyncio.to_thread(fixer.account.update_deal, deal_id, ItemDealStatuses.SENT)
+        await _confirm_with_retry(fixer, deal_id)
     except Exception as exc:
+        if _is_not_found(exc):
+            logger.warning("[deal] Playerok пока не находит сделку {} для подтверждения", deal_id)
+            await _answer(query, l10n("deal_confirm_not_ready"), alert=True)
+            return
         logger.exception("[deal] Не удалось подтвердить выдачу по сделке {}", deal_id)
         reason = str(exc).strip() or type(exc).__name__
         await _answer(query, l10n("deal_confirm_failed", error=reason[:150]), alert=True)
