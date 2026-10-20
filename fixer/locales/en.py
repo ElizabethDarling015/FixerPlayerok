@@ -196,6 +196,41 @@ STRINGS = {
     "ld_state_confirmed": '✅ Completed',
     "ld_state_sent": '⏳ Not confirmed yet',
     "ld_state_paid": '💰 Paid, waiting for delivery',
+    "btn_deals_in_work": '⏳ Deals in progress',
+    "dw_btn_count": '⏳ Deals in progress ({count})',
+    "dw_title": '⏳ <b>Deals in progress: {count}</b>',
+    "dw_empty": 'Everything is confirmed, no disputes.',
+    "dw_syncing": '<i>Syncing with Playerok — press «🔄 Refresh» in a couple of seconds.</i>',
+    "dw_entry": (
+        '{n}. <b>{item}</b>\n'
+        '📂 {section}\n'
+        '👤 {buyer} · 💰 {price}\n'
+        '🕒 {date}{problem}'
+    ),
+    "dw_problem": ' · ⚠️ Dispute',
+    "dw_offline": '⚠️ Playerok is not connected. «Deals in progress» works in online mode.',
+    "dw_card_title": '⏳ <b>Deal in progress</b>',
+    "dw_card_done_title": '✅ <b>Delivery confirmed</b>',
+    "dw_card": (
+        '🎁 <b>Item:</b> {item}\n'
+        '📂 <b>Section:</b> {section}\n'
+        '👤 <b>Buyer:</b> {buyer} | 💰 <b>Price:</b> {price}\n'
+        '🕒 <b>Paid:</b> {date}\n'
+        '🆔 <code>{chat_id}</code>'
+    ),
+    "dw_card_problem": '⚠️ <b>Dispute opened</b>',
+    "dw_card_sent": '✅ Delivery confirmed, waiting for the dispute to be resolved',
+    "dw_btn_confirmed": '✅ Delivery confirmed',
+    "dw_btn_give": '📦 Deliver from stock',
+    "dw_btn_given": '📦 Delivered',
+    "dw_gone": 'This deal is no longer in progress.',
+    "dw_already_sent": 'Delivery for this deal is already confirmed — waiting for the dispute to be resolved.',
+    "dw_give_ok": '📦 The item was sent to the buyer in the deal chat.',
+    "dw_give_none": '📦 Auto-delivery is not set up for this item.',
+    "dw_give_empty": '📦 This item\'s stock is empty.',
+    "dw_give_given": '📦 The item for this deal has already been delivered.',
+    "dw_give_no_chat": '⚠️ Could not find the deal chat.',
+    "dw_give_failed": '❌ The item was not sent: {error}\nIt was returned to stock.',
     "btn_close": "❌ Close",
     "cancelled": "Action cancelled.",
     "stub_message": "⏸ Section has been moved to Settings",

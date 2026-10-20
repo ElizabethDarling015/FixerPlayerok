@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from aiogram import Dispatcher
 
-from . import (autodelivery, autoresponse, blacklist_panel, chats, deal_actions, items, last_deals, menu, night,
+from . import (autodelivery, autoresponse, blacklist_panel, chats, deal_actions, deals_in_work, items, last_deals, menu, night,
                notifications, plugins_panel, proxy, replies, stats, system, withdrawal)
 
 def setup_routers(dispatcher: Dispatcher) -> None:
@@ -21,6 +21,7 @@ def setup_routers(dispatcher: Dispatcher) -> None:
     dispatcher.include_router(notifications.router)
     dispatcher.include_router(deal_actions.router)
     dispatcher.include_router(last_deals.router)
+    dispatcher.include_router(deals_in_work.router)
     dispatcher.include_router(items.router)
     dispatcher.include_router(withdrawal.router)
     dispatcher.include_router(stats.router)

@@ -16,6 +16,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from ...settings import save_main_settings, STORAGE_DIR
+from .deals_in_work import menu_button_text
 from .common import nav_row, on_off, safe_edit
 
 router = Router(name="menu")
@@ -112,8 +113,9 @@ def build_main_menu(fixer) -> tuple[str, object]:
     text = text.replace("\n📩", "\n\n📩")
 
     builder = InlineKeyboardBuilder()
-    # Ряд 1: Чаты с покупателями (во всю ширину)
+    # Ряд 1: Чаты с покупателями + Сделки в работе (с числом, если они есть)
     builder.button(text=l10n("btn_chats"), callback_data="chats")
+    builder.button(text=menu_button_text(fixer), callback_data="dw")
     # Ряд 2: заготовки будущих разделов
     builder.button(text=l10n("btn_items"), callback_data="it")
     builder.button(text=l10n("btn_last_deals"), callback_data="last_deals")
@@ -126,7 +128,7 @@ def build_main_menu(fixer) -> tuple[str, object]:
     # Ряд 5
     builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
     builder.button(text=l10n("menu_section_settings"), callback_data="sys")
-    builder.adjust(1, 2, 2, 2, 2)
+    builder.adjust(2, 2, 2, 2, 2)
     return text, builder.as_markup()
 
 def build_toggles_menu(fixer) -> tuple[str, object]:

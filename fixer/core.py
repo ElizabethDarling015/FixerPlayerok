@@ -109,6 +109,11 @@ class Fixer:
         self.dispatcher: Dispatcher | None = None
         self.notifier: Notifier | None = None
 
+        # «⏳ Сделки в работе»: список и число для кнопки главного меню (см. deals_in_work.py)
+        from .deals_in_work import DealsInWork
+        self.deals_in_work = DealsInWork()
+        self._deals_in_work_task: asyncio.Task | None = None
+
         self.loop: asyncio.AbstractEventLoop | None = None
         self.event_queue: asyncio.Queue | None = None
         self._stop_event: asyncio.Event | None = None
@@ -151,6 +156,15 @@ class Fixer:
         task = asyncio.get_running_loop().create_task(coro)
         self._tasks.append(task)
         return task
+
+    def _start_deals_in_work(self) -> None:
+        """Сверка «Сделок в работе» с Playerok: сразу и затем раз в 10 минут."""
+        task = self._deals_in_work_task
+        if task is None or task.done():
+            self._deals_in_work_task = self.spawn(self.deals_in_work.run(self))
+        else:
+            # Переподключение: цикл уже идёт — сверяемся сейчас, не дожидаясь 10 минут.
+            self.spawn(self.deals_in_work.resync(self))
 
     def request_shutdown(self) -> None:
         """Просит Fixer остановиться (безопасно вызывать из хендлеров aiogram)."""
@@ -315,6 +329,7 @@ class Fixer:
                                                    name="fixer-runner")
             self._runner_thread.start()
             self._consume_task = self.spawn(self._consume_events())
+            self._start_deals_in_work()
 
             self._playerok_connected = True
             logger.success("Playerok API подключён")
@@ -471,6 +486,7 @@ class Fixer:
             )
             self._runner_thread.start()
             self.spawn(self._consume_events())
+            self._start_deals_in_work()
 
         logger.success("FixerPlayerok запущен. Модули: {}", ", ".join(
             name for name in type(self.settings.modules).model_fields
@@ -648,6 +664,10 @@ class Fixer:
                     with contextlib.suppress(Exception):
                         await self.notifier.notify_error(f"{type(event).__name__}: {event}")
                 continue
+            try:
+                self.deals_in_work.on_event(event)
+            except Exception:
+                logger.exception("Ошибка «Сделок в работе» при обработке события {}", type(event).__name__)
             for module in self.modules:
                 try:
                     await module.on_event(event)

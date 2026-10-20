@@ -149,5 +149,8 @@ async def cb_confirm(query: CallbackQuery, fixer) -> None:
         await _answer(query, l10n("deal_confirm_failed", error=reason[:150]), alert=True)
         return
     logger.info("[deal] Выдача по сделке {} подтверждена из Telegram", deal_id)
+    tracker = getattr(fixer, "deals_in_work", None)
+    if tracker is not None:
+        tracker.mark_sent(deal_id)
     await _answer(query, l10n("deal_confirm_ok"), alert=True)
     await collapse(query, fixer)
