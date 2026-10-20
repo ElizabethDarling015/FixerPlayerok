@@ -62,3 +62,10 @@ def test_list_and_card_fields_are_parsed():
     card = parser.my_item({"id": "i1", "keepInSale": False, "pauseAvailable": True, "republishAvailable": False,
                            "keepInSaleAvailable": True})
     assert card.keep_in_sale is False and card.pause_available is True and card.republish_available is False
+
+
+def test_update_item_data_fields_in_site_format():
+    account = make_account()
+    account.update_item("item-1", data_fields={"f-1": "текст"})
+    assert account._query.call_args.args[1]["input"] == {
+        "id": "item-1", "dataFields": [{"fieldId": "f-1", "value": "текст"}]}

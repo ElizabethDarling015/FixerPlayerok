@@ -928,7 +928,9 @@ class Account:
         if keep_in_sale is not None:
             input_data["keepInSale"] = bool(keep_in_sale)
         if data_fields:
-            input_data["dataFields"] = [{"id": k, "value": v} for k, v in data_fields.items()]
+            # Формат сайта (HAR 20.10.2026): {"fieldId", "value"}. Так же сохраняется «Комментарий»
+            # лота — теперь это поле данных, а не input.comment.
+            input_data["dataFields"] = [{"fieldId": k, "value": v} for k, v in data_fields.items()]
         if options:
             input_data["attributes"] = [{"id": k, "value": v} for k, v in options.items()]
 

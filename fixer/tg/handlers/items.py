@@ -34,6 +34,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
+from playerokapi.common.enums import ItemStatuses
 from playerokapi.common.exceptions import RequestPlayerokError
 
 from ...sales_stats import _parse_dt, seller_tz
@@ -140,6 +141,21 @@ def build_inactive(l10n, items, page: int = 0) -> tuple[str, object]:
     return text, builder.as_markup()
 
 
+def comment_field(item):
+    """Комментарий лота: (id поля данных или None, текст).
+
+    С октября 2026 Playerok хранит комментарий как поле данных лота («Данные товара»,
+    подпись «Комментарий», тип ITEM_DATA), а прежнее поле `comment` приходит пустым."""
+    fields = [f for f in (getattr(item, "data_fields", None) or [])
+              if getattr(getattr(f, "type", None), "name", None) in (None, "ITEM_DATA")]
+    chosen = next((f for f in fields if "коммент" in (getattr(f, "label", None) or "").lower()), None)
+    if chosen is None and len(fields) == 1:
+        chosen = fields[0]
+    if chosen is not None:
+        return chosen.id, (getattr(chosen, "value", None) or "")
+    return None, (getattr(item, "comment", None) or "")
+
+
 def _status_label(l10n, status: str) -> str:
     key = "it_status_" + status.lower()
     label = l10n(key)
@@ -167,7 +183,7 @@ def build_item_card(l10n, item, autodelivery: str, tz=None, back: str = "it", no
     reason = getattr(item, "status_description", None)
     if reason:
         lines.append(l10n("it_card_reason", reason=html.escape(reason.strip())))
-    comment = (getattr(item, "comment", None) or "").strip()
+    comment = comment_field(item)[1].strip()
     lines.append(l10n("it_card_comment", comment=html.escape(_short(comment, COMMENT_LIMIT)))
                  if comment else l10n("it_card_no_comment"))
     lines.append("━━━━━━━━━━━━━━━━━━━")
@@ -254,14 +270,30 @@ def _back_for(item) -> str:
     return "it"
 
 
+def _patch_cached(item_id: str, **fields) -> None:
+    """Меняет лот в списке «Товаров» в памяти — без перезагрузки списка (Playerok сразу
+    после изменения может отдать старые данные, и 🔁 появлялся не сразу)."""
+    for cached in cache.peek():
+        if getattr(cached, "id", None) == item_id:
+            for name, value in fields.items():
+                setattr(cached, name, value)
+
+
+def _drop_cached(item_id: str) -> None:
+    items = cache.peek()
+    items[:] = [it for it in items if getattr(it, "id", None) != item_id]
+
+
 async def _load_item(fixer, item_id: str):
     return await asyncio.to_thread(fixer.account.get_item, id=item_id)
 
 
-async def show_card(message, fixer, item_id: str, notice: str | None = None, state=None) -> None:
+async def show_card(message, fixer, item_id: str, notice: str | None = None, state=None, item=None) -> None:
     """Карточка лота. С `state` — `message` это ваше сообщение: оно удаляется, а карточка
-    показывается в сообщении бота, где шла правка."""
-    item = await _load_item(fixer, item_id)
+    показывается в сообщении бота, где шла правка. С `item` — карточка по уже известным
+    данным, без нового запроса: сразу после изменения Playerok ещё может отдать старые."""
+    if item is None:
+        item = await _load_item(fixer, item_id)
     if item is None:
         text, markup = fixer.l10n("it_not_found"), None
     else:
@@ -375,22 +407,17 @@ async def cb_keep(query: CallbackQuery, fixer) -> None:
             with suppress(Exception):
                 await query.answer(l10n("it_keep_unknown"), show_alert=True)
             return
-        result = await asyncio.to_thread(fixer.account.update_item, item_id, keep_in_sale=not current)
+        new_value = not current
+        await asyncio.to_thread(fixer.account.update_item, item_id, keep_in_sale=new_value)
     except Exception as exc:
         await _fail(query, fixer, exc)
         return
-    cache.invalidate()
-    # Что на самом деле стало на Playerok — по ответу сервера, а не по нажатию.
-    actual = getattr(result, "keep_in_sale", None)
-    if actual is None:
-        alert = l10n("it_keep_sent")
-    else:
-        alert = l10n("it_keep_on" if actual else "it_keep_off")
-        if actual == current:
-            alert = l10n("it_keep_not_changed")
+    # Запрос прошёл — показываем новое состояние сразу, и в карточке, и в списке.
+    item.keep_in_sale = new_value
+    _patch_cached(item_id, keep_in_sale=new_value)
     with suppress(Exception):
-        await query.answer(alert, show_alert=actual is None or actual == current)
-    await show_card(query.message, fixer, item_id)
+        await query.answer(l10n("it_keep_on" if new_value else "it_keep_off"))
+    await show_card(query.message, fixer, item_id, item=item)
 
 
 @router.callback_query(F.data.startswith("it:off:") | F.data.startswith("it:on:"))
@@ -399,17 +426,28 @@ async def cb_pause_resume(query: CallbackQuery, fixer) -> None:
         return
     action, item_id = query.data.split(":")[1], query.data.split(":", 2)[2]
     try:
+        item = await _load_item(fixer, item_id)
         if action == "off":
-            await asyncio.to_thread(fixer.account.discontinue_item, item_id)
+            answer = await asyncio.to_thread(fixer.account.discontinue_item, item_id)
         else:
-            await asyncio.to_thread(fixer.account.republish_item, item_id)
+            answer = await asyncio.to_thread(fixer.account.republish_item, item_id)
     except Exception as exc:
         await _fail(query, fixer, exc)
         return
-    cache.invalidate()
+    # Ответ Playerok сразу содержит новый статус и доступные действия — по нему и рисуем.
+    answer = answer if isinstance(answer, dict) else {}
+    status = answer.get("status") or ("DISCONTINUED" if action == "off" else "APPROVED")
+    if item is not None:
+        item.status = ItemStatuses.__members__.get(status, item.status)
+        item.pause_available = answer.get("pauseAvailable", action == "on")
+        item.republish_available = answer.get("republishAvailable", action == "off")
+    if action == "off":
+        _drop_cached(item_id)
+    else:
+        cache.invalidate()
     with suppress(Exception):
         await query.answer(fixer.l10n("it_paused" if action == "off" else "it_resumed"))
-    await show_card(query.message, fixer, item_id)
+    await show_card(query.message, fixer, item_id, item=item)
 
 
 # ----------------------------------------------------------------------
@@ -525,18 +563,37 @@ async def on_edit_value(message: Message, state: FSMContext, fixer) -> None:
             return
         kwargs["price"] = int(digits)
         notice = l10n("it_price_saved", price=int(digits))
+    elif not value or value.startswith("/"):
+        await fail(l10n("it_bad_comment"))
+        return
     else:
-        if not value or value.startswith("/"):
-            await fail(l10n("it_bad_comment"))
-            return
-        kwargs["comment"] = value
         notice = l10n("it_comment_saved")
     try:
+        item = await _load_item(fixer, item_id)
+        field_id = None
+        if field == "comment":
+            # Комментарий — поле данных лота («Данные товара»), как сохраняет сайт;
+            # у старых лотов без такого поля — прежний input.comment.
+            field_id, _ = comment_field(item) if item is not None else (None, "")
+            kwargs = {"data_fields": {field_id: value}} if field_id else {"comment": value}
         await asyncio.to_thread(fixer.account.update_item, item_id, **kwargs)
     except Exception as exc:
         logger.exception("[items] Не удалось изменить лот {}", item_id)
         await fail(l10n("it_failed", error=html.escape(str(exc)[:200])))
         return
-    cache.invalidate()
-    await show_card(message, fixer, item_id, notice=notice, state=state)
+    # Показываем сохранённое сразу: Playerok сразу после правки ещё может отдать старое.
+    if item is not None:
+        if field == "price":
+            item.price = kwargs["price"]
+            _patch_cached(item_id, price=kwargs["price"])
+        else:
+            if field_id:
+                for data_field in item.data_fields or []:
+                    if data_field.id == field_id:
+                        data_field.value = value
+            else:
+                item.comment = value
+            item.status = ItemStatuses.PENDING_MODERATION  # после правки комментария — модерация
+            _patch_cached(item_id, status=ItemStatuses.PENDING_MODERATION)
+    await show_card(message, fixer, item_id, notice=notice, state=state, item=item)
     await state.clear()

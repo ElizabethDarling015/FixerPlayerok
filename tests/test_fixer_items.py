@@ -298,3 +298,67 @@ def test_forbidden_error_is_explained():
     exc = RequestPlayerokError.__new__(RequestPlayerokError)
     exc.error_code, exc.error_message = "FORBIDDEN", "У вас нет доступа на выполнение данной операции"
     assert "не разрешает" in items_panel._error_text(make_fixer(), exc)
+
+
+async def test_keep_toggle_shows_new_state_even_if_playerok_answers_stale():
+    """Сразу после сохранения Playerok может вернуть старые данные. Карточка и список «Товаров»
+    должны показать новое состояние сразу — по нажатию, без перечитывания."""
+    fixer = fixer_with_item(lot(1))
+    fixer.account.get_item = lambda id=None, slug=None: lot(1, keep=False)  # всегда «старое»
+    cached = lot(1, keep=False)
+    items_panel.cache._items, items_panel.cache._loaded_at = [cached], items_panel.cache._clock()
+    query = FakeQuery("it:k:it-1")
+    await items_panel.cb_keep(query, fixer)
+    text, markup = query.message.edits[-1]
+    assert "Автовыставление: вкл" in text
+    assert any(b.text.endswith("🟢") for row in markup.inline_keyboard for b in row)
+    assert cached.keep_in_sale is True  # в списке раздела 🔁 появится сразу
+    _, section_markup = items_panel.build_section_items(make_fixer().l10n, items_panel.cache.peek(), 0)
+    assert section_markup.inline_keyboard[0][0].text.endswith("🔁")
+
+
+def test_comment_comes_from_item_data_fields():
+    from fixer.tg.handlers.items import comment_field
+    from playerokapi.common.enums import GameCategoryDataFieldTypes
+    field = SimpleNamespace(id="f-1", label="Комментарий", type=GameCategoryDataFieldTypes.ITEM_DATA,
+                            value="Ссылка: https://drive.google.com/x")
+    item = lot(1, comment=None, data_fields=[field])
+    assert comment_field(item) == ("f-1", "Ссылка: https://drive.google.com/x")
+    text, _ = items_panel.build_item_card(make_fixer().l10n, item, "выкл")
+    assert "drive.google.com" in text and "Комментария нет" not in text
+
+
+async def test_comment_saved_into_data_field_like_site():
+    import time
+
+    from playerokapi.common.enums import GameCategoryDataFieldTypes
+    field = SimpleNamespace(id="f-1", label="Комментарий", type=GameCategoryDataFieldTypes.ITEM_DATA, value="old")
+    fixer = fixer_with_item(lot(1, comment=None, data_fields=[field]))
+    edits = []
+
+    class Bot:
+        async def edit_message_text(self, text, chat_id=None, message_id=None, reply_markup=None, **_):
+            edits.append(text)
+
+    class State:
+        data = {"item_id": "it-1", "since": time.time(), "panel": [1, 9]}
+
+        async def get_data(self):
+            return dict(self.data)
+
+        async def get_state(self):
+            return items_panel.ItemEdit.comment.state
+
+        async def clear(self):
+            pass
+
+    class Msg:
+        text, reply_to_message, bot = "Новая ссылка", None, Bot()
+        chat, message_id = SimpleNamespace(id=1), 5
+
+        async def delete(self):
+            pass
+
+    await items_panel.on_edit_value(Msg(), State(), fixer)
+    assert fixer.account.calls == [("update", "it-1", {"data_fields": {"f-1": "Новая ссылка"}})]
+    assert "Новая ссылка" in edits[-1] and "На модерации" in edits[-1]
