@@ -430,7 +430,8 @@ def test_pinned_chats_on_top_and_not_duplicated():
     page = SimpleNamespace(chats=[buyers[0], system, buyers[1], buyers[2]])
     _, markup = build_chats_list(fixer, page, 0, False, pinned=[support, system])
     titles = [row[0].text for row in markup.inline_keyboard[:-1]]
-    assert titles == [chat_kinds.SUPPORT_TITLE, chat_kinds.SYSTEM_TITLE, "👤 buyer0", "👤 buyer1", "👤 buyer2"]
+    assert titles == [chat_kinds.SUPPORT_TITLE + " 📌", chat_kinds.SYSTEM_TITLE + " 📌",
+                      "👤 buyer0", "👤 buyer1", "👤 buyer2"]
     # На следующих страницах закреплённых нет, и в общем списке они не повторяются.
     _, markup = build_chats_list(fixer, SimpleNamespace(chats=[system, buyers[2]]), 1, False)
     chat_buttons = [b.callback_data for row in markup.inline_keyboard for b in row
@@ -508,3 +509,32 @@ async def test_expiring_lot_found_in_chat_history():
     await notifier.on_event(NewMessageEvent(None, chat("system-chat"), msg(text, None)))
     (_, sent), = bot.sent
     assert "🐘 PhpStorm — Бессрочная лицензия" in sent and "JetBrains → Другое" in sent and "330 ₽" in sent
+
+
+def test_chat_pages_always_six_regular_chats():
+    """Закреплённые чаты среди ответа Playerok больше не «съедают» места на странице."""
+    from fixer.tg.handlers import chats as ch
+    ids = [f"pm-{i}" for i in range(20)]
+    ids.insert(3, "support-chat")
+    ids.insert(9, "system-chat")  # попадает как раз на вторую страницу
+    calls = []
+
+    def get_chats(count, after_cursor=None):
+        calls.append(after_cursor)
+        start = int(after_cursor or 0)
+        part = ids[start:start + count]
+        nxt = start + len(part)
+        return SimpleNamespace(chats=[SimpleNamespace(id=i) for i in part],
+                               page_info=SimpleNamespace(has_next_page=nxt < len(ids), end_cursor=str(nxt)))
+
+    account = SimpleNamespace(get_chats=get_chats)
+    skip = {"support-chat", "system-chat"}
+    got, more = ch.collect_regular_chats(account, skip, 12)
+    assert [c.id for c in got[6:12]] == [f"pm-{i}" for i in range(6, 12)] and more
+    got, more = ch.collect_regular_chats(account, skip, 24)
+    assert len(got) == 20 and not more  # последняя страница — сколько есть, без «Далее»
+
+    fixer = make_fixer()
+    fixer.account.get_chats = get_chats
+    page, more = asyncio.run(ch._get_chats_page(fixer, 1, skip))
+    assert [c.id for c in page] == [f"pm-{i}" for i in range(6, 12)] and more

@@ -18,7 +18,7 @@ from loguru import logger
 
 from playerokapi.common.enums import EventTypes
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, LinkPreviewOptions
 
 from . import chat_kinds
 from .api_cache import TTLCache
@@ -324,6 +324,27 @@ def close_keyboard(l10n) -> InlineKeyboardMarkup:
     ]])
 
 
+#: Больше 10 фото Telegram в одном альбоме не принимает.
+ALBUM_LIMIT = 10
+#: Лимит подписи к фото в Telegram.
+CAPTION_LIMIT = 1024
+
+
+def message_image_urls(message) -> list[str]:
+    """Ссылки на картинки сообщения чата (`images` и `file`, если это изображение)."""
+    urls: list[str] = []
+    for img in getattr(message, "images", None) or []:
+        url = getattr(img, "url", None)
+        if url and url not in urls:
+            urls.append(url)
+    file = getattr(message, "file", None)
+    url = getattr(file, "url", None)
+    mime = (getattr(file, "mime", None) or "").lower()
+    if url and url not in urls and (not mime or mime.startswith("image/")):
+        urls.append(url)
+    return urls
+
+
 def new_deal_keyboard(l10n, deal_id: str | None):
     """Кнопки под «Новой сделкой»: подтвердить выдачу (если есть ID сделки) и свернуть."""
     row = []
@@ -365,21 +386,41 @@ class Notifier:
         return self.fixer.settings.notifications
 
     async def _send_all(self, text: str, remember_chat: str | None = None, reply_markup=None,
-                        photo_url: str | None = None) -> list[tuple[int, int]]:
+                        photo_url: str | None = None, album: list[str] | None = None,
+                        fallback_text: str | None = None) -> list[tuple[int, int]]:
         """
         Шлёт уведомление всем админам; при `remember_chat` запоминает для ответа reply'ем.
         Возвращает отправленные сообщения: [(tg_chat_id, message_id), …].
 
         Если задан `photo_url` — отправляет фото лота с текстом в подписи
         (лимит подписи TG — 1024). При любой ошибке — обычный текст.
+        `album` — несколько фото одним альбомом, текст — подписью к первому (кнопок у альбома
+        не бывает). `fallback_text` — что слать, если фото не ушли (например, со ссылками на них).
         """
         if remember_chat and remember_chat not in text:
             text = _chat_anchor(remember_chat) + text
-        use_photo = bool(photo_url) and len(text) <= 1024
+        if fallback_text is not None and remember_chat and remember_chat not in fallback_text:
+            fallback_text = _chat_anchor(remember_chat) + fallback_text
+        if album and len(album) == 1:
+            photo_url, album = album[0], None
+        use_album = bool(album) and len(text) <= CAPTION_LIMIT and reply_markup is None
+        use_photo = bool(photo_url) and len(text) <= CAPTION_LIMIT
         delivered: list[tuple[int, int]] = []
         for admin_id in self.admins.all_ids:
             sent = None
-            if use_photo:
+            if use_album:
+                try:
+                    media = [InputMediaPhoto(media=url, caption=text if i == 0 else None)
+                             for i, url in enumerate(album[:ALBUM_LIMIT])]
+                    group = await self.bot.send_media_group(admin_id, media)
+                    sent = group[0]
+                    # Reply на любое фото альбома отвечает в тот же чат.
+                    if remember_chat is not None:
+                        for part in group[1:]:
+                            self.reply_map[(part.chat.id, part.message_id)] = remember_chat
+                except Exception as exc:
+                    logger.debug("Альбом не ушёл админу {}: {} — шлю текстом", admin_id, exc)
+            if sent is None and use_photo:
                 try:
                     sent = await self.bot.send_photo(
                         admin_id, photo_url, caption=text, reply_markup=reply_markup
@@ -389,7 +430,8 @@ class Notifier:
             if sent is None:
                 try:
                     sent = await self.bot.send_message(
-                        admin_id, text, reply_markup=reply_markup,
+                        admin_id, fallback_text if (fallback_text and (photo_url or album)) else text,
+                        reply_markup=reply_markup,
                         link_preview_options=LinkPreviewOptions(is_disabled=True),
                     )
                 except Exception:
@@ -701,8 +743,9 @@ class Notifier:
     async def _expiring_item_from_history(self, chat_id: str, message):
         """Лот из истории чата уведомлений: то же сообщение (по id), иначе самое свежее
         «будет снят с продажи» с лотом. Возвращает полную карточку лота (раздел, цена, обложка)."""
+        from .handlers.chats import _fetch_messages_sync  # штатный запрос + запасной при 403
         try:
-            history = await asyncio.to_thread(self.fixer.account.get_chat_messages, chat_id, 10)
+            history = await asyncio.to_thread(_fetch_messages_sync, self.fixer.account, chat_id, 10)
         except Exception as exc:
             logger.debug("Не удалось получить историю чата {}: {}", chat_id, exc)
             return None
@@ -919,6 +962,23 @@ class Notifier:
             return "🖼 <i>Фото</i>"
         return "…"
 
+    async def _message_images(self, message, chat_id) -> list[str]:
+        """Картинки сообщения. В WS-кадре их часто нет: тогда, если у сообщения нет текста,
+        берём его же из истории чата (один запрос) — там `images`/`file` приходят."""
+        urls = message_image_urls(message)
+        if urls or getattr(message, "text", None) or not chat_id or self.fixer.account is None:
+            return urls
+        message_id = getattr(message, "id", None)
+        try:
+            history = await asyncio.to_thread(self.fixer.account.get_chat_messages, chat_id, 10)
+        except Exception as exc:
+            logger.debug("История чата {} для картинки не загрузилась: {}", chat_id, exc)
+            return urls
+        for msg in (getattr(history, "messages", None) or []):
+            if message_id and getattr(msg, "id", None) == message_id:
+                return message_image_urls(msg)
+        return urls
+
     async def _notify_new_message(self, event) -> None:
         l10n = self.fixer.l10n
         message = event.message
@@ -993,15 +1053,20 @@ class Notifier:
                                      remember_chat=chat_id, reply_markup=close_keyboard(l10n))
             return
 
-        # Обычное сообщение покупателя (без фото лота).
+        # Обычное сообщение покупателя: картинки, которые он прислал, — прямо в уведомлении.
         username = message.user.username if message.user and message.user.username else "?"
         _, item = await self._chat_context(chat, message)
-        await self._send_all(l10n(
-            "notif_new_message",
-            username=_esc(username),
-            item=_esc(getattr(item, "name", None) or "?"),
-            text=text,
-        ), remember_chat=chat_id)
+        images = await self._message_images(message, chat_id)
+        if images and not message.text:
+            text = l10n("msg_photo_one") if len(images) == 1 else l10n("msg_photo_many", count=len(images))
+        params = dict(username=_esc(username), item=_esc(getattr(item, "name", None) or "?"))
+        notification = l10n("notif_new_message", text=text, **params)
+        fallback = None
+        if images:
+            links = " ".join(f'<a href="{_esc(url)}">🖼 {i}</a>' for i, url in enumerate(images, 1))
+            fallback = l10n("notif_new_message", text=f"{text}\n{links}", **params)
+        await self._send_all(notification, remember_chat=chat_id, album=images or None,
+                             fallback_text=fallback)
 
     async def on_event(self, event) -> None:
         l10n = self.fixer.l10n

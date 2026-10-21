@@ -100,6 +100,12 @@ STRINGS = {
     "wd_status_confirmed": '✅ Paid out',
     "wd_status_processing": '🔄 Processing',
     "wd_status_pending": '⏳ Queued',
+    "wd_status_rolled_back": '↩️ Returned',
+    "wd_status_failed": '❌ Failed',
+    "wd_history_entry": (
+        '💸 <b>-{amount}</b> · {method}\n'
+        '🕒 {date} · {status}'
+    ),
     "wd_done": (
         '✅ <b>Withdrawal request created</b>\n'
         '\n'
@@ -476,6 +482,8 @@ STRINGS = {
         '🎁 <b>Item:</b> {item}\n'
         '📊 <b>Left in stock:</b> {stock} pcs.'
     ),
+    "msg_photo_one": '🖼 <i>Photo</i>',
+    "msg_photo_many": '🖼 <i>Photos: {count}</i>',
     "notif_new_message": (
         '💌 <b>Message from {username}!</b>\n'
         '💬:{text}\n'

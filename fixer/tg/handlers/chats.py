@@ -21,6 +21,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 from string import Template
+from types import SimpleNamespace
 
 from playerokapi import parser
 from playerokapi.common.exceptions import PersistedQueryNotFoundError, RequestPlayerokError
@@ -33,6 +34,12 @@ router = Router(name="chats")
 
 #: Размеры страниц.
 CHATS_PER_PAGE = 6
+#: Сколько чатов просить у Playerok за запрос при сборке страницы списка.
+CHATS_FETCH_CHUNK = 24
+#: Предел запросов на одно открытие страницы (защита от зацикливания курсора).
+CHATS_FETCH_MAX_REQUESTS = 10
+#: Метка закреплённых чатов (поддержка и уведомления площадки) в списке.
+PIN_MARK = " 📌"
 MESSAGES_LIMIT = 24      # серверный лимит chatMessages — не более 24 за запрос
 MESSAGES_PER_PAGE = 8
 QUICK_PREFIX = "!!"
@@ -43,9 +50,6 @@ READ_SOFT_TIMEOUT = 8.0
 #: Фоновые задачи, дожидающиеся запоздалого ответа Playerok. Ссылки храним,
 #: иначе asyncio может собрать незавершённую задачу сборщиком мусора.
 _background_tasks: set[asyncio.Task] = set()
-#: Курсоры страниц списка чатов (tg_user_id -> список курсоров): курсоры длинные,
-#: в callback_data (лимит 64 байта) их не положить — держим в кэше.
-_list_cursors: dict[int, list[str | None]] = {}
 
 #: Системные маркеры Playerok → человекочитаемый вид (как в universal).
 _SYSTEM_MARKERS = {
@@ -95,10 +99,38 @@ def setup_chat_mode_guard(dispatcher) -> None:
 # Запросы к Playerok (в потоке, чтобы не блокировать event loop)
 # ----------------------------------------------------------------------
 
-async def _get_chats(fixer, after_cursor=None):
-    return await asyncio.to_thread(
-        lambda: fixer.account.get_chats(count=CHATS_PER_PAGE, after_cursor=after_cursor)
-    )
+def collect_regular_chats(account, skip_ids, need: int) -> tuple[list, bool]:
+    """Первые `need` чатов без закреплённых (`skip_ids`) в порядке Playerok.
+
+    Возвращает (чаты, есть_ли_ещё). Раньше страница = 6 чатов от Playerok минус закреплённые,
+    поэтому на страницах, где попадались поддержка или уведомления, кнопок было 5 и меньше.
+    """
+    found: list = []
+    seen: set = set()
+    cursor = None
+    for _ in range(CHATS_FETCH_MAX_REQUESTS):
+        page = account.get_chats(count=CHATS_FETCH_CHUNK, after_cursor=cursor)
+        for c in (getattr(page, "chats", None) or []):
+            if c is None or c.id in skip_ids or c.id in seen:
+                continue
+            seen.add(c.id)
+            found.append(c)
+        info = getattr(page, "page_info", None)
+        next_cursor = getattr(info, "end_cursor", None)
+        server_has_more = bool(getattr(info, "has_next_page", False)) and bool(next_cursor) and next_cursor != cursor
+        if len(found) > need:
+            return found[:need], True
+        if not server_has_more:
+            return found, False
+        cursor = next_cursor
+    return found[:need], len(found) > need
+
+
+async def _get_chats_page(fixer, page: int, skip_ids) -> tuple[list, bool]:
+    """Чаты страницы `page` (по `CHATS_PER_PAGE` без закреплённых) и есть ли следующая."""
+    need = (page + 1) * CHATS_PER_PAGE
+    chats, has_more = await asyncio.to_thread(collect_regular_chats, fixer.account, set(skip_ids), need)
+    return chats[page * CHATS_PER_PAGE:need], has_more
 
 async def _get_chat(fixer, chat_id):
     return await asyncio.to_thread(fixer.account.get_chat, chat_id)
@@ -239,8 +271,11 @@ def build_chats_list(fixer, chat_list, page: int, has_next: bool, pinned=()) -> 
     if not visible:
         text += "\n\n" + l10n("chats_empty")
     else:
+        pinned_set = {c.id for c in pinned}
         for chat in visible:
             title = chat_kinds.chat_title(chat, fixer.account)
+            if chat.id in pinned_set:
+                title += PIN_MARK
             unread = chat.unread_messages_counter or 0
             badge = f" 🔸{unread}" if unread > 0 else ""
             builder.button(
@@ -403,17 +438,8 @@ async def cb_chats_list(query: CallbackQuery, fixer) -> None:
     await _safe_answer(query)
     page = int(query.data.split(":", 1)[1]) if ":" in query.data else 0
     try:
-        cursors = _list_cursors.setdefault(query.from_user.id, [None])
-        while len(cursors) <= page:
-            cursors.append(None)
-        chat_list = await _get_chats(fixer, cursors[page])
-        has_next = bool(chat_list and chat_list.page_info and chat_list.page_info.has_next_page)
-        if has_next:
-            nxt = chat_list.page_info.end_cursor
-            if len(cursors) <= page + 1:
-                cursors.append(nxt)
-            elif not cursors[page + 1]:
-                cursors[page + 1] = nxt
+        chats, has_next = await _get_chats_page(fixer, page, pinned_chat_ids(fixer))
+        chat_list = SimpleNamespace(chats=chats)
         pinned = []
         if page == 0:
             for chat_id in pinned_chat_ids(fixer):

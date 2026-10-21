@@ -100,6 +100,12 @@ STRINGS = {
     "wd_status_confirmed": '✅ Проведена',
     "wd_status_processing": '🔄 В обработке',
     "wd_status_pending": '⏳ В очереди',
+    "wd_status_rolled_back": '↩️ Возвращена',
+    "wd_status_failed": '❌ Не прошла',
+    "wd_history_entry": (
+        '💸 <b>-{amount}</b> · {method}\n'
+        '🕒 {date} · {status}'
+    ),
     "wd_done": (
         '✅ <b>Заявка на вывод создана</b>\n'
         '\n'
@@ -464,6 +470,8 @@ STRINGS = {
         "🎁 <b>Лот:</b> {item}\n"
         "📊 <b>Остаток на складе:</b> {stock} шт."
     ),
+    "msg_photo_one": '🖼 <i>Фото</i>',
+    "msg_photo_many": '🖼 <i>Фото: {count}</i>',
     "notif_new_message": (
         '💌 <b>Сообщение от {username}!</b>\n'
         '💬:{text}\n'

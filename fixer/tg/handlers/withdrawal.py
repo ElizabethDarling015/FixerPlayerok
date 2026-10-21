@@ -10,6 +10,8 @@
   Данные заявки при этом сразу стираются — повторное нажатие не создаст вторую заявку.
 * Весь диалог идёт в одном сообщении бота: ваши сообщения (телефон, банк, адрес, сумма)
   бот удаляет, а следующий шаг или ошибку («⚠️ …» над экраном) показывает в том же сообщении.
+* Под суммой «Доступно к выводу» — последние выводы (сумма, способ, дата, статус) через
+  разделитель ━━━: столько, сколько влезает в одно сообщение вместе со списком способов.
 * Последний способ и банк/карта/адрес запоминаются в `storage/withdrawal.json` — кнопка
   «⚡ Как в прошлый раз» ведёт сразу к вводу суммы. Телефон там не хранится: его отдаёт Playerok.
 """
@@ -28,6 +30,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from loguru import logger
 
+from ...sales_stats import _parse_dt, seller_tz
 from ...settings import STORAGE_DIR
 from .common import nav_row, remember_panel, safe_edit, show_in_panel, with_error
 
@@ -40,6 +43,11 @@ _HIDDEN = {"LOCAL", "PENDING_INCOME"}
 #: Сколько банков СБП показывать кнопками сразу (дальше — поиск по названию).
 TOP_BANKS = 8
 REMEMBER_FILE = os.path.join(STORAGE_DIR, "withdrawal.json")
+#: Сколько последних выводов запрашивать у Playerok (показывается столько, сколько влезет).
+HISTORY_FETCH = 50
+#: Предел текста сообщения Telegram (считаем с HTML-тегами — с запасом).
+MESSAGE_LIMIT = 4096
+SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 
 _USDT_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
 
@@ -156,6 +164,19 @@ async def _withdrawable(fixer) -> int | None:
     return int(value) if value is not None else None
 
 
+async def _history(fixer) -> list:
+    """Последние выводы (транзакции WITHDRAW), сначала новые. Ошибка — пустой список."""
+    try:
+        page = await asyncio.to_thread(fixer.account.get_transactions, HISTORY_FETCH, None,
+                                       {"operation": ["WITHDRAW"]})
+    except Exception as exc:
+        logger.warning("[withdraw] Не удалось получить последние выводы: {}", exc)
+        return []
+    txs = [t for t in (getattr(page, "transactions", None) or []) if t]
+    txs.sort(key=lambda t: str(getattr(t, "created_at", "") or ""), reverse=True)
+    return txs
+
+
 async def _providers(fixer) -> dict:
     providers = await asyncio.to_thread(fixer.account.get_withdrawal_providers)
     return {p.id: p for p in providers if p.id and p.id not in _HIDDEN}
@@ -165,15 +186,54 @@ async def _providers(fixer) -> dict:
 # Экраны
 # ----------------------------------------------------------------------
 
-def build_main_screen(l10n, providers: dict, withdrawable, remembered: dict | None):
-    lines = [l10n("wd_title"), "", l10n("wd_available", amount=money(withdrawable) if withdrawable is not None else "?"), ""]
-    lines.append(l10n("wd_methods_header"))
+_STATUS_KEYS = {
+    "CONFIRMED": "wd_status_confirmed",
+    "PROCESSING": "wd_status_processing",
+    "PENDING": "wd_status_pending",
+    "ROLLED_BACK": "wd_status_rolled_back",
+    "FAILED": "wd_status_failed",
+}
+
+
+def history_entry(l10n, tx, providers: dict, tz=None) -> str:
+    """Один вывод: «💸 -2 000 ₽ · СБП» / «🕒 19.10.2026, 11:58 · ✅ Проведена»."""
+    pid = getattr(tx, "provider_id", None)
+    method = (getattr(getattr(tx, "provider", None), "name", None)
+              or getattr(providers.get(pid), "name", None) or pid or "?")
+    status_raw = getattr(getattr(tx, "status", None), "name", None)
+    status = l10n(_STATUS_KEYS[status_raw]) if status_raw in _STATUS_KEYS else (status_raw or "?")
+    dt = _parse_dt(getattr(tx, "created_at", None))
+    date = dt.astimezone(tz).strftime("%d.%m.%Y, %H:%M") if dt is not None else "—"
+    value = getattr(tx, "value", None)
+    return l10n(
+        "wd_history_entry",
+        amount=money(abs(int(value))) if value is not None else "?",
+        method=html.escape(str(method)),
+        date=date,
+        status=html.escape(status),
+    )
+
+
+def build_main_screen(l10n, providers: dict, withdrawable, remembered: dict | None,
+                      history: list | None = None, tz=None):
+    head = [l10n("wd_title"), l10n("wd_available", amount=money(withdrawable) if withdrawable is not None else "?")]
+    lines = [l10n("wd_methods_header")]
     for pid, p in providers.items():
         fee = f"{p.fee:g}%" if p.fee is not None else "?"
         min_fee = f", мин. {money(p.min_fee_amount)}" if p.min_fee_amount else ""
         limits = f"{money(p.min_out)} – {money(p.max_out)}" if p.min_out is not None and p.max_out else "—"
         mark = "" if pid in SUPPORTED else " · " + l10n("wd_site_only")
         lines.append(f"• <b>{html.escape(p.name or pid)}</b> — {fee}{min_fee} · {limits}{mark}")
+    # Последние выводы — сколько влезает в сообщение вместе со способами.
+    tail = "\n".join(lines)
+    used = len("\n".join(head)) + len(tail) + 2 * (len(SEPARATOR) + 2)
+    for tx in history or []:
+        entry = history_entry(l10n, tx, providers, tz)
+        if used + len(entry) + len(SEPARATOR) + 2 > MESSAGE_LIMIT:
+            break
+        head += [SEPARATOR, entry]
+        used += len(entry) + len(SEPARATOR) + 2
+    text = "\n".join(head) + "\n" + SEPARATOR + "\n" + tail
     rows = []
     if remembered and remembered.get("provider") in providers:
         rows.append([_btn(l10n("wd_btn_repeat", label=destination_label(
@@ -183,7 +243,7 @@ def build_main_screen(l10n, providers: dict, withdrawable, remembered: dict | No
     for i in range(0, len(method_buttons), 2):
         rows.append(method_buttons[i:i + 2])
     rows.append(nav_row(l10n))
-    return "\n".join(lines), _kb(rows)
+    return text, _kb(rows)
 
 
 def build_banks_screen(l10n, banks, page_title: str):
@@ -271,9 +331,11 @@ async def _show_main(query: CallbackQuery, fixer, state: FSMContext) -> None:
                         _kb([nav_row(l10n)]))
         return
     withdrawable = await _withdrawable(fixer)
+    history = await _history(fixer)
     await state.update_data(providers_seen=True)
     await _remember_panel(state, query.message)
-    text, markup = build_main_screen(l10n, providers, withdrawable, load_remembered())
+    text, markup = build_main_screen(l10n, providers, withdrawable, load_remembered(),
+                                     history, seller_tz(fixer.settings))
     await safe_edit(query.message, text, markup)
 
 

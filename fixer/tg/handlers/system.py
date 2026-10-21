@@ -757,12 +757,20 @@ async def cb_disconnect_playerok(query: CallbackQuery, fixer) -> None:
 
 @router.callback_query(F.data == "shutdown_ack")
 async def cb_shutdown_ack(query: CallbackQuery, fixer) -> None:
-    """Удаляет уведомление о выключении и очищает файл с сохранёнными ID сообщений."""
-    # Удаляем сообщение с кнопкой
+    """Удаляет уведомление о выключении и очищает файл с сохранёнными ID сообщений.
+
+    Сообщение старше 48 часов Telegram удалить не даёт — тогда оно превращается
+    в «✖️ Меню закрыто.» без кнопки (как у «❌ Закрыть»)."""
+    deleted = False
     try:
         await query.message.delete()
-    except Exception:
-        pass
+        deleted = True
+    except Exception as exc:
+        logger.debug("Уведомление о выключении не удалить ({}) — сворачиваю", exc)
+        try:
+            await query.message.edit_text(fixer.l10n("menu_closed"), reply_markup=None)
+        except Exception as exc2:
+            logger.debug("Уведомление о выключении не свернуть: {}", exc2)
     
     # Удаляем файл с сохранёнными ID сообщений
     shutdown_file = fixer.SHUTDOWN_MSG_FILE
@@ -775,6 +783,6 @@ async def cb_shutdown_ack(query: CallbackQuery, fixer) -> None:
     
     # Пытаемся ответить на callback, но игнорируем ошибку "query is too old"
     try:
-        await query.answer("Сообщение удалено")
+        await query.answer("Сообщение удалено" if deleted else None)
     except Exception:
         pass

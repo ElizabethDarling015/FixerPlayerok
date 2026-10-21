@@ -394,9 +394,6 @@ class Fixer:
             with contextlib.suppress(NotImplementedError):
                 self.loop.add_signal_handler(sig, self.request_shutdown)
 
-        # Удаляем уведомление о выключении от прошлого запуска
-        await self._cleanup_shutdown_message()
-
         # --- Проверяем offline_mode ---
         offline_mode = self.offline
 
@@ -466,6 +463,10 @@ class Fixer:
         if self.settings.telegram.token:
             from .tg.bot import setup_telegram
             self.bot, self.dispatcher, self.notifier = setup_telegram(self)
+
+            # Уведомление о выключении от прошлого запуска: удалить (или свернуть, если старое).
+            # Раньше вызывалось до создания бота и потому никогда не срабатывало.
+            await self._cleanup_shutdown_message()
             
             # === НОВОЕ: даём плагинам зарегистрировать свои команды ===
             self.plugin_manager.register_tg_handlers(self.dispatcher, self.bot)
@@ -634,7 +635,17 @@ class Fixer:
                 )
                 logger.info("Удалено предыдущее уведомление о выключении у админа {}", item["chat_id"])
             except Exception as exc:
-                logger.debug("Не удалось удалить сообщение {}: {}", item.get("message_id"), exc)
+                # Старше 48 часов Telegram удалить не даёт — сворачиваем в «✖️ Меню закрыто.».
+                logger.debug("Не удалось удалить сообщение {}: {} — сворачиваю", item.get("message_id"), exc)
+                try:
+                    await self.bot.edit_message_text(
+                        self.l10n("menu_closed"),
+                        chat_id=item["chat_id"],
+                        message_id=item["message_id"],
+                        reply_markup=None,
+                    )
+                except Exception as exc2:
+                    logger.debug("Не удалось свернуть сообщение {}: {}", item.get("message_id"), exc2)
 
         try:
             os.remove(self.SHUTDOWN_MSG_FILE)
