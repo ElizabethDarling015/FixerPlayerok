@@ -126,6 +126,10 @@ class Fixer:
         self._plugins_loaded: bool = False
         self._consume_task: asyncio.Task | None = None
 
+        # Фоновое подключение к Playerok и слежение за обрывами (см. playerok_link.py)
+        from .playerok_link import PlayerokLink
+        self.playerok_link = PlayerokLink(self)
+
         #: Выставляется `request_restart()`: после остановки main.py перезапустит процесс.
         self.restart_requested = False
 
@@ -258,8 +262,11 @@ class Fixer:
     # Управление подключением к Playerok API
     # ------------------------------------------------------------------
 
-    async def connect_playerok(self) -> dict:
-        """Подключается к Playerok API вручную (кнопка в TG-панели)."""
+    async def connect_playerok(self, attempts: int = 3) -> dict:
+        """
+        Подключается к Playerok API: кнопка в TG-панели (3 попытки через 10 с) или фоновое
+        подключение из `PlayerokLink` (по одной попытке, паузы считает он сам).
+        """
         if self._playerok_connected:
             return {"ok": True,
                     "message": "Уже подключен к Playerok",
@@ -279,7 +286,7 @@ class Fixer:
                 )
 
             logger.info("Авторизуемся на Playerok (ручное подключение)…")
-            auth_attempts = 3
+            auth_attempts = max(1, attempts)
             for attempt in range(1, auth_attempts + 1):
                 try:
                     await asyncio.to_thread(self.account.get)
@@ -333,6 +340,7 @@ class Fixer:
 
             self._playerok_connected = True
             logger.success("Playerok API подключён")
+            self.playerok_link.on_connected()
 
             # Отдельного уведомления «Playerok подключён» нет: результат подключения и так
             # виден — сообщение с кнопкой превращается в главное меню (см. cb_connect_playerok).
@@ -396,6 +404,8 @@ class Fixer:
 
         # --- Проверяем offline_mode ---
         offline_mode = self.offline
+        #: Текст ошибки, если Playerok не ответил при обычном (не --offline) запуске.
+        startup_error: str | None = None
 
         if not offline_mode:
             # --- Аккаунт Playerok ---
@@ -406,18 +416,18 @@ class Fixer:
                 requests_timeout=int(self.settings.playerok.requests_timeout),
             )
             logger.info("Авторизуемся на Playerok…")
-            auth_attempts = 5
-            for attempt in range(1, auth_attempts + 1):
-                try:
-                    await asyncio.to_thread(self.account.get)
-                    await asyncio.to_thread(self.account.get_balance)
-                    break
-                except RequestSendingError as exc:
-                    if attempt == auth_attempts:
-                        raise
-                    logger.warning("Сеть недоступна (попытка {}/{}): {} — повтор через 15 с",
-                                   attempt, auth_attempts, exc)
-                    await asyncio.sleep(15)
+            try:
+                await asyncio.to_thread(self.account.get)
+                await asyncio.to_thread(self.account.get_balance)
+            except Exception as exc:
+                # Не завершаемся (иначе systemd перезапускал бы нас по кругу, а Telegram молчал бы):
+                # работаем как в оффлайне и подключаемся в фоне — см. playerok_link.py.
+                startup_error = str(exc) or type(exc).__name__
+                logger.error("Playerok недоступен при старте: {} — подключусь в фоне", startup_error)
+                self.account = None
+                offline_mode = True
+
+        if not offline_mode:
             balance = self.account.profile.balance.value if self.account.profile and self.account.profile.balance else "?"
             logger.success("Авторизованы как {} (баланс: {})", self.account.username, balance)
 
@@ -449,9 +459,9 @@ class Fixer:
 
             self._playerok_connected = True
         else:
-            logger.warning("🔧 OFFLINE MODE: Playerok API отключён. Работает только Telegram-панель.")
-            logger.info("Для подключения к Playerok используйте кнопку в меню /menu → Система → Подключить Playerok")
- 
+            if startup_error is None:
+                logger.warning("🔧 OFFLINE MODE: Playerok API отключён. Работает только Telegram-панель.")
+                logger.info("Для подключения к Playerok используйте кнопку в меню /menu → Система → Подключить Playerok")
             self.plugin_manager.load_plugins()
             self._plugins_loaded = True
 
@@ -494,8 +504,12 @@ class Fixer:
             if getattr(self.settings.modules, name)
         ) or "—")
 
+        # Слежение за обрывами связи во время работы (молчит, пока Playerok не подключён).
+        self.spawn(self.playerok_link.watch())
+
         if offline_mode:
-            logger.info("Статус: OFFLINE MODE — только Telegram-панель")
+            logger.info("Статус: {}", "OFFLINE MODE — только Telegram-панель" if startup_error is None
+                        else "Playerok недоступен — подключаюсь в фоне")
             # Стандартное стартовое уведомление (с кнопкой «В главное меню»)
             if self.notifier is not None:
                 try:
@@ -504,6 +518,9 @@ class Fixer:
                     logger.success("Стартовое уведомление успешно отправлено")
                 except Exception as exc:
                     logger.exception("ОШИБКА при отправке стартового уведомления: {}", exc)
+            if startup_error is not None:
+                # После стартового — отдельное «⚠️ Playerok недоступен» и попытки в фоне.
+                self.playerok_link.start_reconnect(startup_error)
         else:
             # --- Собираем пропущенные сделки (за время простоя) ---
             missed_deals = []

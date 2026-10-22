@@ -109,6 +109,10 @@ class Account:
         # после первого FORBIDDEN больше не дёргаем API, чтобы не спамить 403 в лог.
         self._send_lock = threading.Lock()  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
         self._testimonials_forbidden: bool = False
+        #: Время (time.time()) последнего ответа сервера — любого, хоть 4xx: значит, сеть есть.
+        self.last_response_at: float | None = None
+        #: Время последней сетевой ошибки (таймаут, обрыв): ответа от сервера не было вовсе.
+        self.last_network_error_at: float | None = None
 
     # ------------------------------------------------------------------
     # Низкоуровневая отправка запросов
@@ -193,6 +197,7 @@ class Account:
                         response = session.post(url, **kwargs)
             except Exception as exc:
                 last_error = exc
+                self.last_network_error_at = time.time()
                 logger.warning("[%s] Сетевая ошибка (попытка %d/%d): %s", operation_name, attempt + 1,
                                max_attempts, exc)
                 if is_last_attempt:
@@ -200,6 +205,7 @@ class Account:
                 self._sleep_before_retry(attempt)
                 continue
 
+            self.last_response_at = time.time()
             response_text = ""
             try:
                 response_text = response.text

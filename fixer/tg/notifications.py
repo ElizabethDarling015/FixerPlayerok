@@ -324,6 +324,22 @@ def close_keyboard(l10n) -> InlineKeyboardMarkup:
     ]])
 
 
+def playerok_unavailable_keyboard(l10n) -> InlineKeyboardMarkup:
+    """«⚠️ Playerok недоступен»: повторить подключение сейчас или закрыть."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=l10n("plink_btn_retry"), callback_data="plk:retry")],
+        [InlineKeyboardButton(text=l10n("btn_close"), callback_data="close")],
+    ])
+
+
+def playerok_lost_keyboard(l10n) -> InlineKeyboardMarkup:
+    """«⚠️ Потеряна связь с Playerok»: логи (новым сообщением) или закрыть."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=l10n("sys_btn_logs"), callback_data="plk:logs")],
+        [InlineKeyboardButton(text=l10n("btn_close"), callback_data="close")],
+    ])
+
+
 #: Больше 10 фото Telegram в одном альбоме не принимает.
 ALBUM_LIMIT = 10
 #: Лимит подписи к фото в Telegram.
@@ -1325,6 +1341,51 @@ class Notifier:
             connected=self.fixer.playerok_connected,
         )
         await self._send_all(text, reply_markup=started_keyboard(self.fixer.l10n))
+
+    # ------------------------------------------------------------------
+    # Связь с Playerok (см. fixer/playerok_link.py)
+    # ------------------------------------------------------------------
+
+    async def notify_playerok_unavailable(self, reason: str | None = None) -> list[tuple[int, int]]:
+        """«⚠️ Playerok недоступен» — отдельным сообщением после стартового."""
+        l10n = self.fixer.l10n
+        reason = (reason or "?").strip()
+        if len(reason) > 300:
+            reason = reason[:297] + "…"
+        text = l10n("notif_playerok_unavailable", reason=_esc(reason))
+        return await self._send_all(text, reply_markup=playerok_unavailable_keyboard(l10n))
+
+    async def notify_playerok_lost(self) -> list[tuple[int, int]]:
+        """«⚠️ Потеряна связь с Playerok» — больше 3 минут нет ответа во время работы."""
+        l10n = self.fixer.l10n
+        return await self._send_all(l10n("notif_playerok_lost"), reply_markup=playerok_lost_keyboard(l10n))
+
+    async def resolve_playerok_alert(self, messages: list[tuple[int, int]], text_key: str) -> None:
+        """
+        Связь есть: превращает предупреждения в «✅ …» с «❌ Закрыть». Админу, у которого
+        предупреждения нет (закрыл его или оно не дошло, пока не было сети), — новым сообщением.
+        """
+        l10n = self.fixer.l10n
+        text = l10n(text_key)
+        markup = close_keyboard(l10n)
+        edited: set[int] = set()
+        for chat_id, message_id in messages:
+            try:
+                await self.bot.edit_message_text(text, chat_id=chat_id, message_id=message_id,
+                                                 reply_markup=markup)
+                edited.add(chat_id)
+            except Exception as exc:
+                logger.debug("Предупреждение о связи {} не изменить ({}) — пришлю новым", message_id, exc)
+        for admin_id in self.admins.all_ids:
+            if admin_id in edited:
+                continue
+            try:
+                sent = await self.bot.send_message(admin_id, text, reply_markup=markup)
+            except Exception:
+                logger.exception("Не удалось отправить уведомление о связи админу {}", admin_id)
+                continue
+            self._sent_messages.setdefault(sent.chat.id, []).append((sent.message_id, time.time()))
+            self._save_history()
 
     async def notify_error(self, error_text: str) -> None:
         if self._toggles.errors:

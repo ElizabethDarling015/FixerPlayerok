@@ -668,4 +668,16 @@ STRINGS = {
         '🗑 Messages deleted: {removed}\n'
         '⚠️ Errors: {failed}'
     ),
+
+    # --- Связь с Playerok (playerok_link.py) ---
+    "notif_playerok_unavailable": "⚠️ <b>Playerok is unavailable</b>\n\nRetrying in 30 s, 1 min, 2 min, 5 min and then every 5 min. I will let you know when it works.\n\n<b>Reason:</b> <code>{reason}</code>",
+    "notif_playerok_connected": "✅ <b>Connected to Playerok</b>\n\nDeals and messages are tracked again.",
+    "notif_playerok_lost": "⚠️ <b>Lost connection to Playerok</b>\n\nNo response for over 3 minutes. Reconnecting automatically — I will let you know when it is back.",
+    "notif_playerok_restored": "✅ <b>Connection to Playerok restored</b>",
+    "plink_btn_retry": "🔄 Retry connection",
+    "plink_retry_started": "🔄 Retrying now…",
+    "plink_already_connected": "✅ Playerok is already connected",
+    "test_playerok_unavailable": "⚠️ Playerok unavailable",
+    "test_playerok_lost": "⚠️ Connection lost",
+    "test_playerok_then": "<i>↓ Once connected, the message turns into:</i>",
 }

@@ -655,4 +655,16 @@ STRINGS = {
     "pl_delete_confirm": "Удалить плагин «{name}»? Его хендлеры будут выгружены, файл удалён из папки plugins/.",
     "pl_btn_delete_yes": "Да, удалить",
     "pl_deleted": "🗑 Плагин «{name}» удалён.",
+
+    # --- Связь с Playerok (playerok_link.py) ---
+    "notif_playerok_unavailable": "⚠️ <b>Playerok недоступен</b>\n\nПробую подключиться снова: через 30 с, 1 мин, 2 мин, 5 мин и дальше каждые 5 мин. Сообщу, когда получится.\n\n<b>Причина:</b> <code>{reason}</code>",
+    "notif_playerok_connected": "✅ <b>Успешное подключение к Playerok</b>\n\nСделки и сообщения снова отслеживаются.",
+    "notif_playerok_lost": "⚠️ <b>Потеряна связь с Playerok</b>\n\nБольше 3 минут нет ответа. Переподключаюсь сам — сообщу, когда связь вернётся.",
+    "notif_playerok_restored": "✅ <b>Связь с Playerok восстановлена</b>",
+    "plink_btn_retry": "🔄 Повторить подключение",
+    "plink_retry_started": "🔄 Пробую подключиться заново…",
+    "plink_already_connected": "✅ Playerok уже подключён",
+    "test_playerok_unavailable": "⚠️ Playerok недоступен",
+    "test_playerok_lost": "⚠️ Потеря связи",
+    "test_playerok_then": "<i>↓ Когда связь появится, сообщение станет таким:</i>",
 }

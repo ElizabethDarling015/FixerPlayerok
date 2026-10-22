@@ -114,6 +114,8 @@ TEST_PAGES: list[list[tuple[str, str]]] = [
         ("test_item_expired", "test:item_expired"),
         ("test_error", "test:error"),
         ("test_started", "test:started"),
+        ("test_playerok_unavailable", "test:playerok_unavailable"),
+        ("test_playerok_lost", "test:playerok_lost"),
     ],
 ]
 
@@ -196,8 +198,9 @@ async def cb_menu(query: CallbackQuery, fixer) -> None:
     await query.answer()
 
 
-@router.callback_query(F.data == "sys:logs")
-async def cb_logs(query: CallbackQuery, fixer) -> None:
+def build_logs_view(fixer) -> tuple[str, object]:
+    """Экран «📄 Логи». Им же пользуется кнопка «📄 Логи» в «⚠️ Потеряна связь с Playerok»
+    (там он открывается новым сообщением), так что доработки раздела попадут и туда."""
     l10n = fixer.l10n
     tail = read_log_tail()
     if not tail.strip():
@@ -207,7 +210,13 @@ async def cb_logs(query: CallbackQuery, fixer) -> None:
         body = f"<pre>{escaped}</pre>"
     builder = InlineKeyboardBuilder()
     builder.row(*nav_row(l10n, "sys"))
-    await safe_edit(query.message, l10n("sys_logs_title") + "\n" + body, builder.as_markup())
+    return l10n("sys_logs_title") + "\n" + body, builder.as_markup()
+
+
+@router.callback_query(F.data == "sys:logs")
+async def cb_logs(query: CallbackQuery, fixer) -> None:
+    text, markup = build_logs_view(fixer)
+    await safe_edit(query.message, text, markup)
     await query.answer()
 
 
@@ -786,3 +795,26 @@ async def cb_shutdown_ack(query: CallbackQuery, fixer) -> None:
         await query.answer("Сообщение удалено" if deleted else None)
     except Exception:
         pass
+
+
+# ------------------------------------------------------------------
+# Образцы: связь с Playerok (предупреждение и во что оно превращается)
+# ------------------------------------------------------------------
+
+@router.callback_query(F.data == "test:playerok_unavailable")
+async def cb_test_playerok_unavailable(query: CallbackQuery, fixer) -> None:
+    """Образец: Playerok не ответил при запуске; ниже — каким сообщение станет после подключения."""
+    l10n = fixer.l10n
+    text = (l10n("notif_playerok_unavailable",
+                 reason="Ошибка при попытке отправить запрос к https://playerok.com/graphql")
+            + "\n\n" + l10n("test_playerok_then") + "\n\n" + l10n("notif_playerok_connected"))
+    await _show_sample(query, fixer, "test:playerok_unavailable", text)
+
+
+@router.callback_query(F.data == "test:playerok_lost")
+async def cb_test_playerok_lost(query: CallbackQuery, fixer) -> None:
+    """Образец: обрыв связи во время работы; ниже — каким сообщение станет, когда связь вернётся."""
+    l10n = fixer.l10n
+    text = (l10n("notif_playerok_lost")
+            + "\n\n" + l10n("test_playerok_then") + "\n\n" + l10n("notif_playerok_restored"))
+    await _show_sample(query, fixer, "test:playerok_lost", text)
