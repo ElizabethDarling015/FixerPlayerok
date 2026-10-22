@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import json
 from contextlib import suppress
 from pathlib import Path
@@ -13,7 +12,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from loguru import logger
 
 from ...settings import save_main_settings, STORAGE_DIR
 from .deals_in_work import menu_button_text

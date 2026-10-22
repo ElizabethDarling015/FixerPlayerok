@@ -1340,6 +1340,12 @@ class Notifier:
             modules=modules,
             connected=self.fixer.playerok_connected,
         )
+        # Перезапуск после импорта бэкапа — первой строкой «✅ Бэкап … применён».
+        from ..backup import pop_applied_mark
+        mark = pop_applied_mark()
+        if mark:
+            from .handlers.backup import applied_line
+            text = applied_line(self.fixer.l10n, mark) + "\n\n" + text
         await self._send_all(text, reply_markup=started_keyboard(self.fixer.l10n))
 
     # ------------------------------------------------------------------

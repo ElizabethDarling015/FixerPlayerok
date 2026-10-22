@@ -182,7 +182,7 @@ def test_system_menu_has_all_buttons():
     fixer.playerok_connected = False
     text, markup = build_system_menu(fixer)
     callbacks = all_callback_data(markup)
-    for callback in ("sys:logs", "sys:backup", "sys:update", "sys:connect_playerok",
+    for callback in ("sys:logs", "bk", "sys:update", "sys:connect_playerok",
                      "sys:tests", "sys:clear_confirm", "px:menu", "close"):
         assert callback in callbacks
     # «Перезапустить» заменена кнопкой «Обновить с GitHub», «Выключить» убрана.

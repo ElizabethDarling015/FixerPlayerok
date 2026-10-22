@@ -3,22 +3,19 @@ from __future__ import annotations
 
 import asyncio
 import html
-import io
 import os
-import zipfile
 
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
+from aiogram.types import (CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
                            LinkPreviewOptions)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from ...logging_setup import LOG_FILE
 from ...self_update import DEFAULT_REPO, update_from_github
-from ...settings import CONFIG_DIR, STORAGE_DIR, ConfigError
 from ..chat_kinds import SUPPORT_TITLE
 from ..notifications import build_new_deal_text, build_payout_details, build_started_text, started_keyboard
 from .common import nav_row, pager_row, safe_edit
@@ -30,8 +27,6 @@ router = Router(name="system")
 LOG_TAIL_LINES = 30
 MAX_TEXT_LENGTH = 3500
 
-#: Подпапки storage/, не попадающие в бэкап (логи большие и не нужны для восстановления).
-BACKUP_EXCLUDE_DIRS = ("logs",)
 
 def build_system_menu(fixer) -> tuple[str, object]:
     l10n = fixer.l10n
@@ -44,7 +39,7 @@ def build_system_menu(fixer) -> tuple[str, object]:
     builder.button(text=l10n("menu_section_notifications"), callback_data="nt")
 
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
-    builder.button(text=l10n("sys_btn_backup"), callback_data="sys:backup")
+    builder.button(text=l10n("sys_btn_backup"), callback_data="bk")
 
     # Кнопка подключения/отключения + её описание в тексте
     if fixer.playerok_connected:
@@ -162,27 +157,6 @@ def build_tests_menu(fixer, page: int = 0) -> tuple[str, object]:
 # Обработчики раздела "Система"
 # ------------------------------------------------------------------
 
-def build_backup_zip(config_dir: str = CONFIG_DIR, storage_dir: str = STORAGE_DIR) -> bytes:
-    """
-    Собирает zip-архив с конфигами и данными (склады, журналы SQLite) для переноса/восстановления.
-
-    Подпапки из `BACKUP_EXCLUDE_DIRS` (логи) не включаются. Возвращает содержимое архива.
-    """
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for base_dir in (config_dir, storage_dir):
-            if not os.path.isdir(base_dir):
-                continue
-            base_name = os.path.basename(os.path.normpath(base_dir))
-            for root, dirs, files in os.walk(base_dir):
-                if root == base_dir:
-                    dirs[:] = [d for d in dirs if d not in BACKUP_EXCLUDE_DIRS]
-                for filename in sorted(files):
-                    full_path = os.path.join(root, filename)
-                    arcname = os.path.join(base_name, os.path.relpath(full_path, base_dir))
-                    archive.write(full_path, arcname)
-    return buffer.getvalue()
-
 def read_log_tail(log_file: str = LOG_FILE, lines: int = LOG_TAIL_LINES) -> str:
     """Последние строки файла лога (пустая строка, если файла нет)."""
     if not os.path.isfile(log_file):
@@ -217,18 +191,6 @@ def build_logs_view(fixer) -> tuple[str, object]:
 async def cb_logs(query: CallbackQuery, fixer) -> None:
     text, markup = build_logs_view(fixer)
     await safe_edit(query.message, text, markup)
-    await query.answer()
-
-
-@router.callback_query(F.data == "sys:backup")
-async def cb_backup(query: CallbackQuery, fixer) -> None:
-    l10n = fixer.l10n
-    data = await asyncio.to_thread(build_backup_zip)
-    filename = f"fixer_backup_{datetime.now():%Y%m%d_%H%M}.zip"
-    await query.message.answer_document(
-        BufferedInputFile(data, filename=filename),
-        caption=l10n("sys_backup_caption"),
-    )
     await query.answer()
 
 

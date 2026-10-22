@@ -615,8 +615,39 @@ STRINGS = {
     # --- Settings ---
     "settings_title": "⚙️ <b>Settings</b>",
     "sys_btn_logs": "📄 Logs",
-    "sys_btn_backup": "💾 Backup",
-    "sys_backup_caption": "💾 Backup of Fixer configs and data.\n⚠️ Contains account cookies — never share this archive!",
+    "bk_title": '💾 <b>Config backup</b>',
+    "bk_contents": (
+        'The archive contains:\n'
+        '• 🎛 Global toggles and all bot settings\n'
+        '• 🤖 Auto-response\n'
+        '• 📦 Auto-delivery: items and stock (the goods themselves)\n'
+        '• 🔔 Notification settings\n'
+        '• 🔑 Playerok account: cookies, user-agent, account proxy\n'
+        '• ✈️ Telegram bot token and admin list\n'
+        '• 💳 Last withdrawal method\n'
+        '• 🚫 Blacklist\n'
+        '• 🌙 Night message, digest time, timezone, auto-raise\n'
+        '\n'
+        'Not included: delivery ledger, saved proxies (🌐), caches and logs.\n'
+        '📥 Import: current settings are saved to <code>storage/backups/</code> first, '
+        'then the bot restarts.'
+    ),
+    "bk_warning": '⚠️ It contains cookies and the bot token — never share the archive.',
+    "bk_btn_import": '📥 Import',
+    "bk_btn_export": '📤 Export',
+    "bk_export_caption": '💾 Fixer config backup.\n⚠️ It contains cookies and the bot token — never share it.',
+    "bk_export_failed": '❌ Could not build the archive: {error}',
+    "bk_send_file": '📥 Send the backup archive (<code>fixer-backup_….zip</code>) as a file to this chat.',
+    "bk_err": 'Archive rejected: {error}',
+    "bk_err_apply": 'Could not apply the archive: {error}',
+    "bk_err_not_file": 'A file is needed — the .zip backup archive.',
+    "bk_applied": '✅ Backup from <b>{date}</b> (account <b>{account}</b>) applied.',
+    "bk_stocks": '📦 Auto-delivery stocks restored: <b>{count}</b>',
+    "bk_tg_same": '✈️ Bot token and admins: unchanged',
+    "bk_tg_changed": '✈️ Bot token and/or admins replaced from the archive',
+    "bk_restarting": '🔄 Restarting…',
+    "bk_started_line": '✅ Backup from {date} applied',
+    "sys_btn_backup": "💾 Config backup",
     "sys_btn_reload": "🔄 Reload configs",
     "sys_btn_update": "⬇️ Update from GitHub",
     "sys_update_confirm": (
