@@ -273,6 +273,78 @@ STRINGS = {
     "pf_purchases": '🛍 Purchases: <b>{counts}</b>',
     "pf_failed": '⚠️ Could not load the profile: {error}',
     "pf_offline": '⚠️ Playerok is not connected. The profile works in online mode.',
+    "menu_section_autoraise": "⬆️ Auto-raise",
+    "up_title": '⬆️ <b>Auto-raise</b> · {status} · {time}',
+    "up_title_short": '⬆️ <b>Auto-raise</b>',
+    "up_on": '🟢 On',
+    "up_off": '🔴 Off',
+    "up_day": '☀️ Day',
+    "up_night": '🌙 Night',
+    "up_allday": '🕒 24 h',
+    "up_mode_position_line": '📊 Mode: by position — keep in top-<b>{position}</b>',
+    "up_position_params": '⏱ Check every {check} · cooldown {cooldown} · checks in a row: {streak}',
+    "up_mode_interval_line": '⏰ Mode: by interval — every <b>{interval}</b>',
+    "up_next_run": '⏭ Next raise: {time}',
+    "up_night_pos": 'top-{position}',
+    "up_night_int": 'every {interval}',
+    "up_night_line": '🌙 Night {start}–{end}: {value} · limit {limit}',
+    "up_spent_line": '💸 Spent {window}: <b>{spent}</b> · limit {limit}',
+    "up_reserve_line": '💰 Keep on balance: {reserve}',
+    "up_no_limit": 'no limit',
+    "up_no_items": 'No items selected — press «🛍 Items».',
+    "up_positions_head": '📊 <b>Positions</b>',
+    "up_checked_at": '(checked at {time})',
+    "up_items_head": '🛍 <b>Selected items</b>',
+    "up_item_ok": 'place {pos} ✅',
+    "up_item_low": 'place {pos} ⬆️ ({streak} of {need})',
+    "up_item_unchecked": 'not checked yet',
+    "up_item_waiting": 'waiting for the interval',
+    "up_item_not_premium": '⚠️ not premium — cannot be raised',
+    "up_item_not_active": '⚠️ not on sale',
+    "up_item_not_found": '⚠️ item not found',
+    "up_item_error": '⚠️ check failed',
+    "up_hint": '<i>Only selected premium items are raised. The raise price depends on the item price (9–75 ₽).</i>',
+    "up_btn_on": '🟢 On',
+    "up_btn_off": '🔴 Off',
+    "up_btn_mode_position": '📊 Mode: by position',
+    "up_btn_mode_interval": '⏰ Mode: by interval',
+    "up_btn_pos": '📊 Place: {value}',
+    "up_btn_chk": '⏱ Check: {value}',
+    "up_btn_cd": '🕒 Cooldown: {value}',
+    "up_btn_streak": '🔁 In a row: {value}',
+    "up_btn_int": '⏰ Interval: {value}',
+    "up_btn_dl": '☀️ Day limit: {value}',
+    "up_btn_dl_all": '💸 Daily limit: {value}',
+    "up_btn_res": '💰 Reserve: {value}',
+    "up_btn_night_on": '🌙 Night mode: on',
+    "up_btn_night_off": '🌙 Night mode: off',
+    "up_btn_nf": '🌙 From: {value}',
+    "up_btn_nt": '🌅 To: {value}',
+    "up_btn_npos": '🌙 Night place: {value}',
+    "up_btn_nint": '🌙 Night interval: {value}',
+    "up_btn_nl": '🌙 Night limit: {value}',
+    "up_btn_lots": '🛍 Items ({count})',
+    "up_in_pos": 'Send the place below which an item is raised (now: <b>{current}</b>, {lo} to {hi}):',
+    "up_in_npos": 'Send the place for the night (now: <b>{current}</b>, {lo} to {hi}):',
+    "up_in_chk": 'How often to check places, in minutes (now: <b>{current}</b>, {lo} to {hi}):',
+    "up_in_cd": 'Do not raise one item more often than every N minutes (now: <b>{current}</b>, {lo} to {hi}; 0 — no cooldown):',
+    "up_in_int": 'Raise interval in minutes (now: <b>{current}</b>, {lo} to {hi}):',
+    "up_in_nint": 'Night raise interval in minutes (now: <b>{current}</b>, {lo} to {hi}):',
+    "up_in_dl": 'Spending limit for raises (day, or per 24 h without night mode), ₽ (now: <b>{current}</b>; 0 — no limit):',
+    "up_in_nl": 'Night spending limit for raises, ₽ (now: <b>{current}</b>; 0 — no limit):',
+    "up_in_res": 'How many ₽ of the balance to keep untouched (now: <b>{current}</b>; 0 — spend all):',
+    "up_in_nf": 'Night start, HH:MM (now: <b>{current}</b>):',
+    "up_in_nt": 'Night end, HH:MM (now: <b>{current}</b>):',
+    "up_err_number": 'A whole number is needed.',
+    "up_err_range": 'The number must be from {lo} to {hi}.',
+    "up_err_time": 'Time as HH:MM, e.g. 23:00.',
+    "up_lots_title": '🛍 <b>Items for auto-raise</b>',
+    "up_lots_hint": 'Tap an item to select (✅) or unselect (▫️). Active premium items are shown.',
+    "up_lots_empty": 'No active premium items.',
+    "up_lots_regular": '<i>Regular items not shown: {count} — they cannot be raised.</i>',
+    "up_lots_failed": '⚠️ Items did not load: {error}',
+    "up_lot_not_premium": 'This item is not premium or not on sale — it cannot be raised.',
+    "up_offline": '⚠️ Playerok is not connected. The item list works in online mode.',
     "menu_section_stats": "📈 Statistics",
     "menu_section_autodelivery": "📦 Auto-delivery",
     "menu_section_autoresponse": "💬 Auto-response",
@@ -408,7 +480,7 @@ STRINGS = {
     "nt_deal_confirmed": "Deal confirmations",
     "nt_deal_rolled_back": "Deal rollbacks",
     "nt_item_raised": "Item raised",
-    "nt_insufficient_balance": "Insufficient balance",
+    "nt_insufficient_balance": "Raise: balance and limit",
     "nt_errors": "Errors",
     "nt_stock_empty": "Empty stock",
     "nt_blacklist": "Blacklist deals",
@@ -569,18 +641,30 @@ STRINGS = {
         '🎁 <b>Item:</b> {item}'
     ),
     "notif_item_raised": (
-        '📈 <b>Item raised</b>\n'
-        '\n'
-        '🎁 <b>Item:</b> {item}\n'
-        '💸 <b>Spent:</b> {spent} ₽'
+        "⬆️ <b>Item raised</b>\n\n"
+        "🎁 <b>Item:</b> {item}\n"
+        "📊 <b>Place:</b> {place}\n"
+        "💸 <b>Charged:</b> {spent} ₽\n"
+        "🧾 {budget}"
     ),
     "notif_insufficient_balance": (
-        '💸 <b>Not enough balance</b>\n'
-        '\n'
-        '🎁 <b>Item:</b> {item}\n'
-        '💰 <b>Needed:</b> {price} ₽\n'
-        '📊 <b>Available:</b> {available} ₽'
+        "💸 <b>Not enough balance to raise</b>\n\n"
+        "🎁 <b>Item:</b> {item}\n"
+        "💰 <b>Needed:</b> {price} ₽\n"
+        "📊 <b>Available:</b> {available} ₽"
     ),
+    "notif_raise_limit": (
+        "🛑 <b>Auto-raise limit reached</b>\n\n"
+        "🧾 {budget}\n"
+        "⏳ Next raise — after {until}"
+    ),
+    "raise_place": "{before} → 1",
+    "raise_place_unknown": "by interval",
+    "raise_budget_limit": "Spent {window}: <b>{total} ₽</b> of {limit} ₽",
+    "raise_budget_free": "Spent {window}: <b>{total} ₽</b> (no limit)",
+    "raise_window_day": "during the day",
+    "raise_window_night": "at night",
+    "raise_window_all": "today",
     "notif_error": (
         '🚨 <b>Fixer error</b>\n'
         '\n'
@@ -707,6 +791,7 @@ STRINGS = {
     "test_deal_problem": "⚠️ Deal problem",
     "test_problem_resolved": "✅ Problem resolved",
     "test_rolled_back": "↩️ Deal refunded",
+    "test_raise_limit": "🛑 Raise limit",
     "test_item_raised": "📈 Item raised",
     "test_no_balance": "💸 Low balance",
     "test_stock_empty": "📭 Stock empty",

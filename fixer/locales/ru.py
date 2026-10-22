@@ -273,6 +273,78 @@ STRINGS = {
     "pf_purchases": '🛍 Покупки: <b>{counts}</b>',
     "pf_failed": '⚠️ Не удалось загрузить профиль: {error}',
     "pf_offline": '⚠️ Playerok не подключён. Профиль доступен в онлайн-режиме.',
+    "menu_section_autoraise": "⬆️ Автоподнятие",
+    "up_title": '⬆️ <b>Автоподнятие</b> · {status} · {time}',
+    "up_title_short": '⬆️ <b>Автоподнятие</b>',
+    "up_on": '🟢 Включено',
+    "up_off": '🔴 Выключено',
+    "up_day": '☀️ День',
+    "up_night": '🌙 Ночь',
+    "up_allday": '🕒 Сутки',
+    "up_mode_position_line": '📊 Режим: по позиции — держать в топ-<b>{position}</b>',
+    "up_position_params": '⏱ Проверка раз в {check} · кулдаун {cooldown} · проверок подряд: {streak}',
+    "up_mode_interval_line": '⏰ Режим: по интервалу — раз в <b>{interval}</b>',
+    "up_next_run": '⏭ Следующее поднятие: {time}',
+    "up_night_pos": 'топ-{position}',
+    "up_night_int": 'раз в {interval}',
+    "up_night_line": '🌙 Ночь {start}–{end}: {value} · лимит {limit}',
+    "up_spent_line": '💸 Потрачено {window}: <b>{spent}</b> · лимит {limit}',
+    "up_reserve_line": '💰 Не трогать на балансе: {reserve}',
+    "up_no_limit": 'без лимита',
+    "up_no_items": 'Лоты не отмечены — нажмите «🛍 Лоты».',
+    "up_positions_head": '📊 <b>Позиции</b>',
+    "up_checked_at": '(проверено в {time})',
+    "up_items_head": '🛍 <b>Отмеченные лоты</b>',
+    "up_item_ok": '{pos} место ✅',
+    "up_item_low": '{pos} место ⬆️ ({streak} из {need})',
+    "up_item_unchecked": 'ещё не проверен',
+    "up_item_waiting": 'ждёт интервала',
+    "up_item_not_premium": '⚠️ не премиум — поднять нельзя',
+    "up_item_not_active": '⚠️ не в продаже',
+    "up_item_not_found": '⚠️ лот не найден',
+    "up_item_error": '⚠️ не удалось проверить',
+    "up_hint": '<i>Поднимаются только отмеченные премиум-лоты. Цена поднятия — по цене лота (9–75 ₽).</i>',
+    "up_btn_on": '🟢 Включено',
+    "up_btn_off": '🔴 Выключено',
+    "up_btn_mode_position": '📊 Режим: по позиции',
+    "up_btn_mode_interval": '⏰ Режим: по интервалу',
+    "up_btn_pos": '📊 Место: {value}',
+    "up_btn_chk": '⏱ Проверка: {value}',
+    "up_btn_cd": '🕒 Кулдаун: {value}',
+    "up_btn_streak": '🔁 Подряд: {value}',
+    "up_btn_int": '⏰ Интервал: {value}',
+    "up_btn_dl": '☀️ Лимит днём: {value}',
+    "up_btn_dl_all": '💸 Лимит в сутки: {value}',
+    "up_btn_res": '💰 Резерв: {value}',
+    "up_btn_night_on": '🌙 Ночной режим: включён',
+    "up_btn_night_off": '🌙 Ночной режим: выключен',
+    "up_btn_nf": '🌙 С: {value}',
+    "up_btn_nt": '🌅 По: {value}',
+    "up_btn_npos": '🌙 Место ночью: {value}',
+    "up_btn_nint": '🌙 Интервал ночью: {value}',
+    "up_btn_nl": '🌙 Лимит ночью: {value}',
+    "up_btn_lots": '🛍 Лоты ({count})',
+    "up_in_pos": 'Напишите место, ниже которого лот поднимается (сейчас: <b>{current}</b>, от {lo} до {hi}):',
+    "up_in_npos": 'Напишите место для ночи (сейчас: <b>{current}</b>, от {lo} до {hi}):',
+    "up_in_chk": 'Как часто проверять места — в минутах (сейчас: <b>{current}</b>, от {lo} до {hi}):',
+    "up_in_cd": 'Не поднимать один лот чаще, чем раз в N минут (сейчас: <b>{current}</b>, от {lo} до {hi}; 0 — без кулдауна):',
+    "up_in_int": 'Интервал поднятия в минутах (сейчас: <b>{current}</b>, от {lo} до {hi}):',
+    "up_in_nint": 'Интервал поднятия ночью в минутах (сейчас: <b>{current}</b>, от {lo} до {hi}):',
+    "up_in_dl": 'Лимит трат на поднятия (днём, или в сутки без ночного режима), ₽ (сейчас: <b>{current}</b>; 0 — без лимита):',
+    "up_in_nl": 'Лимит трат на поднятия ночью, ₽ (сейчас: <b>{current}</b>; 0 — без лимита):',
+    "up_in_res": 'Сколько ₽ на балансе не тратить на поднятия (сейчас: <b>{current}</b>; 0 — тратить всё):',
+    "up_in_nf": 'Начало ночи, ЧЧ:ММ (сейчас: <b>{current}</b>):',
+    "up_in_nt": 'Конец ночи, ЧЧ:ММ (сейчас: <b>{current}</b>):',
+    "up_err_number": 'Нужно целое число.',
+    "up_err_range": 'Число должно быть от {lo} до {hi}.',
+    "up_err_time": 'Время в формате ЧЧ:ММ, например 23:00.',
+    "up_lots_title": '🛍 <b>Лоты для автоподнятия</b>',
+    "up_lots_hint": 'Нажмите на лот, чтобы отметить (✅) или снять отметку (▫️). Показаны активные премиум-лоты.',
+    "up_lots_empty": 'Активных премиум-лотов нет.',
+    "up_lots_regular": '<i>Обычных лотов не показано: {count} — их поднять нельзя.</i>',
+    "up_lots_failed": '⚠️ Список лотов не загрузился: {error}',
+    "up_lot_not_premium": 'Этот лот не премиум или не в продаже — его поднять нельзя.',
+    "up_offline": '⚠️ Playerok не подключён. Список лотов доступен в онлайн-режиме.',
     "menu_section_stats": "📈 Статистика",
     "menu_section_autodelivery": "📦 Авто-выдача",
     "menu_section_autoresponse": "💬 Автоответчик",
@@ -408,7 +480,7 @@ STRINGS = {
     "nt_deal_confirmed": "Подтверждение сделок",
     "nt_deal_rolled_back": "Возвраты сделок",
     "nt_item_raised": "Поднятие лотов",
-    "nt_insufficient_balance": "Нехватка баланса",
+    "nt_insufficient_balance": "Поднятие: баланс и лимит",
     "nt_errors": "Ошибки",
     "nt_stock_empty": "Пустой склад",
     "nt_blacklist": "Сделки с ЧС",
@@ -563,16 +635,30 @@ STRINGS = {
         "🎁 <b>Лот:</b> {item}"
     ),
     "notif_item_raised": (
-        "📈 <b>Лот поднят</b>\n\n"
+        "⬆️ <b>Лот поднят</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
-        "💸 <b>Потрачено:</b> {spent} ₽"
+        "📊 <b>Место:</b> {place}\n"
+        "💸 <b>Списано:</b> {spent} ₽\n"
+        "🧾 {budget}"
     ),
     "notif_insufficient_balance": (
-        "💸 <b>Не хватает баланса</b>\n\n"
+        "💸 <b>Не хватает баланса на поднятие</b>\n\n"
         "🎁 <b>Лот:</b> {item}\n"
         "💰 <b>Нужно:</b> {price} ₽\n"
         "📊 <b>Доступно:</b> {available} ₽"
     ),
+    "notif_raise_limit": (
+        "🛑 <b>Лимит автоподнятия исчерпан</b>\n\n"
+        "🧾 {budget}\n"
+        "⏳ Следующее поднятие — после {until}"
+    ),
+    "raise_place": "{before} → 1",
+    "raise_place_unknown": "по интервалу",
+    "raise_budget_limit": "Потрачено {window}: <b>{total} ₽</b> из {limit} ₽",
+    "raise_budget_free": "Потрачено {window}: <b>{total} ₽</b> (без лимита)",
+    "raise_window_day": "днём",
+    "raise_window_night": "ночью",
+    "raise_window_all": "сегодня",
     "notif_error": (
         "🚨 <b>Ошибка Fixer</b>\n\n"
         "<pre>{error}</pre>"
@@ -704,6 +790,7 @@ STRINGS = {
     "test_deal_problem": "⚠️ Проблема в сделке",
     "test_problem_resolved": "✅ Проблема решена",
     "test_rolled_back": "↩️ Сделка возвращена",
+    "test_raise_limit": "🛑 Лимит поднятия",
     "test_item_raised": "📈 Лот поднят",
     "test_no_balance": "💸 Не хватает баланса",
     "test_stock_empty": "📭 Склад пуст",

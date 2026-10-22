@@ -23,7 +23,6 @@ from loguru import logger
 
 from playerokapi.account import Account
 from playerokapi.autodelivery import AutoDeliveryManager
-from playerokapi.autoraise import AutoRaiseManager
 from playerokapi.common.exceptions import RequestSendingError
 from playerokapi.plugins import PluginManager
 from playerokapi.updater.runner import Runner
@@ -62,19 +61,6 @@ class _ToggleableAutoDelivery(AutoDeliveryManager):
         return super().reserve(item_name)
 
 
-class _ToggleableAutoRaise(AutoRaiseManager):
-    """Автоподнятие, уважающее переключатель модуля: при выключенном модуле цикл пропускается."""
-
-    def __init__(self, fixer: "Fixer", **kwargs):
-        super().__init__(**kwargs)
-        self._fixer = fixer
-
-    def raise_all(self, account):
-        if not self._fixer.settings.modules.autoraise:
-            return []
-        return super().raise_all(account)
-
-
 class Fixer:
     """Собирает и запускает все части бота: Account, Runner, модули, Telegram."""
 
@@ -98,7 +84,6 @@ class Fixer:
         self.runner: Runner | None = None
         self.plugin_manager = PluginManager()
         self.autodelivery_manager: AutoDeliveryManager | None = None
-        self.autoraise_manager: AutoRaiseManager | None = None
 
         self.autoresponse_config = load_autoresponse_config(AUTORESPONSE_CONFIG)
         self.autodelivery_config = load_autodelivery_config(AUTODELIVERY_CONFIG)
@@ -113,6 +98,11 @@ class Fixer:
         from .deals_in_work import DealsInWork
         self.deals_in_work = DealsInWork()
         self._deals_in_work_task: asyncio.Task | None = None
+
+        # «⬆️ Автоподнятие» отмеченных премиум-лотов (см. autoraise.py)
+        from .autoraise import AutoRaise
+        self.autoraise = AutoRaise(self)
+        self._autoraise_task: asyncio.Task | None = None
 
         self.loop: asyncio.AbstractEventLoop | None = None
         self.event_queue: asyncio.Queue | None = None
@@ -160,6 +150,12 @@ class Fixer:
         task = asyncio.get_running_loop().create_task(coro)
         self._tasks.append(task)
         return task
+
+    def _start_autoraise(self) -> None:
+        """Цикл автоподнятия (один на процесс; сам ждёт подключения и включения модуля)."""
+        task = self._autoraise_task
+        if task is None or task.done():
+            self._autoraise_task = self.spawn(self.autoraise.run())
 
     def _start_deals_in_work(self) -> None:
         """Сверка «Сделок в работе» с Playerok: сразу и затем раз в 10 минут."""
@@ -310,12 +306,6 @@ class Fixer:
                     delivery_text_template=self.settings.autodelivery.delivery_text,
                     ledger_path=self.settings.autodelivery.ledger_file,
                 )
-            if self.autoraise_manager is None:
-                self.autoraise_manager = _ToggleableAutoRaise(
-                    self,
-                    raise_interval=self.settings.autoraise.interval,
-                    min_balance_reserve=self.settings.autoraise.min_balance_reserve,
-                )
 
             self.plugin_manager.attach_to_account(self.account)
             if not self._plugins_loaded:
@@ -329,7 +319,6 @@ class Fixer:
                 self.account,
                 plugin_manager=self.plugin_manager,
                 autodelivery_manager=self.autodelivery_manager,
-                autoraise_manager=self.autoraise_manager,
             )
 
             self._runner_thread = threading.Thread(target=self._runner_thread_loop, daemon=True,
@@ -337,6 +326,7 @@ class Fixer:
             self._runner_thread.start()
             self._consume_task = self.spawn(self._consume_events())
             self._start_deals_in_work()
+            self._start_autoraise()
 
             self._playerok_connected = True
             logger.success("Playerok API подключён")
@@ -438,11 +428,6 @@ class Fixer:
                 delivery_text_template=self.settings.autodelivery.delivery_text,
                 ledger_path=self.settings.autodelivery.ledger_file,
             )
-            self.autoraise_manager = _ToggleableAutoRaise(
-                self,
-                raise_interval=self.settings.autoraise.interval,
-                min_balance_reserve=self.settings.autoraise.min_balance_reserve,
-            )
 
             # --- Плагины ---
             self.plugin_manager.attach_to_account(self.account)
@@ -454,7 +439,6 @@ class Fixer:
                 self.account,
                 plugin_manager=self.plugin_manager,
                 autodelivery_manager=self.autodelivery_manager,
-                autoraise_manager=self.autoraise_manager,
             )
 
             self._playerok_connected = True
@@ -498,6 +482,7 @@ class Fixer:
             self._runner_thread.start()
             self.spawn(self._consume_events())
             self._start_deals_in_work()
+            self._start_autoraise()
 
         logger.success("FixerPlayerok запущен. Модули: {}", ", ".join(
             name for name in type(self.settings.modules).model_fields

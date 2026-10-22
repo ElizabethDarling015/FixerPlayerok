@@ -72,10 +72,43 @@ class ModulesSettings(BaseModel):
 
 
 class AutoRaiseSettings(BaseModel):
-    """Секция `[autoraise]` — параметры автоподнятия лотов."""
+    """Секция `[autoraise]` — автоподнятие отмеченных премиум-лотов (см. `fixer/autoraise.py`).
 
-    interval: float = Field(default=4 * 60 * 60, gt=0)
+    Режимы: ``position`` — лот поднимается, когда выпал ниже места `position` (проверка раз
+    в `check_interval` с, нужно `streak` проверок подряд, не чаще раза в `cooldown` с);
+    ``interval`` — все отмеченные лоты поднимаются раз в `interval` с. Ночью (если включено)
+    действуют свои место / интервал / лимит. Лимит трат — на «день» и на «ночь» отдельно
+    (без ночного режима — на календарные сутки), 0 — без лимита. Время — пояс продавца.
+    """
+
+    mode: str = "position"
+    position: int = Field(default=10, ge=1, le=500)
+    interval: float = Field(default=60 * 60, gt=0)
+    check_interval: int = Field(default=120, ge=30, le=24 * 3600)
+    cooldown: int = Field(default=600, ge=0, le=7 * 24 * 3600)
+    streak: int = Field(default=2, ge=1, le=5)
+    day_limit: int = Field(default=0, ge=0)
     min_balance_reserve: int = Field(default=0, ge=0)
+    night_enabled: bool = False
+    night_from: str = "23:00"
+    night_to: str = "08:00"
+    night_position: int = Field(default=25, ge=1, le=500)
+    night_interval: float = Field(default=4 * 60 * 60, gt=0)
+    night_limit: int = Field(default=0, ge=0)
+    #: ID отмеченных лотов (поднимаются только они).
+    items: list[str] = Field(default_factory=list)
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_known(cls, value: str) -> str:
+        if value not in ("position", "interval"):
+            raise ValueError("режим автоподнятия — 'position' или 'interval'")
+        return value
+
+    @field_validator("night_from", "night_to")
+    @classmethod
+    def _night_time(cls, value: str) -> str:
+        return _check_hhmm(value)
 
 
 class AutoDeliverySettings(BaseModel):
@@ -163,7 +196,7 @@ class NotificationsSettings(BaseModel):
     deal_problem: bool = True
     deal_confirmed: bool = True
     deal_rolled_back: bool = True
-    item_raised: bool = False
+    item_raised: bool = True
     insufficient_balance: bool = True
     errors: bool = True
     stock_empty: bool = True

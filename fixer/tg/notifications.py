@@ -1254,30 +1254,6 @@ class Notifier:
                 item=_esc(item_name),
             ))
 
-        elif event_type is EventTypes.ITEM_RAISED and self._toggles.item_raised:
-            result = event.result
-            item_name = getattr(result, "item_name", "?")
-            spent = getattr(result, "spent", "?")
-
-            await self._send_all(l10n(
-                "notif_item_raised",
-                item=_esc(item_name),
-                spent=_esc(spent),
-            ))
-
-        elif event_type is EventTypes.INSUFFICIENT_BALANCE and self._toggles.insufficient_balance:
-            result = event.result
-            priority_status = getattr(result, "priority_status", None)
-            item_name = getattr(result, "item_name", "?")
-            price = priority_status.price if priority_status else "?"
-            available = getattr(result, "available", "?")
-
-            await self._send_all(l10n(
-                "notif_insufficient_balance",
-                item=_esc(item_name),
-                price=_esc(price),
-                available=_esc(available),
-            ))
 
         # Отдельное предупреждение (независимо от остальных переключателей): сделка
         # с покупателем из чёрного списка.
@@ -1392,6 +1368,51 @@ class Notifier:
                 continue
             self._sent_messages.setdefault(sent.chat.id, []).append((sent.message_id, time.time()))
             self._save_history()
+
+    # ------------------------------------------------------------------
+    # Автоподнятие (fixer/autoraise.py)
+    # ------------------------------------------------------------------
+
+    def _raise_budget(self, total, limit, kind) -> str:
+        l10n = self.fixer.l10n
+        window = l10n("raise_window_" + kind)
+        if limit:
+            return l10n("raise_budget_limit", total=_fmt_money(total), limit=_fmt_money(limit), window=window)
+        return l10n("raise_budget_free", total=_fmt_money(total), window=window)
+
+    async def notify_item_raised(self, *, item, before, spent, total, limit, kind) -> None:
+        if not self._toggles.item_raised:
+            return
+        l10n = self.fixer.l10n
+        place = l10n("raise_place", before=before) if before is not None else l10n("raise_place_unknown")
+        await self._send_all(l10n(
+            "notif_item_raised",
+            item=_esc(item),
+            place=place,
+            spent=_fmt_money(spent),
+            budget=self._raise_budget(total, limit, kind),
+        ), reply_markup=close_keyboard(l10n))
+
+    async def notify_raise_limit(self, *, spent, limit, kind, until) -> None:
+        if not self._toggles.insufficient_balance:
+            return
+        l10n = self.fixer.l10n
+        await self._send_all(l10n(
+            "notif_raise_limit",
+            budget=self._raise_budget(spent, limit, kind),
+            until=_esc(until),
+        ), reply_markup=close_keyboard(l10n))
+
+    async def notify_raise_no_balance(self, *, item, price, available) -> None:
+        if not self._toggles.insufficient_balance:
+            return
+        l10n = self.fixer.l10n
+        await self._send_all(l10n(
+            "notif_insufficient_balance",
+            item=_esc(item),
+            price=_fmt_money(price),
+            available=_fmt_money(available),
+        ), reply_markup=close_keyboard(l10n))
 
     async def notify_error(self, error_text: str) -> None:
         if self._toggles.errors:

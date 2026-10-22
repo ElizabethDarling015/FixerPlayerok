@@ -34,6 +34,7 @@ def build_system_menu(fixer) -> tuple[str, object]:
     builder.button(text=l10n("menu_section_autoresponse"), callback_data="ar")
     builder.button(text=l10n("menu_section_notifications"), callback_data="nt")
 
+    builder.button(text=l10n("menu_section_autoraise"), callback_data="up")
     builder.button(text=l10n("sys_btn_logs"), callback_data="sys:logs")
     builder.button(text=l10n("sys_btn_backup"), callback_data="bk")
 
@@ -53,7 +54,8 @@ def build_system_menu(fixer) -> tuple[str, object]:
     builder.button(text=l10n("sys_btn_clear"), callback_data="sys:clear_confirm")
     builder.button(text=l10n("btn_close"), callback_data="close")
 
-    builder.adjust(2)
+    # «⬆️ Автоподнятие» — отдельным рядом, остальные по две.
+    builder.adjust(2, 2, 1, 2, 2, 2, 2, 2)
     builder.row(*nav_row(l10n))
 
     # Подсказки: что делает каждая кнопка раздела
@@ -63,8 +65,9 @@ def build_system_menu(fixer) -> tuple[str, object]:
         "• 📦 Авто-выдача — управление лотами и складами\n"
         "• 💬 Автоответчик — настройка автоответов на команды\n"
         "• 🔔 Уведомления — выбор типов уведомлений\n"
-        "• 📄 Логи — последние 30 строк журнала бота\n"
-        "• 💾 Бэкап — ZIP-архив с конфигами и данными (склады, журналы)\n"
+        "• ⬆️ Автоподнятие — поднимать отмеченные премиум-лоты по месту или по таймеру\n"
+        "• 📄 Логи — журнал бота с фильтрами и скачиванием\n"
+        "• 💾 Бэкап конфигов — экспорт и импорт настроек одним архивом\n"
         f"{conn_hint}\n"
         "• 🧪 Тесты — отправить тестовые уведомления для настройки UI\n"
         "• ⬇️ Обновить с GitHub — скачать последнюю версию и перезапустить бота\n"
@@ -101,6 +104,7 @@ TEST_PAGES: list[list[tuple[str, str]]] = [
         ("test_blacklist", "test:blacklist"),
         ("test_item_raised", "test:item_raised"),
         ("test_no_balance", "test:no_balance"),
+        ("test_raise_limit", "test:raise_limit"),
         ("test_stock_empty", "test:stock_empty"),
         ("test_item_expired", "test:item_expired"),
         ("test_error", "test:error"),
@@ -541,14 +545,26 @@ async def cb_test_rolled_back(query: CallbackQuery, fixer) -> None:
 
 @router.callback_query(F.data == "test:item_raised")
 async def cb_test_item_raised(query: CallbackQuery, fixer) -> None:
-    text = fixer.l10n("notif_item_raised", item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия", spent="15")
+    l10n = fixer.l10n
+    text = l10n("notif_item_raised", item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия",
+                place=l10n("raise_place", before=14), spent="13",
+                budget=l10n("raise_budget_limit", window=l10n("raise_window_day"), total="57", limit="300"))
     await _show_sample(query, fixer, "test:item_raised", text)
+
+
+@router.callback_query(F.data == "test:raise_limit")
+async def cb_test_raise_limit(query: CallbackQuery, fixer) -> None:
+    l10n = fixer.l10n
+    text = l10n("notif_raise_limit",
+                budget=l10n("raise_budget_limit", window=l10n("raise_window_day"), total="294", limit="300"),
+                until="23:00")
+    await _show_sample(query, fixer, "test:raise_limit", text)
 
 
 @router.callback_query(F.data == "test:no_balance")
 async def cb_test_no_balance(query: CallbackQuery, fixer) -> None:
     text = fixer.l10n("notif_insufficient_balance", item="🔥 Adobe Photoshop 2026 — Бессрочная лицензия",
-                      price="15", available="7.5")
+                      price="13", available="7.5")
     await _show_sample(query, fixer, "test:no_balance", text)
 
 

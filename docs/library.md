@@ -39,6 +39,5 @@ pip install -r requirements.txt
 - [`examples/smoke_check.py`](../examples/smoke_check.py) — диагностика на реальном аккаунте (чтение)
 - [`examples/simple_bot.py`](../examples/simple_bot.py) — эхо по чатам и сделкам
 - [`examples/autodelivery_bot.py`](../examples/autodelivery_bot.py) — авто-выдача из файла-склада
-- [`examples/autoraise_bot.py`](../examples/autoraise_bot.py) — автоподнятие лотов
 - [`examples/publish_and_raise_item.py`](../examples/publish_and_raise_item.py) — создать → опубликовать → поднять
 - [`plugins/example_plugin.py`](../plugins/example_plugin.py) — заготовка плагина

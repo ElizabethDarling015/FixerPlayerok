@@ -15,8 +15,6 @@
    `DealHasProblemEvent`/`DealProblemResolvedEvent` — по изменению `ItemDeal.has_problem`). Тем же
    потоком, тем же интервалом, сравнивает список своих отзывов (`Account.get_my_reviews()`) со
    снимком с предыдущего опроса, порождая `NewReviewEvent`.
-3. Опционально — таймер автоподнятия лотов (если передан `autoraise_manager`), раз в
-   `autoraise_manager.raise_interval` секунд, порождающий `ItemRaisedEvent`/`InsufficientBalanceEvent`.
 
 `ItemPaidEvent` дедуплицируется по `deal_id` между источниками (WS-маркер и поллинг) и — при наличии
 SQLite-журнала выдач (`AutoDeliveryManager.ledger`) — между перезапусками процесса, так что одна
@@ -113,12 +111,11 @@ class Runner:
         chatUpdated/chatMarkedAsRead + itemUpdated/itemCreated/chatCreated.
     """
 
-    def __init__(self, account, plugin_manager=None, autodelivery_manager=None, autoraise_manager=None,
+    def __init__(self, account, plugin_manager=None, autodelivery_manager=None,
                  ws_subscriptions: tuple[str, ...] | list[str] | None = None):
         self.account = account
         self.plugin_manager = plugin_manager
         self.autodelivery_manager = autodelivery_manager
-        self.autoraise_manager = autoraise_manager
         self.ws_subscriptions = tuple(ws_subscriptions) if ws_subscriptions is not None else _DEFAULT_WS_SUBSCRIPTIONS
         account._runner = self
 
@@ -170,9 +167,6 @@ class Runner:
         ws_thread = threading.Thread(target=self._ws_loop, daemon=True)
         poll_thread.start()
         ws_thread.start()
-        if self.autoraise_manager is not None:
-            autoraise_thread = threading.Thread(target=self._autoraise_loop, daemon=True)
-            autoraise_thread.start()
         self._dispatch_hook(Hooks.POST_START.value)
 
         try:
@@ -498,32 +492,6 @@ class Runner:
                 self._event_queue.put(events.NewReviewEvent(self, review))
 
         self._reviews_initialized = True
-
-    # ------------------------------------------------------------------
-    # Автоподнятие лотов (по таймеру `autoraise_manager.raise_interval`)
-    # ------------------------------------------------------------------
-
-    def _autoraise_loop(self) -> None:
-        manager = self.autoraise_manager
-        # Не поднимаем лоты сразу при старте — ждём первый полный интервал, чтобы не мешать
-        # только что вручную поднятым лотам и не спамить запросами сразу после запуска.
-        if self._stop_event.wait(manager.raise_interval):
-            return
-        while not self._stop_event.is_set():
-            try:
-                self._run_autoraise_cycle()
-            except Exception as exc:
-                if self._report_thread_error(exc, "автоподнятие"):
-                    return
-            self._stop_event.wait(manager.raise_interval)
-
-    def _run_autoraise_cycle(self) -> None:
-        results = self.autoraise_manager.raise_all(self.account)
-        for result in results:
-            if result.raised:
-                self._event_queue.put(events.ItemRaisedEvent(self, result))
-            elif result.skipped_reason == "insufficient_balance":
-                self._event_queue.put(events.InsufficientBalanceEvent(self, result))
 
     # ------------------------------------------------------------------
     # WebSocket (чаты, сообщения в реальном времени)
