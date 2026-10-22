@@ -376,6 +376,17 @@ class Account:
             self._runner._dispatch_hook("POST_INIT")
         return self
 
+    def get_full_profile(self) -> types.AccountProfile | None:
+        """
+        Полный профиль своего аккаунта: email, рейтинг, отзывы, верификация, подробный баланс
+        и статистика лотов/сделок. Запрос `user` по своему ID (в `viewer` этих полей нет).
+        `self.profile` не меняется.
+        """
+        if not self.id:
+            raise NotInitiatedError()
+        data = self._persisted_query("user", {"id": self.id, "hasSupportAccess": False})
+        return parser.account_profile(data.get("user"))
+
     def get_balance(self) -> types.AccountBalance | None:
         """
         Запрашивает актуальный баланс аккаунта (без обновления остальных полей `profile`).

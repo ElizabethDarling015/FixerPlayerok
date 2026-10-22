@@ -1,4 +1,5 @@
-"""Раздел «Статистика»: продажи по дням за неделю и итоги за 7/30 дней — из истории Playerok."""
+"""Раздел «Статистика»: продажи по дням за неделю, итоги за 7/30 дней и сводка за сегодня
+(та же, что приходит вечером) — из истории Playerok, одним запросом."""
 from __future__ import annotations
 
 import datetime
@@ -13,6 +14,8 @@ from ...sales_stats import fmt_rub, sum_totals
 from .common import nav_row, safe_edit
 
 router = Router(name="stats")
+
+SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 
 
 def _digest_module(fixer):
@@ -49,6 +52,7 @@ def build_stats_text(l10n, days: dict, today: datetime.date) -> str:
 
 
 @router.callback_query(F.data == "st")
+@router.callback_query(F.data == "digest:now")  # кнопка «Сводка сейчас» из старых сообщений
 async def cb_stats(query: CallbackQuery, fixer) -> None:
     l10n = fixer.l10n
     module = _digest_module(fixer)
@@ -64,6 +68,11 @@ async def cb_stats(query: CallbackQuery, fixer) -> None:
     try:
         days, today = await module.get_days(30)
         text = build_stats_text(l10n, days, today)
+        try:
+            digest = await module.build_digest(days, today)
+            text += "\n" + SEPARATOR + "\n" + digest
+        except Exception:
+            logger.exception("[stats] Не удалось построить сводку дня")
     except Exception as exc:
         logger.exception("[stats] Не удалось загрузить историю продаж")
         text = l10n("st_title") + "\n\n" + l10n("st_failed", error=html.escape(str(exc)[:200]))

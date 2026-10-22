@@ -24,15 +24,16 @@ def test_main_menu_contains_status_and_sections():
     assert "Online" in text  # строка подключения
     # Тумблеры модулей и разделы автовыдачи/автоответчика/уведомлений — в «Настройках».
     assert not any(cb.startswith("mod:") for cb in callbacks)
-    for section in ("chats", "it", "last_deals", "wd", "bl", "pl", "st", "sys", "digest:now"):
+    for section in ("chats", "dw", "it", "last_deals", "wd", "bl", "pf", "pl", "st", "sys"):
         assert section in callbacks
 
 
 def test_main_menu_button_order():
-    """Ряды: «Статистика»+«Плагины», «Сводка сейчас»+«Настройки»."""
+    """Ряды: «Профиль»+«Плагины», «Статистика»+«Настройки»; «Сводки сейчас» нет."""
     _, markup = build_main_menu(make_fixer())
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
-    assert ["st", "pl"] in rows and ["digest:now", "sys"] in rows
+    assert ["pf", "pl"] in rows and ["st", "sys"] in rows
+    assert "digest:now" not in [cb for row in rows for cb in row]
 
 
 def test_settings_menu_close_is_last_and_red():

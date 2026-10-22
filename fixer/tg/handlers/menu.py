@@ -122,11 +122,11 @@ def build_main_menu(fixer) -> tuple[str, object]:
     # Ряд 3: ЧС + вывод средств
     builder.button(text=l10n("menu_section_blacklist"), callback_data="bl")
     builder.button(text=l10n("btn_withdraw"), callback_data="wd")
-    # Ряд 4
-    builder.button(text=l10n("menu_section_stats"), callback_data="st")
+    # Ряд 4: Профиль + Плагины
+    builder.button(text=l10n("menu_section_profile"), callback_data="pf")
     builder.button(text=l10n("menu_section_plugins"), callback_data="pl")
-    # Ряд 5
-    builder.button(text=l10n("menu_btn_digest"), callback_data="digest:now")
+    # Ряд 5: Статистика (со сводкой дня) + Настройки
+    builder.button(text=l10n("menu_section_stats"), callback_data="st")
     builder.button(text=l10n("menu_section_settings"), callback_data="sys")
     builder.adjust(2, 2, 2, 2, 2)
     return text, builder.as_markup()
@@ -205,32 +205,6 @@ async def cb_toggle_module(query: CallbackQuery, fixer) -> None:
 async def cb_toggles_menu(query: CallbackQuery, fixer) -> None:
     """Открывает подменю «Глобальные переключатели»."""
     text, markup = build_toggles_menu(fixer)
-    await safe_edit(query.message, text, markup)
-    await query.answer()
-
-@router.callback_query(F.data == "digest:now")
-async def cb_digest_now(query: CallbackQuery, fixer) -> None:
-    """Кнопка «Сводка сейчас»: строит и присылает сводку, не дожидаясь расписания."""
-    module = next((m for m in fixer.modules if m.name == "digest"), None)
-    if module is None:
-        await query.answer(fixer.l10n("digest_unavailable"), show_alert=True)
-        return
-    if fixer.account is None:
-        await query.answer(fixer.l10n("st_offline"), show_alert=True)
-        return
-    try:
-        text = await module.build_digest()
-    except Exception as exc:
-        logger.exception("[digest] Не удалось построить сводку")
-        text = fixer.l10n("st_failed", error=html.escape(str(exc)[:200]))
-
-    # Создаём клавиатуру с кнопкой "На главную"
-    l10n = fixer.l10n
-    builder = InlineKeyboardBuilder()
-    builder.row(*nav_row(l10n))
-    markup = builder.as_markup()
-
-    # Редактируем текущее сообщение вместо отправки нового
     await safe_edit(query.message, text, markup)
     await query.answer()
 
