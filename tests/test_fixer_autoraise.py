@@ -288,3 +288,22 @@ def test_lots_screen_only_active_premium_and_lost_marked():
     buttons = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Премиум A" in buttons and "✅ Снятый премиум ⚠️" in buttons
     assert not any("Обычный" in b for b in buttons) and "Обычных лотов не показано: 1" in text
+
+
+def test_lots_loaded_in_pages_of_24_like_items_section():
+    """Страница в 100 лотов давала 403 — список «🛍 Лоты» не открывался."""
+    asked = []
+
+    def get_my_items(statuses, count, cursor=None):
+        asked.append((tuple(s.name for s in statuses), count, cursor))
+        if count > 24:
+            raise RuntimeError("У вас нет доступа на выполнение данной операции")
+        items = [N(id=f"i{n}", name=f"Лот {n}", priority=N(name="PREMIUM"), status=N(name="APPROVED"))
+                 for n in range(3)]
+        return N(items=items, page_info=N(has_next_page=False, end_cursor=None))
+
+    fixer = make(Account({}), items=[])
+    fixer.account.get_my_items = get_my_items
+    lots = asyncio.run(ui._load_lots(fixer))
+    assert [lot[0] for lot in lots] == ["i0", "i1", "i2"] and all(lot[2] and lot[3] for lot in lots)
+    assert asked == [(("APPROVED", "PENDING_MODERATION", "PENDING_APPROVAL"), 24, None)]

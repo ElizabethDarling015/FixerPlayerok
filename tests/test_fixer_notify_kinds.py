@@ -369,14 +369,14 @@ async def test_cached_getters_call_the_api_once():
     notifier, fixer, bot = make_notifier()
     calls = []
     fixer.account.get_item = lambda item_id=None, slug=None: calls.append(("item", item_id, slug)) or SimpleNamespace(name="L")
-    fixer.account.get_my_items = lambda cursor, count: calls.append(("my", count)) or SimpleNamespace(items=[])
+    fixer.account.get_my_items = lambda status, count, cursor=None: calls.append(("my", count)) or SimpleNamespace(items=[])
     fixer.account.get_chat = lambda chat_id: calls.append(("chat", chat_id)) or SimpleNamespace(id=chat_id, deals=[], users=[])
     for _ in range(3):
         await notifier._get_item("i1")
         await notifier._get_item(slug="s1")
         await notifier._get_my_items()
         await notifier._get_chat("c1")
-    assert calls == [("item", "i1", None), ("item", None, "s1"), ("my", 100), ("chat", "c1")]
+    assert calls == [("item", "i1", None), ("item", None, "s1"), ("my", 24), ("chat", "c1")]  # лоты — страницами по 24 (больше — 403)
 
 
 async def test_incomplete_deal_is_not_requested_in_a_loop():

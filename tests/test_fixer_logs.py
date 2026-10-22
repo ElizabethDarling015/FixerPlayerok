@@ -47,12 +47,18 @@ def test_screen_text_and_buttons():
     es = lr.apply_filters(entries(), "a", "0", "all", NOW)
     text, markup = logs.build_logs_screen(l10n, es, "a", "0", "all", 0, 3_500_000)
     assert "\n\n━" not in text
-    assert "<code>22.10 14:05:40</code> ❌ <b>notifications</b> Не удалось" in text
+    assert "</code> ❌ <b>notifications</b> Не удалось" in text
+    old = lr.Entry(datetime.datetime(2020, 1, 2, 3, 4, 5), "INFO", "fixer.core", 1, "x")
+    assert logs.render_entry(old, True).startswith("<code>02.01 03:04:05</code>")  # не сегодня — с датой
+    assert logs.render_entry(old, False).startswith("<code>03:04:05</code>")
     assert "↳ <i>RuntimeError: chat not found</i>" in text
     assert "запрос items &lt;b&gt;" in text  # HTML экранирован
     assert "Показано 5 из 5 · стр. 1/1 · файл 3.3 МБ" in text
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
     assert rows[0] == ["lg:a:0:all:0", "lg:i:0:all:0", "lg:w:0:all:0", "lg:e:0:all:0"]
+    # Кнопок периода и разделов больше нет: уровень, затем листание/скачивание.
+    assert rows[1] == ["lgf:a:0:all:0", "lgall"]
+    assert text.splitlines()[0] == "📄 <b>Логи</b> · 🐞 Все"
     assert markup.inline_keyboard[0][0].text.startswith("• ")
     assert rows[-3] == ["lgf:a:0:all:0", "lgall"] and rows[-1] == ["sys", "menu"]
     assert all(len(cb.encode()) <= 64 for row in rows for cb in row)

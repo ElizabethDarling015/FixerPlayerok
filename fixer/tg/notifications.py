@@ -608,7 +608,12 @@ class Notifier:
         account = self.fixer.account
         if account is None:
             return None
-        page = await asyncio.to_thread(account.get_my_items, None, 100)
+        # Страница больше 24 лотов — Playerok отвечает 403, поэтому собираем постранично.
+        from types import SimpleNamespace
+
+        from ..storefront import ACTIVE_STATUSES, fetch_items
+        items = await asyncio.to_thread(fetch_items, account, ACTIVE_STATUSES)
+        page = SimpleNamespace(items=items)
         self._my_items_cache.set("page", page)
         return page
 

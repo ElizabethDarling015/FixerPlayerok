@@ -32,12 +32,19 @@ def test_full_profile_uses_user_query_by_own_id():
     assert profile.email == "a@b.c" and profile.stats.items.total == 40 and profile.balance.withdrawable == 11000
 
 
+COUNTS = {"items_active": 12, "items_inactive": 5, "sales_total": 40, "sales_active": 2, "sales_done": 36,
+          "sales_refund": 2, "purchases": None}
+
+
 def test_profile_screen():
     l10n = make_fixer().l10n
-    text, markup = pf.build_profile(l10n, parser.account_profile(USER))
+    text, markup = pf.build_profile(l10n, parser.account_profile(USER), counts=COUNTS)
     assert "\n\n" not in text
     for part in ("👤 <b>BezLimit</b>", "<code>u1</code>", "a@b.c", "4.9", "312", "✅ Верифицирован",
-                 "15 230 ₽", "11 000 ₽", "❄️ Заморожено: 1 230 ₽", "12 / 28 / 40", "3 / 497 / 500", "0 / 3 / 3"):
+                 "15 230 ₽", "11 000 ₽", "❄️ Заморожено: 1 230 ₽",
+                 "📦 Лоты: в продаже <b>12</b> · сняты и истекли <b>5</b>",
+                 "🛒 Продажи: <b>40</b> · ✅ завершено 36 · ⏳ в работе 2 · ↩️ возвратов 2",
+                 "🛍 Покупки: <b>—</b>"):
         assert part in text, part
     assert [b.callback_data for b in markup.inline_keyboard[0]] == ["pf", "menu"]
 
@@ -80,3 +87,36 @@ def test_stats_include_digest_with_one_history_request():
     text = query.message.edits[0]
     assert calls == [30]
     assert "Статистика продаж" in text and f"\n{stats.SEPARATOR}\n📊 <b>Сводка за 22.10.2026</b>" in text
+
+
+def test_counts_from_lists_not_from_zero_stats():
+    """stats в профиле Playerok для своего аккаунта — нули; бот считает по спискам."""
+    def deal(status):
+        return N(raw_status=N(name=status), direction=None)
+
+    sales = [deal("CONFIRMED")] * 30 + [deal("CONFIRMED_AUTOMATICALLY")] * 3 + [deal("SENT"), deal("PAID")] + [deal("ROLLED_BACK")]
+
+    def get_deals(count=20, after_cursor=None, status=None, direction=None):
+        if direction.name == "IN":
+            return N(deals=[], page_info=None, total_count=0)
+        return N(deals=sales, page_info=N(has_next_page=False, end_cursor=None), total_count=None)
+
+    def get_my_items(statuses, count, cursor=None):
+        active = statuses[0].name == "APPROVED"
+        return N(items=[], page_info=None, total_count=7 if active else 4)
+
+    account = N(get_deals=get_deals, get_my_items=get_my_items)
+    assert pf.collect_counts(account) == {"items_active": 7, "items_inactive": 4, "purchases": 0, "sales_total": 36,
+                                          "sales_active": 2, "sales_done": 33, "sales_refund": 1}
+
+
+def test_count_falls_back_to_pages_without_total():
+    pages = {None: (["a"] * 24, "c1"), "c1": (["b"] * 5, None)}
+
+    def fetch(n, cursor):
+        if n == 1:
+            return N(items=["a"], total_count=None, page_info=None)
+        items, nxt = pages[cursor]
+        return N(items=items, total_count=None, page_info=N(has_next_page=nxt is not None, end_cursor=nxt))
+
+    assert pf._count(fetch) == 29

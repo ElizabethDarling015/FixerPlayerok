@@ -1,11 +1,11 @@
 """Настройки → «📄 Логи»: лог бота прямо в сообщении, с фильтрами, листанием и скачиванием.
 
-Фильтры (выбранный отмечен «•»): уровень (все / инфо+ / предупреждения+ / ошибки), период
-(15 мин / 1 ч / 24 ч / всё) и раздел (кто писал: сделки, чаты, автовыдача, поднятие,
-Telegram, Playerok API). На экран — столько последних записей, сколько влезает в сообщение;
+Фильтр — уровень (все / инфо+ / предупреждения+ / ошибки, выбранный отмечен «•»), за всё
+время, что есть в файле. На экран — столько последних записей, сколько влезает в сообщение;
 «◀️ Старее» / «Новее ▶️» листают. «📥 Отфильтрованное» присылает файлом всё, что подходит
 под фильтры (без обрезки), «📥 Весь файл» — текущий файл лога.
-Всё состояние — в callback-данных кнопок (``lg:<уровень>:<период>:<раздел>:<страница>``).
+Всё состояние — в callback-данных кнопок (``lg:<уровень>:<период>:<раздел>:<страница>``; период
+и раздел кнопками больше не меняются — в данных остались для совместимости, всегда «0» и «all»).
 """
 from __future__ import annotations
 
@@ -29,12 +29,9 @@ SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 #: Сколько символов записей помещаем в сообщение (лимит Telegram 4096, с запасом на шапку и HTML).
 BODY_LIMIT = 3300
 MESSAGE_LIMIT = 300
-DEFAULT = ("w", "60", "all", 0)
+DEFAULT = ("w", "0", "all", 0)
 
 _LEVEL_KEYS = {"a": "lg_lvl_all", "i": "lg_lvl_info", "w": "lg_lvl_warn", "e": "lg_lvl_err"}
-_PERIOD_KEYS = {"15": "lg_p_15", "60": "lg_p_60", "1440": "lg_p_1440", "0": "lg_p_all"}
-_SECTION_KEYS = {"all": "lg_s_all", "deal": "lg_s_deal", "chat": "lg_s_chat", "ad": "lg_s_ad",
-                 "raise": "lg_s_raise", "tg": "lg_s_tg", "api": "lg_s_api"}
 
 
 def parse_callback(data: str) -> tuple[str, str, str, int]:
@@ -42,7 +39,7 @@ def parse_callback(data: str) -> tuple[str, str, str, int]:
     if len(parts) != 5:
         return DEFAULT
     _, level, period, section, page = parts
-    if level not in lr.LEVELS or period not in lr.PERIODS or section not in _SECTION_KEYS:
+    if level not in lr.LEVELS or period not in lr.PERIODS or (section != "all" and section not in lr.SECTIONS):
         return DEFAULT
     try:
         return level, period, section, max(0, int(page))
@@ -55,6 +52,7 @@ def _cb(level, period, section, page=0, action="lg") -> str:
 
 
 def render_entry(e: lr.Entry, with_date: bool) -> str:
+    """`with_date` — показывать дату (для записей не за сегодня)."""
     when = e.time.strftime("%d.%m %H:%M:%S" if with_date else "%H:%M:%S")
     short = e.name.rsplit(".", 1)[-1]
     msg = e.message if len(e.message) <= MESSAGE_LIMIT else e.message[:MESSAGE_LIMIT - 1] + "…"
@@ -82,15 +80,13 @@ def paginate(rendered: list[str], budget: int = BODY_LIMIT) -> list[tuple[int, i
 
 def build_logs_screen(l10n, entries: list[lr.Entry], level: str, period: str, section: str, page: int,
                       size_bytes: int = 0) -> tuple[str, InlineKeyboardMarkup]:
-    with_date = period in ("1440", "0")
-    rendered = [render_entry(e, with_date) for e in entries]
+    today = datetime.date.today()
+    rendered = [render_entry(e, e.time.date() != today) for e in entries]
     pages = paginate(rendered)
     page = min(page, len(pages) - 1)
     start, end = pages[page]
 
-    head = l10n("lg_title", level=l10n(_LEVEL_KEYS[level]), period=l10n(_PERIOD_KEYS[period]))
-    if section != "all":
-        head += " · " + l10n(_SECTION_KEYS[section])
+    head = l10n("lg_title", level=l10n(_LEVEL_KEYS[level]))
     body = "\n".join(rendered[start:end]) if rendered else l10n("lg_empty")
     footer = l10n("lg_footer", shown=end - start, total=len(entries), page=page + 1, pages=len(pages),
                   size=f"{size_bytes / 1024 / 1024:.1f}")
@@ -100,14 +96,9 @@ def build_logs_screen(l10n, entries: list[lr.Entry], level: str, period: str, se
         return f"• {label}" if on else label
 
     rows = [
-        [InlineKeyboardButton(text=mark(code == level, l10n(key)), callback_data=_cb(code, period, section))
+        [InlineKeyboardButton(text=mark(code == level, l10n(key)), callback_data=_cb(code, "0", "all"))
          for code, key in _LEVEL_KEYS.items()],
-        [InlineKeyboardButton(text=mark(code == period, l10n(key)), callback_data=_cb(level, code, section))
-         for code, key in _PERIOD_KEYS.items()],
     ]
-    sections = [InlineKeyboardButton(text=mark(code == section, l10n(key)), callback_data=_cb(level, period, code))
-                for code, key in _SECTION_KEYS.items()]
-    rows += [sections[:4], sections[4:]]
     nav = []
     if page < len(pages) - 1:
         nav.append(InlineKeyboardButton(text=l10n("lg_older"), callback_data=_cb(level, period, section, page + 1)))

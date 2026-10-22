@@ -129,7 +129,10 @@ async def _sections_for(fixer, deals) -> dict:
         if notifier is not None:
             page = await notifier._get_my_items()
         else:
-            page = await asyncio.to_thread(fixer.account.get_my_items, None, 100)
+            from types import SimpleNamespace
+
+            from ...storefront import ACTIVE_STATUSES, fetch_items
+            page = SimpleNamespace(items=await asyncio.to_thread(fetch_items, fixer.account, ACTIVE_STATUSES))
         for it in (page.items if page and page.items else []):
             section = _section_of(it)
             if section and getattr(it, "id", None):

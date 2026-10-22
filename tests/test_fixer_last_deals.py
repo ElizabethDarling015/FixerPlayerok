@@ -48,7 +48,7 @@ def test_empty_list():
 def test_sections_come_from_own_items_list():
     fixer = make_fixer()
     fixer.notifier = None
-    fixer.account.get_my_items = lambda status, count: SimpleNamespace(items=[
+    fixer.account.get_my_items = lambda status, count, cursor=None: SimpleNamespace(items=[
         SimpleNamespace(id="it1", game=SimpleNamespace(name="JetBrains"), category=SimpleNamespace(name="Подписки")),
     ])
     sections = asyncio.run(last_deals._sections_for(fixer, [deal(1), deal(2)]))

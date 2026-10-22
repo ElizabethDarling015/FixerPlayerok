@@ -338,9 +338,11 @@ async def on_input(message: Message, state: FSMContext, fixer) -> None:
 
 
 async def _load_lots(fixer) -> list[tuple[str, str, bool, bool]]:
-    page = await asyncio.to_thread(fixer.account.get_my_items, None, 100)
+    # Как «🛍 Товары»: постранично по 24 (страница больше — Playerok отвечает 403).
+    from ...storefront import ACTIVE_STATUSES, fetch_items
+    items = await asyncio.to_thread(fetch_items, fixer.account, ACTIVE_STATUSES)
     lots = []
-    for it in (getattr(page, "items", None) or []):
+    for it in items:
         if getattr(it, "id", None):
             lots.append((it.id, it.name or it.id, _is_premium(it), _is_active(it)))
     return lots
