@@ -614,6 +614,29 @@ STRINGS = {
 
     # --- Settings ---
     "settings_title": "⚙️ <b>Settings</b>",
+    "lg_title": '📄 <b>Logs</b> · {level} · {period}',
+    "lg_empty": 'No records match these filters.',
+    "lg_footer": '<i>Shown {shown} of {total} · page {page}/{pages} · file {size} MB</i>',
+    "lg_lvl_all": '🐞 All',
+    "lg_lvl_info": 'ℹ️ Info+',
+    "lg_lvl_warn": '⚠️ Warn+',
+    "lg_lvl_err": '❌ Errors',
+    "lg_p_15": '15 min',
+    "lg_p_60": '1 h',
+    "lg_p_1440": '24 h',
+    "lg_p_all": 'All',
+    "lg_s_all": 'All sections',
+    "lg_s_deal": 'Deals',
+    "lg_s_chat": 'Chats',
+    "lg_s_ad": 'Auto-delivery',
+    "lg_s_raise": 'Raise',
+    "lg_s_tg": 'Telegram',
+    "lg_s_api": 'Playerok API',
+    "lg_older": '◀️ Older',
+    "lg_newer": 'Newer ▶️',
+    "lg_dl_filtered": '📥 Filtered',
+    "lg_dl_all": '📥 Whole file',
+    "lg_dl_failed": '❌ File not sent: {error}',
     "sys_btn_logs": "📄 Logs",
     "bk_title": '💾 <b>Config backup</b>',
     "bk_contents": (
@@ -662,8 +685,6 @@ STRINGS = {
         "The panel will be back in a few seconds (/menu)."
     ),
     "sys_update_failed": "❌ Update failed: {message}",
-    "sys_logs_title": "Last log lines:",
-    "sys_logs_empty": "Log file is empty or not created yet.",
     "sys_reloaded": "🔄 Configs reloaded: {details}",
 
     # --- UI Tests ---

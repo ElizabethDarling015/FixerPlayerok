@@ -602,6 +602,29 @@ STRINGS = {
 
     # --- Система ---
     "settings_title": "⚙️ <b>Настройки</b>",
+    "lg_title": '📄 <b>Логи</b> · {level} · {period}',
+    "lg_empty": 'Под эти фильтры записей нет.',
+    "lg_footer": '<i>Показано {shown} из {total} · стр. {page}/{pages} · файл {size} МБ</i>',
+    "lg_lvl_all": '🐞 Все',
+    "lg_lvl_info": 'ℹ️ Инфо+',
+    "lg_lvl_warn": '⚠️ Предупр.+',
+    "lg_lvl_err": '❌ Ошибки',
+    "lg_p_15": '15 мин',
+    "lg_p_60": '1 ч',
+    "lg_p_1440": '24 ч',
+    "lg_p_all": 'Всё',
+    "lg_s_all": 'Все разделы',
+    "lg_s_deal": 'Сделки',
+    "lg_s_chat": 'Чаты',
+    "lg_s_ad": 'Автовыдача',
+    "lg_s_raise": 'Поднятие',
+    "lg_s_tg": 'Telegram',
+    "lg_s_api": 'Playerok API',
+    "lg_older": '◀️ Старее',
+    "lg_newer": 'Новее ▶️',
+    "lg_dl_filtered": '📥 Отфильтрованное',
+    "lg_dl_all": '📥 Весь файл',
+    "lg_dl_failed": '❌ Файл не отправлен: {error}',
     "sys_btn_logs": "📄 Логи",
     "bk_title": '💾 <b>Бэкап конфигов</b>',
     "bk_contents": (
@@ -650,8 +673,6 @@ STRINGS = {
         "Панель вернётся через несколько секунд (/menu)."
     ),
     "sys_update_failed": "❌ Обновление не удалось: {message}",
-    "sys_logs_title": "Последние строки лога:",
-    "sys_logs_empty": "Файл лога пуст или ещё не создан.",
     "sys_reloaded": "🔄 Конфиги перезагружены: {details}",
 
     # --- Очистка уведомлений ---

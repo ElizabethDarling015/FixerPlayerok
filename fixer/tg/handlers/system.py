@@ -14,7 +14,6 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton, InlineKeyboardMa
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
-from ...logging_setup import LOG_FILE
 from ...self_update import DEFAULT_REPO, update_from_github
 from ..chat_kinds import SUPPORT_TITLE
 from ..notifications import build_new_deal_text, build_payout_details, build_started_text, started_keyboard
@@ -23,9 +22,6 @@ from .menu import build_main_menu
 
 router = Router(name="system")
 
-#: Сколько последних строк лога показывать и лимит длины сообщения TG.
-LOG_TAIL_LINES = 30
-MAX_TEXT_LENGTH = 3500
 
 
 def build_system_menu(fixer) -> tuple[str, object]:
@@ -157,14 +153,6 @@ def build_tests_menu(fixer, page: int = 0) -> tuple[str, object]:
 # Обработчики раздела "Система"
 # ------------------------------------------------------------------
 
-def read_log_tail(log_file: str = LOG_FILE, lines: int = LOG_TAIL_LINES) -> str:
-    """Последние строки файла лога (пустая строка, если файла нет)."""
-    if not os.path.isfile(log_file):
-        return ""
-    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-        return "".join(f.readlines()[-lines:])
-
-
 @router.callback_query(F.data == "sys")
 async def cb_menu(query: CallbackQuery, fixer) -> None:
     text, markup = build_system_menu(fixer)
@@ -173,25 +161,10 @@ async def cb_menu(query: CallbackQuery, fixer) -> None:
 
 
 def build_logs_view(fixer) -> tuple[str, object]:
-    """Экран «📄 Логи». Им же пользуется кнопка «📄 Логи» в «⚠️ Потеряна связь с Playerok»
-    (там он открывается новым сообщением), так что доработки раздела попадут и туда."""
-    l10n = fixer.l10n
-    tail = read_log_tail()
-    if not tail.strip():
-        body = l10n("sys_logs_empty")
-    else:
-        escaped = html.escape(tail)[-MAX_TEXT_LENGTH:]
-        body = f"<pre>{escaped}</pre>"
-    builder = InlineKeyboardBuilder()
-    builder.row(*nav_row(l10n, "sys"))
-    return l10n("sys_logs_title") + "\n" + body, builder.as_markup()
-
-
-@router.callback_query(F.data == "sys:logs")
-async def cb_logs(query: CallbackQuery, fixer) -> None:
-    text, markup = build_logs_view(fixer)
-    await safe_edit(query.message, text, markup)
-    await query.answer()
+    """Экран «📄 Логи» (по умолчанию: предупреждения и выше за последний час). Им же пользуется
+    кнопка «📄 Логи» в «⚠️ Потеряна связь с Playerok» (там он открывается новым сообщением)."""
+    from .logs import build_default_screen
+    return build_default_screen(fixer)
 
 
 @router.callback_query(F.data == "sys:clear_confirm")
