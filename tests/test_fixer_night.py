@@ -163,3 +163,77 @@ def test_global_toggles_order():
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
     assert rows[:3] == [["mod:autoraise", "mod:online"], ["mod:autodelivery", "mod:autoresponse"], ["mod:digest"]]
     assert rows[3] == ["mod:night", "night:text"]
+
+
+# ----------------------------------------------------------------------
+# Покупатель пишет ночью → «я сплю» (не чаще раза в час на чат)
+# ----------------------------------------------------------------------
+
+from playerokapi.common.enums import ChatTypes  # noqa: E402
+from playerokapi.updater.events import NewMessageEvent  # noqa: E402
+
+BUYER = SimpleNamespace(id="buyer-1", username="Valkuz", raw_role="USER", role=None)
+ME = SimpleNamespace(id="me-id", username="seller", raw_role="USER", role=None)
+
+
+def pm_chat(chat_id="chat-5"):
+    return SimpleNamespace(id=chat_id, type=ChatTypes.PM, users=[ME, BUYER], deals=[])
+
+
+def buyer_msg(text="есть кто?", author=BUYER):
+    return SimpleNamespace(id="m1", text=text, user=author, event=None, event_by_user=None, moderator=None,
+                           item=None, deal=None, images=[], file=None, buttons=[])
+
+
+async def test_buyer_writes_at_night_gets_reply_once_an_hour():
+    module, fixer, tasks = make_module(hour=3)
+    module.reply_delay = 0
+    fixer.settings.night.reply_text = "Сплю, $username"
+    chat = pm_chat()
+    await module.on_event(NewMessageEvent(None, chat, buyer_msg()))
+    await module.on_event(NewMessageEvent(None, chat, buyer_msg("алло")))  # спам — без ответа
+    await asyncio.gather(*tasks)
+    assert fixer.account.sent_messages == [("chat-5", "Сплю, Valkuz")]
+    module._last_sent["chat-5"] -= 3601  # прошёл час
+    await module.on_event(NewMessageEvent(None, chat, buyer_msg("ну?")))
+    await asyncio.gather(*tasks)
+    assert len(fixer.account.sent_messages) == 2
+
+
+async def test_no_reply_by_day_off_own_support_markers():
+    module, fixer, tasks = make_module(hour=14)
+    module.reply_delay = 0
+    await module.on_event(NewMessageEvent(None, pm_chat(), buyer_msg()))  # день
+    module2, fixer2, tasks2 = make_module(hour=3)
+    module2.reply_delay = 0
+    fixer2.settings.modules.night = False
+    await module2.on_event(NewMessageEvent(None, pm_chat(), buyer_msg()))  # выключено
+    module3, fixer3, tasks3 = make_module(hour=3)
+    module3.reply_delay = 0
+    await module3.on_event(NewMessageEvent(None, pm_chat(), buyer_msg(author=SimpleNamespace(id="me-id", username="seller"))))
+    await module3.on_event(NewMessageEvent(None, pm_chat(), buyer_msg("{{ITEM_PAID}}")))
+    support = SimpleNamespace(id="sup", type=ChatTypes.SUPPORT, users=[], deals=[])
+    await module3.on_event(NewMessageEvent(None, support, buyer_msg()))
+    await asyncio.gather(*tasks, *tasks2, *tasks3)
+    assert fixer.account.sent_messages == fixer2.account.sent_messages == fixer3.account.sent_messages == []
+
+
+async def test_purchase_message_counts_for_cooldown():
+    module, fixer, tasks = make_module(hour=3)
+    module.reply_delay = 0
+    await module.on_event(paid())  # ночное «после покупки» в chat-9
+    await module.on_event(NewMessageEvent(None, pm_chat("chat-9"), buyer_msg("спасибо")))
+    await asyncio.gather(*tasks)
+    assert [cid for cid, _ in fixer.account.sent_messages] == ["chat-9"]
+
+
+def test_texts_menu_and_edit_both_kinds():
+    from fixer.tg.handlers import night as night_ui
+    fixer = make_fixer()
+    text, markup = night_ui.build_night_texts_menu(fixer)
+    assert "После покупки" in text and "Ответ на сообщение" in text
+    rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
+    assert rows == [["night:edit:buy", "night:edit:reply"], ["night:back"]]
+    text, markup = night_ui.build_night_text_view(fixer, "reply")
+    assert "раза в час" in text and "$item" not in text
+    assert [[b.callback_data for b in row] for row in markup.inline_keyboard] == [["night:reset:reply"], ["night:text"]]

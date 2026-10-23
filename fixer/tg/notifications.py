@@ -347,16 +347,21 @@ CAPTION_LIMIT = 1024
 
 
 def message_image_urls(message) -> list[str]:
-    """Ссылки на картинки сообщения чата (`images` и `file`, если это изображение)."""
+    """Ссылки на картинки сообщения чата.
+
+    Одна и та же картинка у Playerok приходит и в `images`, и в `file` (с разными ссылками),
+    поэтому `file` берётся, только если `images` пуст — иначе приходили бы дубли."""
     urls: list[str] = []
     for img in getattr(message, "images", None) or []:
         url = getattr(img, "url", None)
         if url and url not in urls:
             urls.append(url)
+    if urls:
+        return urls
     file = getattr(message, "file", None)
     url = getattr(file, "url", None)
     mime = (getattr(file, "mime", None) or "").lower()
-    if url and url not in urls and (not mime or mime.startswith("image/")):
+    if url and (not mime or mime.startswith("image/")):
         urls.append(url)
     return urls
 

@@ -110,3 +110,40 @@ def test_bot_disables_link_previews_everywhere():
 
     from fixer.tg import bot
     assert "link_preview_is_disabled=True" in inspect.getsource(bot.setup_telegram)
+
+
+def test_chat_photo_sent_once_with_close_button(monkeypatch):
+    """Картинка покупателя приходит и в images, и в file — бот шлёт её один раз, с «❌ Закрыть»."""
+    import asyncio as _asyncio
+    from types import SimpleNamespace as _N
+
+    from fixer.tg.handlers import chats as ch
+    from fixer_helpers import make_fixer as _make_fixer
+
+    fixer = _make_fixer()
+    me = _N(id="me-id", username="seller", raw_role="USER", role=None)
+    buyer = _N(id="b1", username="Valkuz", raw_role="USER", role=None)
+    chat = _N(id="c1", type=None, users=[me, buyer], deals=[])
+    msg = _N(id="m1", text=None, user=buyer, created_at="2026-10-22T19:51:00.000Z", event=None, item=None,
+             images=[_N(url="https://cdn/a.png")], file=_N(url="https://cdn/a-file.png", mime="image/png"),
+             event_by_user=None, moderator=None, deal=None, buttons=[])
+
+    async def get_chat(fixer_, chat_id):
+        return chat
+
+    async def get_messages(fixer_, chat_id):
+        return _N(messages=[msg])
+
+    monkeypatch.setattr(ch, "_get_chat", get_chat)
+    monkeypatch.setattr(ch, "_get_messages", get_messages)
+    photos = []
+
+    class Msg:
+        async def edit_text(self, *a, **k):
+            pass
+
+        async def answer_photo(self, photo, reply_markup=None, **k):
+            photos.append((photo, [b.callback_data for row in reply_markup.inline_keyboard for b in row]))
+
+    _asyncio.run(ch._render_chat_view(_N(message=Msg()), fixer, "c1", None))
+    assert photos == [("https://cdn/a.png", ["close"])]

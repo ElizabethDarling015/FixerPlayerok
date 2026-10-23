@@ -343,13 +343,13 @@ def build_chat_view(fixer, chat, messages, page: int | None) -> tuple[str, objec
                 msg_text = mono_links(html.escape(html.unescape(msg.text)))
             elif msg.images or msg.file:
                 msg_text = "<i>(изображение)</i>"
-                for img in (msg.images or []):
-                    url = getattr(img, "url", None)
-                    if url:
+                # Одна картинка у Playerok приходит и в `images`, и в `file` (с разными ссылками) —
+                # раньше бот присылал её дважды. Берём `images`, а `file` — только если их нет.
+                urls = [getattr(img, "url", None) for img in (msg.images or [])]
+                urls = [u for u in urls if u] or [u for u in [getattr(msg.file, "url", None)] if u]
+                for url in urls:
+                    if url not in photo_urls:
                         photo_urls.append(url)
-                file_url = getattr(msg.file, "url", None)
-                if file_url:
-                    photo_urls.append(file_url)
             elif chat_kinds.staff_event(msg):
                 who = html.escape(chat_kinds.staff_display_name(msg))
                 if chat_kinds.staff_event(msg) == "CHAT_STARTED":
@@ -421,9 +421,12 @@ async def _render_chat_view(query: CallbackQuery, fixer, chat_id: str, page: int
         messages = None
     text, markup, photo_urls = build_chat_view(fixer, chat, messages, page)
     await safe_edit(query.message, text, markup)
+    # Фото покупателя — отдельными сообщениями с «❌ Закрыть» (кнопка удаляет само фото).
+    close = InlineKeyboardBuilder()
+    close.button(text=fixer.l10n("btn_close"), callback_data="close")
     for url in photo_urls[:2]:
         with suppress(Exception):
-            await query.message.answer_photo(photo=url)
+            await query.message.answer_photo(photo=url, reply_markup=close.as_markup())
 
 
 # ----------------------------------------------------------------------

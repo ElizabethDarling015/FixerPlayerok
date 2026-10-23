@@ -168,15 +168,26 @@ DEFAULT_NIGHT_TEXT = (
 )
 
 
+DEFAULT_NIGHT_REPLY_TEXT = (
+    "🌙 $username, сейчас у меня ночь — я сплю.\n"
+    "Ваше сообщение не потеряется: отвечу утром, после 09:00."
+)
+
+
 class NightSettings(BaseModel):
-    """Секция `[night]` — ночное сообщение покупателю после оплаты.
+    """Секция `[night]` — ночные сообщения покупателю.
+
+    * `text` — после оплаты лота ночью (в чат сделки, один раз на сделку);
+    * `reply_text` — ответ, когда покупатель пишет ночью (по любой сделке), не чаще раза в час
+      на один чат.
 
     Окно — по часовому поясу продавца (`[digest] timezone`); может переходить через полночь
-    (22:00 → 09:00). В тексте можно использовать $username и $item."""
+    (22:00 → 09:00). В текстах можно использовать $username, в `text` — ещё $item."""
 
     start: str = "22:00"
     end: str = "09:00"
     text: str = DEFAULT_NIGHT_TEXT
+    reply_text: str = DEFAULT_NIGHT_REPLY_TEXT
 
     @field_validator("start", "end")
     @classmethod

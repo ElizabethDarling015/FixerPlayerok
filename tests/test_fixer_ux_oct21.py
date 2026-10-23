@@ -196,8 +196,10 @@ def message(buyer, text="", images=(), file=None, mid="m1"):
 
 
 def test_image_urls_from_images_and_image_file_only():
+    # Одна картинка приходит и в images, и в file — берём images, без дубля.
     m = N(images=[img("https://a/1.png")], file=img("https://a/2.jpg", "image/jpeg"))
-    assert message_image_urls(m) == ["https://a/1.png", "https://a/2.jpg"]
+    assert message_image_urls(m) == ["https://a/1.png"]
+    assert message_image_urls(N(images=[], file=img("https://a/2.jpg", "image/jpeg"))) == ["https://a/2.jpg"]
     assert message_image_urls(N(images=[], file=img("https://a/doc.pdf", "application/pdf"))) == []
 
 
