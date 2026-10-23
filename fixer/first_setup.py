@@ -153,7 +153,7 @@ def run_first_setup() -> MainSettings:
     save_main_settings(settings, MAIN_CONFIG)
     if not os.path.isfile(AUTORESPONSE_CONFIG):
         write_toml(AUTORESPONSE_CONFIG, {"commands": {
-            "!привет": "Привет, $username! Чем могу помочь?",
+            "!!привет": "Привет, $username! Чем могу помочь?",
         }})
     if not os.path.isfile(AUTODELIVERY_CONFIG):
         write_toml(AUTODELIVERY_CONFIG, {"lots": {}})

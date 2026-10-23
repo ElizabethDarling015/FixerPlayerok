@@ -496,7 +496,7 @@ PYEOF
     if [ ! -f configs/autoresponse.toml ]; then
         {
             echo "[commands]"
-            echo "\"!привет\" = \"Привет, \$username! Чем могу помочь?\""
+            echo "\"!!привет\" = \"Привет, \$username! Чем могу помочь?\""
         } > configs/autoresponse.toml
     fi
     if [ ! -f configs/autodelivery.toml ]; then
