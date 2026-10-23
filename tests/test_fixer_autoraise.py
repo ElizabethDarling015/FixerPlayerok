@@ -202,9 +202,16 @@ def test_screen_position_mode():
     text, markup = ui.build_screen(fixer, D(2026, 10, 22, 12, 0))
     assert "\n\n━" not in text
     assert "держать в топ-<b>10</b>" in text and "GoLand навсегда — 14 место ⬆️ (1 из 2)" in text
-    assert "лимит 300 ₽" in text
+    assert text.splitlines()[:6] == [
+        "⬆️ <b>Автоподнятие</b> 🟢 Включено · 🕒 Сутки",
+        "📊 Режим: по позиции — держать в топ-<b>10</b>",
+        "⏱️ Проверка: раз в 2 мин",
+        "🕒 Кулдаун: 10 мин",
+        "🔁 Проверок подряд: 2",
+        "💸 Потрачено сегодня: <b>0 ₽</b> | Лимит 300 ₽",
+    ]
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
-    assert rows[0] == ["up:on", "up:mode"] and ["up:in:pos", "up:in:chk"] in rows
+    assert rows[0] == ["up:on", "up:mode"] and ["up:in:chk", "up:in:pos"] in rows
     assert ["up:in:cd", "up:streak"] in rows and rows[-1] == ["sys", "menu"]
     assert "up:in:nf" not in sum(rows, [])  # ночь выключена — её кнопок нет
 
@@ -307,3 +314,23 @@ def test_lots_loaded_in_pages_of_24_like_items_section():
     lots = asyncio.run(ui._load_lots(fixer))
     assert [lot[0] for lot in lots] == ["i0", "i1", "i2"] and all(lot[2] and lot[3] for lot in lots)
     assert asked == [(("APPROVED", "PENDING_MODERATION", "PENDING_APPROVAL"), 24, None)]
+
+
+def test_input_screens_texts():
+    fixer = make(Account({}), items=[], position=40, check_interval=120, cooldown=600)
+    l10n = fixer.l10n
+    text, _ = ui._input_screen(l10n, "pos", fixer)
+    assert text == ("⬆️ <b>Автоподнятие</b>\n━━━━━━━━━━━━━━━━━━━\n"
+                    "Место, ниже которого лот поднимается (от 1 до 500).\nСейчас: <b>40</b>")
+    assert ui._input_screen(l10n, "chk", fixer)[0].endswith(
+        "Как часто проверять места (в минутах от 1 до 1440).\nСейчас: <b>2 мин</b>")
+    assert ui._input_screen(l10n, "cd", fixer)[0].endswith(
+        "Не поднимать один лот чаще, чем раз в N минут.\nОт 0 до 10080; 0 — без кулдауна.\nСейчас: <b>10 мин</b>")
+    assert ui._input_screen(l10n, "dl", fixer)[0].endswith("Сейчас: <b>без лимита</b>")
+
+
+def test_long_lot_names_not_cut_by_bot():
+    l10n = make_fixer().l10n
+    name = "🐘 PhpStorm — Лицензия навсегда | Lifetime [Автовыдача 24/7]"
+    _, markup = ui.build_lots_screen(l10n, [("a", name, True, True)], [], 0)
+    assert markup.inline_keyboard[0][0].text == "▫️ " + name

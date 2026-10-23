@@ -18,8 +18,9 @@ _LINE_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)? +([A-Z]+) +([\w.<>-]+):(\d+) — ?(.*)$"
 )
 
-#: Уровни фильтра: код → минимальный уровень.
-LEVELS = {"a": 10, "i": 20, "w": 30, "e": 40}
+#: Уровни фильтра: код → диапазон уровней [от, до). Каждый уровень — только свои записи
+#: («Инфо» — без предупреждений и ошибок), «Все» — всё, включая отладочные (DEBUG).
+LEVELS = {"a": (0, 100), "i": (20, 30), "w": (30, 40), "e": (40, 100)}
 LEVEL_NO = {"TRACE": 5, "DEBUG": 10, "INFO": 20, "SUCCESS": 25, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
 LEVEL_ICON = {"TRACE": "🐞", "DEBUG": "🐞", "INFO": "ℹ️", "SUCCESS": "✅", "WARNING": "⚠️", "ERROR": "❌",
               "CRITICAL": "🔥"}
@@ -105,12 +106,12 @@ def read_entries(files: list[str] | None = None) -> list[Entry]:
 
 def apply_filters(entries: list[Entry], level: str, period: str, section: str,
                   now: datetime.datetime | None = None) -> list[Entry]:
-    min_level = LEVELS.get(level, 30)
+    low, high = LEVELS.get(level, LEVELS["w"])
     minutes = PERIODS.get(period, 60)
     since = (now or datetime.datetime.now()) - datetime.timedelta(minutes=minutes) if minutes else None
     out = []
     for e in entries:
-        if e.level_no < min_level:
+        if not low <= e.level_no < high:
             continue
         if since is not None and e.time < since:
             continue

@@ -27,6 +27,8 @@ router = Router(name="autoraise")
 SEPARATOR = "━━━━━━━━━━━━━━━━━━━"
 LOTS_PER_PAGE = 10
 NAME_LIMIT = 34
+#: Название лота в кнопке «🛍 Лоты»: длиннее не нужно — Telegram сам обрезает по ширине кнопки.
+BUTTON_NAME_LIMIT = 64
 
 #: Поля ввода: ключ → (атрибут настроек, тип, мин, макс, множитель для хранения).
 FIELDS = {
@@ -74,8 +76,13 @@ def _limit(value: int, l10n) -> str:
     return _rub(value) if value else l10n("up_no_limit")
 
 
-def _short(name: str) -> str:
-    return name if len(name) <= NAME_LIMIT else name[:NAME_LIMIT - 1].rstrip() + "…"
+def _limit_line(value: int, l10n) -> str:
+    """«Лимит 300 ₽» / «Без лимита» — для строк главного экрана."""
+    return l10n("up_limit_value", limit=_rub(value)) if value else l10n("up_no_limit_cap")
+
+
+def _short(name: str, limit: int = NAME_LIMIT) -> str:
+    return name if len(name) <= limit else name[:limit - 1].rstrip() + "…"
 
 
 def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, InlineKeyboardMarkup]:
@@ -93,8 +100,9 @@ def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, Inli
                   time=l10n("up_night" if night else ("up_day" if cfg.night_enabled else "up_allday")))]
     if cfg.mode == "position":
         lines.append(l10n("up_mode_position_line", position=target_position(cfg, now)))
-        lines.append(l10n("up_position_params", check=_minutes(cfg.check_interval), cooldown=_minutes(cfg.cooldown),
-                          streak=cfg.streak))
+        lines.append(l10n("up_check_line", check=_minutes(cfg.check_interval)))
+        lines.append(l10n("up_cooldown_line", cooldown=_minutes(cfg.cooldown)))
+        lines.append(l10n("up_streak_line", streak=cfg.streak))
     else:
         lines.append(l10n("up_mode_interval_line", interval=_minutes(current_interval(cfg, now))))
         nxt = service.next_interval_run()
@@ -104,9 +112,9 @@ def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, Inli
         night_value = (l10n("up_night_pos", position=cfg.night_position) if cfg.mode == "position"
                        else l10n("up_night_int", interval=_minutes(cfg.night_interval)))
         lines.append(l10n("up_night_line", start=cfg.night_from, end=cfg.night_to, value=night_value,
-                          limit=_limit(cfg.night_limit, l10n)))
+                          limit=_limit_line(cfg.night_limit, l10n)))
     lines.append(l10n("up_spent_line", window=l10n("raise_window_" + window.kind), spent=_rub(spent),
-                      limit=_limit(window.limit, l10n)))
+                      limit=_limit_line(window.limit, l10n)))
     if cfg.min_balance_reserve:
         lines.append(l10n("up_reserve_line", reserve=_rub(cfg.min_balance_reserve)))
 
@@ -133,8 +141,8 @@ def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, Inli
     rows = [[_btn(l10n("up_btn_on" if enabled else "up_btn_off"), "up:on"),
              _btn(l10n("up_btn_mode_position" if cfg.mode == "position" else "up_btn_mode_interval"), "up:mode")]]
     if cfg.mode == "position":
-        rows.append([_btn(l10n("up_btn_pos", value=cfg.position), "up:in:pos"),
-                     _btn(l10n("up_btn_chk", value=_minutes(cfg.check_interval)), "up:in:chk")])
+        rows.append([_btn(l10n("up_btn_chk", value=_minutes(cfg.check_interval)), "up:in:chk"),
+                     _btn(l10n("up_btn_pos", value=cfg.position), "up:in:pos")])
         rows.append([_btn(l10n("up_btn_cd", value=_minutes(cfg.cooldown)), "up:in:cd"),
                      _btn(l10n("up_btn_streak", value=cfg.streak), "up:streak")])
     else:
@@ -188,7 +196,7 @@ def build_lots_screen(l10n, lots: list[tuple[str, str, bool, bool]], marked: lis
         on = item_id in marked
         mark = "✅" if on else "▫️"
         warn = "" if is_premium else " ⚠️"
-        rows.append([_btn(f"{mark} {_short(name)}{warn}", f"up:t:{item_id}")])
+        rows.append([_btn(f"{mark} {_short(name, BUTTON_NAME_LIMIT)}{warn}", f"up:t:{item_id}")])
     pager = pager_row("up:l", page, pages)
     if pager:
         rows.append(pager)

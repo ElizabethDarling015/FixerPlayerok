@@ -1,6 +1,7 @@
 """Настройки → «📄 Логи»: лог бота прямо в сообщении, с фильтрами, листанием и скачиванием.
 
-Фильтр — уровень (все / инфо+ / предупреждения+ / ошибки, выбранный отмечен «•»), за всё
+Фильтр — уровень (все / инфо / предупреждения / ошибки — каждый только свои записи; выбранный
+отмечен «•»), за всё
 время, что есть в файле. На экран — столько последних записей, сколько влезает в сообщение;
 «◀️ Старее» / «Новее ▶️» листают. «📥 Отфильтрованное» присылает файлом всё, что подходит
 под фильтры (без обрезки), «📥 Весь файл» — текущий файл лога.
@@ -109,8 +110,8 @@ def build_logs_screen(l10n, entries: list[lr.Entry], level: str, period: str, se
     rows.append([
         InlineKeyboardButton(text=l10n("lg_dl_filtered"), callback_data=_cb(level, period, section, 0, "lgf")),
         InlineKeyboardButton(text=l10n("lg_dl_all"), callback_data="lgall"),
+        InlineKeyboardButton(text=l10n("ld_btn_refresh"), callback_data=_cb(level, period, section, page)),
     ])
-    rows.append([InlineKeyboardButton(text=l10n("ld_btn_refresh"), callback_data=_cb(level, period, section, page))])
     rows.append(nav_row(l10n, "sys"))
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 

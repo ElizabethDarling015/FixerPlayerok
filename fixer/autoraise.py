@@ -292,6 +292,9 @@ class AutoRaise:
                 continue
             if await self.raise_item(item, before=pos):
                 entry.update(streak=0, pos=1)
+        summary = ", ".join(f"«{(e.get('name') or i)[:30]}» {e.get('pos') or e.get('note') or '?'}"
+                            for i, e in ((i, self.state['positions'].get(i, {})) for i in cfg.items))
+        logger.debug("[autoraise] Проверка мест (держать в топ-{}): {}", target, summary)
         self.save()
 
     async def raise_by_interval(self) -> None:

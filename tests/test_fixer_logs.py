@@ -36,8 +36,10 @@ def test_parse_with_traceback_attached_to_entry():
 def test_filters_level_period_section():
     es = entries()
     assert len(lr.apply_filters(es, "a", "0", "all", NOW)) == 5
-    assert [e.level for e in lr.apply_filters(es, "w", "60", "all", NOW)] == ["WARNING", "ERROR"]
-    assert [e.level for e in lr.apply_filters(es, "i", "15", "all", NOW)] == ["SUCCESS"]  # 25 ≥ 20, 14:20
+    # Каждый уровень — только свои записи.
+    assert [e.level for e in lr.apply_filters(es, "w", "60", "all", NOW)] == ["WARNING"]
+    assert [e.level for e in lr.apply_filters(es, "i", "0", "all", NOW)] == ["INFO", "SUCCESS"]
+    assert [e.level for e in lr.apply_filters(es, "i", "15", "all", NOW)] == ["SUCCESS"]  # период: 14:20
     assert [e.level for e in lr.apply_filters(es, "e", "0", "all", NOW)] == ["ERROR"]
     assert [e.level for e in lr.apply_filters(es, "a", "0", "chat", NOW)] == ["WARNING"]
 
@@ -57,10 +59,10 @@ def test_screen_text_and_buttons():
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
     assert rows[0] == ["lg:a:0:all:0", "lg:i:0:all:0", "lg:w:0:all:0", "lg:e:0:all:0"]
     # Кнопок периода и разделов больше нет: уровень, затем листание/скачивание.
-    assert rows[1] == ["lgf:a:0:all:0", "lgall"]
-    assert text.splitlines()[0] == "📄 <b>Логи</b> · 🐞 Все"
+    assert rows[1] == ["lgf:a:0:all:0", "lgall", "lg:a:0:all:0"]  # скачать, весь файл, обновить
+    assert text.splitlines()[0] == "📄 <b>Логи</b> · 📜 Все"
     assert markup.inline_keyboard[0][0].text.startswith("• ")
-    assert rows[-3] == ["lgf:a:0:all:0", "lgall"] and rows[-1] == ["sys", "menu"]
+    assert rows[-2] == ["lgf:a:0:all:0", "lgall", "lg:a:0:all:0"] and rows[-1] == ["sys", "menu"]
     assert all(len(cb.encode()) <= 64 for row in rows for cb in row)
 
 
