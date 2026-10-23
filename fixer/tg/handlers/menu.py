@@ -21,7 +21,10 @@ router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
 #: Порядок кнопок в «Глобальных переключателях» (по две в ряд; «night» — своим рядом с «✏️ Текст»).
-MODULE_NAMES = ("autoraise", "online", "autodelivery", "autoresponse", "digest", "night")
+MODULE_NAMES = ("autoraise", "online", "autodelivery", "digest", "night")
+#: Где в «Глобальных переключателях» стоит заглушка (бывший тумблер «Автоответчик»):
+#: после этого модуля — чтобы ряды остались парами.
+PLACEHOLDER_AFTER = "autodelivery"
 
 #: Файл-флаг: каким чатам уже установили reply-клавиатуру (для миграции).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"
@@ -139,6 +142,8 @@ def build_toggles_menu(fixer) -> tuple[str, object]:
             continue  # своим рядом — вместе с кнопкой текста
         enabled = getattr(fixer.settings.modules, name)
         builder.button(text=f"{on_off(l10n, enabled)} {l10n('module_' + name)}", callback_data=f"mod:{name}")
+        if name == PLACEHOLDER_AFTER:
+            builder.button(text=l10n("gl_placeholder"), callback_data="noop")
     builder.adjust(2)
     builder.row(
         InlineKeyboardButton(text=f"{on_off(l10n, fixer.settings.modules.night)} {l10n('module_night')}",
@@ -238,7 +243,3 @@ async def cmd_cancel(message: Message, state: FSMContext, fixer) -> None:
     await state.clear()
     await message.answer(fixer.l10n("cancelled"))
 
-@router.callback_query(F.data == "stub")
-async def cb_stub(query: CallbackQuery, fixer) -> None:
-    """Заглушка для отключенных разделов."""
-    await query.answer("⏸ Раздел перенесён в Настройки", show_alert=True)

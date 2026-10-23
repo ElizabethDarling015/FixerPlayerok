@@ -384,8 +384,6 @@ class Notifier:
         self.admins = admins
         #: (tg_chat_id, tg_message_id) -> id чата Playerok — для ответов reply'ем из TG.
         self.reply_map: dict[tuple[int, int], str] = {}
-        self.session_expired_messages: set[tuple[int, int]] = set()
-        self._recent_errors: dict[str, float] = {}
         # Дедупликация: защита от повторных уведомлений по одной и той же сделке
         self._notified_deal_events: set[str] = set()
         # Хранилище отправленных сообщений для последующего удаления
@@ -865,41 +863,6 @@ class Notifier:
     # ------------------------------------------------------------------
     # События Runner
     # ------------------------------------------------------------------
-
-    async def notify_missed_deals(self, missed_deals: list) -> None:
-        """
-        Уведомляет админов о сделках, которые произошли, пока бот был выключен.
-        Вызывается при старте Fixer — только информирует, автовыдачу не запускает.
-        """
-        if not missed_deals:
-            return
-        l10n = self.fixer.l10n
-        count = len(missed_deals)
-        
-        # Заголовок
-        header = f"🌙 <b>Сделок за время простоя: {count}</b>\n\n"
-        
-        # Список сделок
-        lines = []
-        for i, deal in enumerate(missed_deals, 1):
-            item_name = deal.item.name if deal and deal.item else "?"
-            buyer = deal.user.username if deal and deal.user else "?"
-            raw_status = deal.raw_status.name if deal and deal.raw_status else "?"
-            section = _get_section_from_deal(deal)
-            lines.append(
-                f"{i}. <b>{_esc(item_name)}</b>\n"
-                f"   📂 {_esc(section)}\n"
-                f"   👤 Покупатель: {_esc(buyer)}\n"
-                f"   📋 Статус: {_esc(raw_status)}"
-            )
-        
-        text = header + "\n\n".join(lines)
-        
-        # Если текст слишком длинный, Telegram его не примет — разбиваем
-        if len(text) > 4000:
-            text = text[:4000] + "\n\n<i>...и ещё сделки (список обрезан)</i>"
-        
-        await self._send_all(text)
 
     # ------------------------------------------------------------------
     # Новая сделка

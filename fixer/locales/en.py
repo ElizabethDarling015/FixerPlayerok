@@ -4,14 +4,12 @@ STRINGS = {
     # --- Common / TG auth ---
     "unauthorized": "⛔ You are not authorized. Send the secret code from the Fixer console to bind yourself as an admin.",
     "auth_success": "✅ You are now a FixerPlayerok administrator.",
-    "auth_wrong_code": "❌ Wrong code. The current code is printed in the Fixer console.",
     "btn_back": "◀️ Back",
     "btn_home": "🏠 Main menu",
     "btn_chats": "💬 Buyer chats",
     "chats_empty": "No active chats.",
     "chats_view_title": "💬 <b>Chat with {username}</b>\n\n",
     "chats_btn_reply": "✏️ Reply to chat",
-    "chats_reply_sent": "✅ Message successfully sent to the buyer!",
     "chats_title": "💬 <b>Buyer chats</b>\n\nChat list (refreshed on tap):",
     "chats_btn_prev_page": "⬅️ Prev",
     "chats_btn_next_page": "➡️ Next",
@@ -76,8 +74,6 @@ STRINGS = {
     "it_keep_on": "🔁 Auto-relist on",
     "it_keep_off": "🔁 Auto-relist off",
     "it_keep_unknown": "Playerok did not report whether auto-relist is on for this item — nothing changed. Open it on the site.",
-    "it_keep_sent": "Request sent, but Playerok did not confirm the new state — check on the site.",
-    "it_keep_not_changed": "Playerok did not change auto-relist — check the item on the site.",
     "it_paused": "⏸ Item paused",
     "it_resumed": "▶️ Item is on sale again",
     "it_enter_comment": "💬 Send the new <b>comment</b> — the buyer gets it after paying.\n\nAfter a comment change the item briefly goes to moderation.",
@@ -239,7 +235,6 @@ STRINGS = {
     "dw_give_failed": '❌ The item was not sent: {error}\nIt was returned to stock.',
     "btn_close": "❌ Close",
     "cancelled": "Action cancelled.",
-    "stub_message": "⏸ Section has been moved to Settings",
     "btn_cancel": "Cancel",
 
     # --- Main menu ---
@@ -357,10 +352,8 @@ STRINGS = {
     "menu_section_plugins": "🧩 Plugins",
     "menu_section_settings": "⚙️ Settings",
     "btn_reply_menu": "Menu",
-    "menu_keyboard_hint": "📋 The “Menu” button is under the input field. Tap the arrow to collapse it into a compact button.",
     "module_autodelivery": "Auto-delivery",
     "module_autoraise": "Auto-raise",
-    "module_autoresponse": "Auto-response",
     "module_online": "Always online",
     "module_digest": "Daily digest",
     "module_night": 'Night message',
@@ -384,6 +377,7 @@ STRINGS = {
     "module_toggled_off": "Module \"{module}\" disabled.",
 
     # --- Global toggles ---
+    "gl_placeholder": "⏳ Coming soon",
     "gl_title": "🎛 <b>Global toggles</b>\n\nTap a module to enable or disable it:",
 
     # --- Statistics ---
@@ -453,7 +447,6 @@ STRINGS = {
     "ar_added": "✅ Command <code>{command}</code> added.",
     "ar_deleted": "🗑 Command <code>{command}</code> deleted.",
     "ar_missing": "Command not found (config may have changed). Re-open the section.",
-    "ar_builtin_commands_response": "Available commands:\n{commands}",
 
     # --- Blacklist ---
     "bl_title": (
@@ -757,7 +750,6 @@ STRINGS = {
     "bk_restarting": '🔄 Restarting…',
     "bk_started_line": '✅ Backup from {date} applied',
     "sys_btn_backup": "💾 Config backup",
-    "sys_btn_reload": "🔄 Reload configs",
     "sys_btn_update": "⬇️ Update from GitHub",
     "sys_update_confirm": (
         "Download the latest version from GitHub (<code>{repo}</code>) and restart Fixer?\n\n"
@@ -771,7 +763,6 @@ STRINGS = {
         "The panel will be back in a few seconds (/menu)."
     ),
     "sys_update_failed": "❌ Update failed: {message}",
-    "sys_reloaded": "🔄 Configs reloaded: {details}",
 
     # --- UI Tests ---
     "sys_btn_tests": "🧪 Tests",

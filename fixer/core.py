@@ -176,20 +176,6 @@ class Fixer:
         self.restart_requested = True
         self.request_shutdown()
 
-    def reload_configs(self) -> str:
-        """
-        Перечитывает `autoresponse.toml`, `autodelivery.toml` и `blacklist.toml` без перезапуска.
-
-        :return: Короткая сводка для ответа в TG (сколько команд, лотов и ников загружено).
-        """
-        self.autoresponse_config = load_autoresponse_config(AUTORESPONSE_CONFIG)
-        self.autodelivery_config = load_autodelivery_config(AUTODELIVERY_CONFIG)
-        self.blacklist_config = load_blacklist_config(BLACKLIST_CONFIG)
-        self.apply_autodelivery_config()
-        return (f"команд автоответчика: {len(self.autoresponse_config.commands)}, "
-                f"лотов авто-выдачи: {len(self.autodelivery_config.lots)}, "
-                f"в чёрном списке: {len(self.blacklist_config.usernames)}")
-
     def is_blacklisted(self, username: str | None, user_id: str | None = None) -> bool:
         """Покупатель в чёрном списке — по нику или по ID (ID запоминается при первой встрече,
         чтобы смена ника не помогала обойти список)."""

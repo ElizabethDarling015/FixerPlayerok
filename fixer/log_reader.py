@@ -32,7 +32,7 @@ SECTIONS = {
     "deal": ("fixer.deals_in_work", "fixer.tg.handlers.deal_actions", "fixer.tg.handlers.deals_in_work",
              "fixer.tg.handlers.last_deals"),
     "chat": ("fixer.tg.handlers.chats", "fixer.tg.handlers.replies", "fixer.tg.reactions",
-             "fixer.modules.autoresponse", "fixer.modules.night"),
+             "fixer.modules.night"),
     "ad": ("playerokapi.autodelivery", "playerokapi.delivery_ledger", "fixer.tg.handlers.autodelivery"),
     "raise": ("playerokapi.autoraise", "fixer.autoraise", "fixer.tg.handlers.autoraise"),
     "tg": ("fixer.tg", "aiogram"),

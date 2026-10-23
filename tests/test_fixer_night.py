@@ -161,7 +161,7 @@ async def test_night_skip_reasons_are_logged(caplog):
 def test_global_toggles_order():
     _, markup = build_toggles_menu(make_fixer())
     rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
-    assert rows[:3] == [["mod:autoraise", "mod:online"], ["mod:autodelivery", "mod:autoresponse"], ["mod:digest"]]
+    assert rows[:3] == [["mod:autoraise", "mod:online"], ["mod:autodelivery", "noop"], ["mod:digest"]]  # noop — заглушка
     assert rows[3] == ["mod:night", "night:text"]
 
 

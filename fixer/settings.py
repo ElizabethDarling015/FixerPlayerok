@@ -61,11 +61,13 @@ class TelegramSettings(BaseModel):
 
 
 class ModulesSettings(BaseModel):
-    """Секция `[modules]` — переключатели модулей Fixer."""
+    """Секция `[modules]` — переключатели модулей Fixer.
+
+    Старые ключи `autoresponse` и `autorestore` в main.toml просто игнорируются: шаблоны
+    автоответчика (`!!команда`) работают всегда, автовосстановление удалено."""
 
     autodelivery: bool = True
     autoraise: bool = False
-    autoresponse: bool = True
     online: bool = True
     digest: bool = True
     night: bool = False

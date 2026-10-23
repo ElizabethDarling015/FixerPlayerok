@@ -25,7 +25,7 @@ token = "111:AAA"
 admin_ids = [42]
 
 [modules]
-autoresponse = false
+digest = false
 '''
 
 
@@ -80,13 +80,13 @@ def _vm(tmp_path, monkeypatch, **kw):
 
 def test_import_roundtrip_to_other_machine(tmp_path, monkeypatch, botdir):
     data = backup.build_backup(username="BezLimit")
-    vm = _vm(tmp_path, monkeypatch, main=MAIN.replace("autoresponse = false", "autoresponse = true"),
+    vm = _vm(tmp_path, monkeypatch, main=MAIN.replace("digest = false", "digest = true"),
              stock="OLD\n")
     current = load_main_settings()
     plan = backup.read_backup(data)
     result = backup.apply_backup(plan, current)
     assert result["telegram"] == "same" and result["stocks"] == 1
-    assert load_main_settings().modules.autoresponse is False
+    assert load_main_settings().modules.digest is False
     assert (vm / "storage" / "stock" / "go.txt").read_text(encoding="utf-8") == "KEY-1\nKEY-2\n"
     assert "Сбербанк" in (vm / "storage" / "withdrawal.json").read_text(encoding="utf-8")
     # Журнал выдач машины не тронут.
@@ -220,14 +220,14 @@ def _run_import(fixer, payload):
 
 def test_import_via_telegram_applies_and_restarts(tmp_path, monkeypatch, botdir):
     data = backup.build_backup(username="BezLimit")
-    _vm(tmp_path, monkeypatch, main=MAIN.replace("autoresponse = false", "autoresponse = true"))
+    _vm(tmp_path, monkeypatch, main=MAIN.replace("digest = false", "digest = true"))
     fixer = make_fixer(load_main_settings())
     restarts = []
     fixer.request_restart = lambda: restarts.append(1)
     msg, bot, state = _run_import(fixer, data)
     assert msg.deleted and restarts == [1] and state.state is None
     assert "✅ Бэкап от" in bot.edits[-1] and "без изменений" in bot.edits[-1]
-    assert load_main_settings().modules.autoresponse is False
+    assert load_main_settings().modules.digest is False
     assert os.listdir("storage/backups")  # страховочная копия есть
     assert backup.pop_applied_mark()["account"] == "BezLimit"
 

@@ -15,10 +15,6 @@ async def safe_edit(message: Message, text: str, reply_markup=None) -> None:
         await message.edit_text(text, reply_markup=reply_markup)
 
 
-def back_button(l10n, callback_data: str = "menu") -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=l10n("btn_back"), callback_data=callback_data)
-
-
 def nav_row(l10n, back_cb: str | None = None) -> list[InlineKeyboardButton]:
     """
     Нижний ряд навигации экрана.

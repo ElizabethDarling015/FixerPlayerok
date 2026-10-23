@@ -131,7 +131,6 @@ def run_first_setup() -> MainSettings:
     console.print("\n[bold]3. Модули[/] (всё можно переключить позже из Telegram)")
     modules = {
         "autodelivery": Confirm.ask("Авто-выдача товаров?", default=True),
-        "autoresponse": Confirm.ask("Автоответчик на команды?", default=True),
         "autoraise": Confirm.ask("Автоподнятие лотов (тратит баланс!)?", default=False),
         "online": Confirm.ask("Вечный онлайн?", default=True),
         "digest": Confirm.ask("Ежедневная сводка в Telegram?", default=True),
