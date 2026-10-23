@@ -109,3 +109,14 @@ def test_delivery_log_does_not_leak_secret(env, caplog):
     with caplog.at_level(logging.DEBUG):
         env.runner._handle_autodelivery(paid_event(env.runner, deal))
     assert "SECRET-1" not in caplog.text
+
+
+def test_polled_payment_without_chat_loads_full_deal(env):
+    """Поллинг отдаёт сделку без чата: Runner дозапрашивает её, иначе автовыдаче некуда писать."""
+    polled = make_deal(direction=ItemDealDirections.OUT)
+    full_chat = polled.chat
+    polled.chat = None
+    env.account.get_deal = lambda deal_id: SimpleNamespace(**{**vars(polled), "chat": full_chat})
+    env.runner._emit_item_paid(None, None, polled)
+    (event,) = [e for e in drain_events(env.runner) if isinstance(e, events.ItemPaidEvent)]
+    assert event.deal.chat is full_chat

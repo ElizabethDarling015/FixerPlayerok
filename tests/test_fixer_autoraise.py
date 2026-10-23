@@ -334,3 +334,16 @@ def test_long_lot_names_not_cut_by_bot():
     name = "🐘 PhpStorm — Лицензия навсегда | Lifetime [Автовыдача 24/7]"
     _, markup = ui.build_lots_screen(l10n, [("a", name, True, True)], [], 0)
     assert markup.inline_keyboard[0][0].text == "▫️ " + name
+
+
+def test_refresh_button_updates_places_without_raising_or_streak():
+    acc = Account({"a": 7})
+    fixer = make(acc, items=["a"], position=5, streak=1)
+    s = fixer.autoraise
+    s.state["positions"]["a"] = {"name": "Лот a", "pos": 2, "streak": 0}
+    run(s.refresh_positions())
+    entry = s.state["positions"]["a"]
+    assert entry["pos"] == 7 and entry["streak"] == 0 and acc.raised == [] and s.state["last_check"] == 0
+    text, markup = ui.build_screen(fixer, D(2026, 10, 22, 12, 0))
+    assert "7 место ⬆️" in text and "проверено в" in text
+    assert ["up:l:0", "up:r"] in [[b.callback_data for b in row] for row in markup.inline_keyboard]

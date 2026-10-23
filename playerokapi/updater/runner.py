@@ -252,8 +252,20 @@ class Runner:
 
         Дедупликация: in-memory set по `deal_id` (WS-маркер и поллинг могут заметить одну и ту же
         оплату) плюс SQLite-журнал (защита от повторной выдачи после перезапуска процесса).
+
+        Сделка из списка сделок (поллинг) приходит без чата: если первой оплату заметил поллинг
+        (например, WebSocket переподключался), автовыдача и ночное сообщение молча пропускали её —
+        им некуда писать. Поэтому без чата сделка дозапрашивается целиком.
         """
         deal_id = deal.id if deal and deal.id else None
+        if deal_id and chat is None and getattr(deal, "chat", None) is None \
+                and deal_id not in self._paid_deal_ids:
+            try:
+                full = self.account.get_deal(deal_id)
+                if full is not None and getattr(full, "chat", None) is not None:
+                    deal = full
+            except Exception:
+                logger.warning("Не удалось дозапросить сделку %s (нужен чат для выдачи)", deal_id, exc_info=True)
         if deal_id:
             if deal_id in self._paid_deal_ids:
                 return
@@ -264,6 +276,8 @@ class Runner:
                 if not ledger.try_mark_seen_paid(deal_id, item_name):
                     logger.debug("Оплата сделки %s уже есть в журнале выдач — событие пропущено", deal_id)
                     return
+        chat_id = getattr(chat, "id", None) or getattr(getattr(deal, "chat", None), "id", None)
+        logger.info("Оплата сделки %s (чат %s) — событие ItemPaid", deal_id or "?", chat_id or "не найден")
         self._event_queue.put(events.ItemPaidEvent(self, chat, message, deal))
 
     def _seed_paid_deal(self, deal) -> None:

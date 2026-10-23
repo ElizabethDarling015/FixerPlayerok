@@ -123,7 +123,7 @@ def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, Inli
         lines.append(l10n("up_no_items"))
     else:
         if cfg.mode == "position":
-            checked = state.get("last_check") or 0
+            checked = max(state.get("last_check") or 0, state.get("refreshed_at") or 0)
             head = l10n("up_positions_head")
             if checked:
                 head += " " + l10n("up_checked_at", time=service.local(checked).strftime("%H:%M"))
@@ -157,7 +157,7 @@ def build_screen(fixer, now: datetime.datetime | None = None) -> tuple[str, Inli
         night_btn = (_btn(l10n("up_btn_npos", value=cfg.night_position), "up:in:npos") if cfg.mode == "position"
                      else _btn(l10n("up_btn_nint", value=_minutes(cfg.night_interval)), "up:in:nint"))
         rows.append([night_btn, _btn(l10n("up_btn_nl", value=_limit(cfg.night_limit, l10n)), "up:in:nl")])
-    rows.append([_btn(l10n("up_btn_lots", count=len(cfg.items)), "up:l:0"), _btn(l10n("ld_btn_refresh"), "up")])
+    rows.append([_btn(l10n("up_btn_lots", count=len(cfg.items)), "up:l:0"), _btn(l10n("ld_btn_refresh"), "up:r")])
     rows.append(nav_row(l10n, "sys"))
     return "\n".join(lines), _kb(rows)
 
@@ -254,6 +254,28 @@ def _save(fixer) -> None:
 async def cb_screen(query: CallbackQuery, fixer, state: FSMContext) -> None:
     await state.clear()
     await _answer(query)
+    await _show(query, fixer)
+
+
+@router.callback_query(F.data == "up:r")
+async def cb_refresh(query: CallbackQuery, fixer, state: FSMContext) -> None:
+    """«🔄 Обновить»: места лотов запрашиваются у Playerok сейчас (без поднятий)."""
+    await state.clear()
+    service = fixer.autoraise
+    if fixer.account is None or not getattr(fixer, "playerok_connected", False):
+        await _answer(query, fixer.l10n("up_offline"), alert=True)
+        return
+    if service.cfg.items and not service._busy:
+        await _answer(query, fixer.l10n("up_refreshing"))
+        service._busy = True
+        try:
+            await service.refresh_positions()
+        except Exception:
+            logger.exception("[autoraise] Не удалось обновить места")
+        finally:
+            service._busy = False
+    else:
+        await _answer(query)
     await _show(query, fixer)
 
 

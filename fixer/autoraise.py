@@ -252,6 +252,37 @@ class AutoRaise:
     async def _get_item(self, item_id: str):
         return await asyncio.to_thread(self.fixer.account.get_item, item_id)
 
+    async def refresh_positions(self) -> None:
+        """Кнопка «🔄 Обновить»: свежие места отмеченных лотов прямо сейчас — только посмотреть.
+        Серии проверок, таймер проверки и поднятия не трогает: поднимает только плановая проверка."""
+        for index, item_id in enumerate(list(self.cfg.items)):
+            if index:
+                await asyncio.sleep(REQUEST_GAP)
+            entry = self.state["positions"].setdefault(item_id, {"streak": 0})
+            try:
+                item = await self._get_item(item_id)
+            except Exception as exc:
+                logger.warning("[autoraise] Лот {} не загрузился: {}", item_id, exc)
+                entry["note"] = "error"
+                continue
+            entry["checked_at"] = time.time()
+            if item is None:
+                entry.update(note="not_found", pos=None)
+                continue
+            entry["name"] = item.name
+            self.state["names"][item_id] = item.name
+            if not _is_active(item):
+                entry.update(note="not_active", pos=None)
+            elif not _is_premium(item):
+                entry.update(note="not_premium", pos=None)
+            else:
+                entry.update(note=None, pos=position_of(item))
+        self.state["refreshed_at"] = time.time()
+        summary = ", ".join(f"«{(e.get('name') or i)[:30]}» {e.get('pos') or e.get('note') or '?'}"
+                            for i, e in ((i, self.state['positions'].get(i, {})) for i in self.cfg.items))
+        logger.info("[autoraise] Места обновлены по кнопке: {}", summary)
+        self.save()
+
     async def check_positions(self) -> None:
         cfg = self.cfg
         now = self.now()

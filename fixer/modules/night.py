@@ -54,7 +54,7 @@ class NightMessageModule(BaseModule):
         )
 
     async def on_event(self, event) -> None:
-        if not self.enabled or event.type is not EventTypes.ITEM_PAID:
+        if event.type is not EventTypes.ITEM_PAID:
             return
         deal = getattr(event, "deal", None)
         if deal is None or not getattr(deal, "id", None) or deal.id in self._sent_deals:
@@ -62,12 +62,27 @@ class NightMessageModule(BaseModule):
         if deal.direction is not None and deal.direction is not ItemDealDirections.OUT:
             return  # только свои продажи
         night = self.fixer.settings.night
-        if not is_night(self._now().time(), night.start, night.end):
+        now = self._now()
+        if not is_night(now.time(), night.start, night.end):
+            return
+        # Дальше — ночная оплата: каждое решение пишем в лог, чтобы было видно, почему не ушло.
+        if not self.enabled:
+            logger.info("[night] Сделка {} оплачена ночью ({:%H:%M}), но ночное сообщение выключено", deal.id, now)
             return
         chat = getattr(event, "chat", None)
         chat_id = getattr(chat, "id", None) or getattr(getattr(deal, "chat", None), "id", None)
         if not chat_id:
+            try:
+                full = await asyncio.to_thread(self.fixer.account.get_deal, deal.id)
+                chat_id = getattr(getattr(full, "chat", None), "id", None)
+            except Exception as exc:
+                logger.warning("[night] Чат сделки {} не загрузился: {}", deal.id, exc)
+        if not chat_id:
+            logger.warning("[night] Сделка {} оплачена ночью, но чат сделки не найден — сообщение не отправлено",
+                           deal.id)
             return
+        logger.info("[night] Сделка {} оплачена ночью ({:%H:%M}) — ночное сообщение через {:g} с",
+                    deal.id, now, self.delay)
         self._sent_deals.add(deal.id)
         username = getattr(getattr(deal, "user", None), "username", None)
         item = getattr(getattr(deal, "item", None), "name", None)

@@ -341,6 +341,7 @@ STRINGS = {
     "up_err_number": 'A whole number is needed.',
     "up_err_range": 'The number must be from {lo} to {hi}.',
     "up_err_time": 'Time as HH:MM, e.g. 23:00.',
+    "up_refreshing": '🔄 Asking Playerok for places…',
     "up_lots_title": '🛍 <b>Items for auto-raise</b>',
     "up_lots_hint": 'Tap an item to select (✅) or unselect (▫️). Active premium items are shown.',
     "up_lots_empty": 'No active premium items.',

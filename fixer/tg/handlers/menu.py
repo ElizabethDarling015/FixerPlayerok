@@ -20,7 +20,8 @@ from .common import nav_row, on_off, safe_edit
 router = Router(name="menu")
 
 #: Порядок модулей в подменю переключателей (имена совпадают с полями `ModulesSettings`).
-MODULE_NAMES = ("autodelivery", "autoraise", "autoresponse", "online", "digest", "night")
+#: Порядок кнопок в «Глобальных переключателях» (по две в ряд; «night» — своим рядом с «✏️ Текст»).
+MODULE_NAMES = ("autoraise", "online", "autodelivery", "autoresponse", "digest", "night")
 
 #: Файл-флаг: каким чатам уже установили reply-клавиатуру (для миграции).
 _KB_STATE_FILE = Path(STORAGE_DIR) / "tg_reply_keyboard.json"

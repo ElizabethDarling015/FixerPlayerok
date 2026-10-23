@@ -126,3 +126,40 @@ async def test_new_text_saved_in_same_message_and_reply_is_let_through(monkeypat
     with pytest.raises(SkipHandler):
         await night.on_night_text(_Msg("ответ", reply=object()), state, fixer)
     assert state.cleared and saved == ["Доброй ночи, $username!"]
+
+
+async def test_chat_missing_in_event_is_loaded_from_deal():
+    """Оплату первым заметил поллинг (сделка без чата) — раньше сообщение молча не уходило."""
+    module, fixer, tasks = make_module(hour=3)
+    fixer.account.get_deal = lambda deal_id: SimpleNamespace(chat=SimpleNamespace(id="chat-from-api"))
+    deal = SimpleNamespace(id="deal-7", direction=ItemDealDirections.OUT, user=SimpleNamespace(username="Fox"),
+                           item=SimpleNamespace(name="GoLand"), chat=None)
+    await module.on_event(ItemPaidEvent(None, None, None, deal))
+    await asyncio.gather(*tasks)
+    assert [cid for cid, _ in fixer.account.sent_messages] == ["chat-from-api"]
+
+
+async def test_night_skip_reasons_are_logged(caplog):
+    from loguru import logger
+    lines = []
+    sink = logger.add(lambda m: lines.append(str(m)), level="INFO")
+    try:
+        module, fixer, tasks = make_module(hour=3)
+        fixer.settings.modules.night = False
+        await module.on_event(paid("deal-off"))
+        module2, fixer2, _ = make_module(hour=3)
+        fixer2.account.get_deal = lambda deal_id: None
+        deal = SimpleNamespace(id="deal-nochat", direction=ItemDealDirections.OUT, user=None, item=None, chat=None)
+        await module2.on_event(ItemPaidEvent(None, None, None, deal))
+    finally:
+        logger.remove(sink)
+    text = "".join(lines)
+    assert "deal-off" in text and "выключено" in text
+    assert "deal-nochat" in text and "чат сделки не найден" in text
+
+
+def test_global_toggles_order():
+    _, markup = build_toggles_menu(make_fixer())
+    rows = [[b.callback_data for b in row] for row in markup.inline_keyboard]
+    assert rows[:3] == [["mod:autoraise", "mod:online"], ["mod:autodelivery", "mod:autoresponse"], ["mod:digest"]]
+    assert rows[3] == ["mod:night", "night:text"]
